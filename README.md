@@ -266,7 +266,9 @@ See `genetic_drift_analysis.md` for a partial reverse engineering of the 1982 Br
 
 ## Rosetta v2 Toolchain Contribution
 
-The `genetic_drift_complete.s` and `genetic_drift_annotated.s` files in this repository were produced using [Project Rosetta](https://github.com/BradHawthorne/rosetta), a cross-platform Apple IIgs/65816 toolchain (v2.1.2). The toolchain's disassembler, **deasmiigs v2.0.0**, was used in 6502 mode to produce a machine-analyzed disassembly that goes far beyond linear disassembly.
+The `genetic_drift_complete.s` and `genetic_drift_annotated.s` files in this repository were produced using Project Rosetta, a cross-platform Apple IIgs/65816 toolchain (v2.1.2). The toolchain's disassembler, **deasmiigs v2.0.0**, was used in 6502 mode to produce a machine-analyzed disassembly that goes far beyond linear disassembly.
+
+> **Note:** Project Rosetta is currently a private project under active development. The tools described below are not yet publicly available.
 
 ### What is Project Rosetta?
 
@@ -322,7 +324,7 @@ For the 14,889-byte Genetic Drift binary, deasmiigs performed control flow graph
 - `--apple2-rom` — Injects 166 Apple II ROM entry point symbols (Monitor, Applesoft, I/O)
 - `--prodos8` — Detects ProDOS 8 MLI calls with parameter block analysis
 - `--dos33` — Detects DOS 3.3 entry points and file manager calls
-- `--6502-strict` — Restricts output to 6502-only instructions
+- `--6502-strict` — Treats CPU-incompatible opcodes as data (sprite tables, lookup tables correctly detected)
 - Full soft switch annotation ($C000-$C0FF) with subsystem classification
 
 **AI-assisted analysis (optional, via Ollama):**
@@ -379,7 +381,7 @@ Both approaches have value: the linear disassembler is simple, hackable, and pro
 ## Requirements
 
 - **Python tools** (`extract_dos33.py`, `disasm6502.py`): Python 3.6+, no external dependencies
-- **Rosetta v2 toolchain** (`deasmiigs`): Built from source (C, CMake). See the [Rosetta project](https://github.com/BradHawthorne/rosetta) for build instructions.
+- **Rosetta v2 toolchain** (`deasmiigs`): Built from source (C, CMake). Project Rosetta is currently private; contact the author for access.
 
 ## Limitations
 
@@ -389,8 +391,8 @@ Both approaches have value: the linear disassembler is simple, hackable, and pro
 - Disassembler doesn't trace execution flow (linear disassembly)
 - No support for self-modifying code detection
 
-**deasmiigs known issue:**
-- The `--cpu 6502` flag does not fully restrict the instruction set; some 65816 mnemonics may appear in data regions that are incorrectly disassembled as code. The annotated file corrects these manually.
+**deasmiigs note:**
+- As of v2.1.2, the `--6502-strict` flag correctly treats CPU-incompatible opcodes as data rather than disassembling them as 65816 instructions. The annotated file in this repository was produced before this fix and contains some manual corrections that are now handled automatically.
 
 ## Future Enhancements
 
