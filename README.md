@@ -264,17 +264,133 @@ See `genetic_drift_analysis.md` for a partial reverse engineering of the 1982 Br
 
 **Note on Apple II keyboard**: The cheat key `$9E` is the caret character, which on the original Apple II/II+ keyboard is produced by **Shift-N** (not Shift-6 as on modern keyboards).
 
+## Rosetta v2 Toolchain Contribution
+
+The `genetic_drift_complete.s` and `genetic_drift_annotated.s` files in this repository were produced using [Project Rosetta](https://github.com/nicholascross/rosetta_v2), a cross-platform Apple IIgs/65816 toolchain (v2.1.2). The toolchain's disassembler, **deasmiigs v2.0.0**, was used in 6502 mode to produce a machine-analyzed disassembly that goes far beyond linear disassembly.
+
+### What is Project Rosetta?
+
+Project Rosetta is a round-trip toolchain for the Apple IIgs and 65816 family:
+
+| Tool | Purpose |
+|------|---------|
+| **deasmiigs** | Decompiler/disassembler with CFG analysis, pattern matching, and AI assist |
+| **asmiigs** | Assembler (MPW/ORCA-M syntax) |
+| **linkiigs** | Linker (OMF v2.1 output) |
+| **reziigs** | Resource compiler |
+| **romiigs** | ROM explorer GUI (Python/PySide6) for ROM archaeology and AI-assisted annotation |
+| **rosetta-lsp** | Language server for IDE integration |
+
+### What deasmiigs Detected Automatically
+
+For the 14,889-byte Genetic Drift binary, deasmiigs performed control flow graph (CFG) tracing and produced these automated analyses:
+
+| Analysis | Result |
+|----------|--------|
+| **Functions** | 74 auto-detected (vs ~30 found manually) |
+| **Loops** | 210 detected with type classification (194 while, 7 counted, 9 other) |
+| **Nesting** | Max nesting depth of 62 levels identified |
+| **Pattern matches** | 876 code idioms recognized (BCD arithmetic, keyboard polling, sprite draw, etc.) |
+| **Optimization hints** | 32 suggestions (peephole, redundant loads, strength reduction, tail calls) |
+| **Call sites** | 39 analyzed with parameter inference |
+| **Stack frames** | 71 functions with frame size, locals, and saved register analysis |
+| **Cross-references** | Full call graph and data reference tracking |
+| **Hardware context** | Subsystem detection: keyboard, video mode, joystick, speaker, disk I/O |
+| **Data regions** | Automatic detection of non-code data (tables, sprite bitmaps) |
+
+### deasmiigs Capabilities
+
+**CPU targets:** 6502, 65C02, 65816, 65GS832 (custom Apple IIgs extended mode)
+
+**Analysis passes:**
+- Control flow graph (CFG) construction with basic block identification
+- Loop detection and classification (while, do-while, counted, infinite) with iteration variable tracking
+- Constant propagation through register/memory state tracking
+- Type inference for memory locations (byte, word, pointer, array, struct)
+- Switch/case detection (jump tables, CMP chains, computed jumps)
+- Stack depth analysis with balance verification
+- I/O pattern sequence detection (video mode setup, language card bank switching)
+- Apple II ROM symbol lookup (166 symbols: Monitor, Applesoft, DOS vectors)
+
+**Output formats:**
+- Raw disassembly, annotated disassembly, or pseudocode
+- Cross-reference reports (JSON, HTML)
+- Intermediate representation (IR) as JSON for external tooling
+- Validation output for round-trip verification
+
+**Apple II / IIgs specific features:**
+- `--apple2-rom` — Injects 166 Apple II ROM entry point symbols (Monitor, Applesoft, I/O)
+- `--prodos8` — Detects ProDOS 8 MLI calls with parameter block analysis
+- `--dos33` — Detects DOS 3.3 entry points and file manager calls
+- `--6502-strict` — Restricts output to 6502-only instructions
+- Full soft switch annotation ($C000-$C0FF) with subsystem classification
+
+**AI-assisted analysis (optional, via Ollama):**
+- `--ai-name` — AI-generated meaningful function names
+- `--ai-describe` — AI-generated function descriptions
+
+### How the Annotated Disassembly Was Produced
+
+1. **Binary splitting** — A Python script (`split_binary.py`) identified the self-relocating structure and split the binary into 3 segments: bootstrap ($37D7), relocated ($0000), and main ($4000).
+
+2. **Automated disassembly** — Each segment was disassembled with deasmiigs:
+   ```bash
+   deasmiigs --cpu 6502 --format binary --load 0x37D7 --entry 0x37D7 \
+             --apple2-rom gd_bootstrap.bin -o gd_bootstrap.s
+   deasmiigs --cpu 6502 --format binary --load 0x0000 --entry 0x0000 \
+             --apple2-rom gd_relocated.bin -o gd_relocated.s
+   deasmiigs --cpu 6502 --format binary --load 0x4000 --entry 0x4000 \
+             --apple2-rom gd_main.bin -o gd_main.s
+   ```
+
+3. **Segment merge** — The three disassemblies were merged into `genetic_drift_complete.s` (5,277 lines) with a unified memory map header.
+
+4. **Automated annotation** — A Python script (`annotate_genetic_drift.py`) applied 125 label renames, 21 section headers, zero page equates, and data table labels using Scott Schram's `genetic_drift_analysis.md` as the knowledge base.
+
+5. **Manual polish** — Every major section received hand-written HOW/WHY annotations explaining both the code mechanism and the design rationale behind it (Apple II hardware quirks, game design decisions, historical context).
+
+### Comparison: Linear vs CFG Disassembly
+
+| Feature | `disasm6502.py` (linear) | **deasmiigs** (CFG-tracing) |
+|---------|--------------------------|---------------------------|
+| Disassembly method | Sequential byte-by-byte | Control flow graph tracing |
+| Function detection | None (manual) | 74 auto-detected with boundaries |
+| Loop analysis | None | 210 loops with type/nesting/counter |
+| Data vs code | Disassembles everything as code | Detects data regions automatically |
+| Branch targets | Labels generated | Labels + cross-reference graph |
+| Hardware annotation | 13 soft switches | 166 ROM symbols + full soft switch map |
+| Pattern recognition | None | 876 idioms (BCD, sprite draw, I/O polling) |
+| Stack analysis | None | Frame sizes, locals, balance checking |
+| Output | .asm text | .s text, JSON IR, HTML xref, validation |
+
+Both approaches have value: the linear disassembler is simple, hackable, and produced results in minutes with zero dependencies. The CFG-tracing disassembler provides deeper structural analysis that reveals the program's architecture.
+
+### Files in This Repository
+
+| File | Description |
+|------|-------------|
+| `genetic_drift_analysis.md` | Scott Schram's comprehensive game analysis (co-written with Claude Code) |
+| `genetic_drift_complete.s` | Raw Rosetta v2 toolchain output (5,277 lines, 74 auto-detected functions) |
+| `genetic_drift_annotated.s` | Hand-annotated version (5,816 lines, 125 named functions, HOW/WHY comments) |
+| `annotate_genetic_drift.py` | Annotation script that transforms raw output to annotated version |
+| `extract_dos33.py` | DOS 3.3 file extractor (Scott's original tool) |
+| `disasm6502.py` | Linear 6502 disassembler (Scott's original tool) |
+
 ## Requirements
 
-- Python 3.6+
-- No external dependencies (uses only standard library)
+- **Python tools** (`extract_dos33.py`, `disasm6502.py`): Python 3.6+, no external dependencies
+- **Rosetta v2 toolchain** (`deasmiigs`): Built from source (C, CMake). See the [Rosetta project](https://github.com/nicholascross/rosetta_v2) for build instructions.
 
 ## Limitations
 
+**Python tools:**
 - Only handles DOS 3.3 format (not ProDOS, Pascal, or CP/M)
 - Binary file extraction only (not Applesoft or Integer BASIC tokenized files)
 - Disassembler doesn't trace execution flow (linear disassembly)
 - No support for self-modifying code detection
+
+**deasmiigs known issue:**
+- The `--cpu 6502` flag does not fully restrict the instruction set; some 65816 mnemonics may appear in data regions that are incorrectly disassembled as code. The annotated file corrects these manually.
 
 ## Future Enhancements
 
