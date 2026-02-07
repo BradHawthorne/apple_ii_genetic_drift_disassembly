@@ -266,7 +266,7 @@ See `genetic_drift_analysis.md` for a partial reverse engineering of the 1982 Br
 
 ## Rosetta v2 Toolchain Contribution
 
-The `genetic_drift_complete.s` and `genetic_drift_annotated.s` files in this repository were produced using [Project Rosetta](https://github.com/nicholascross/rosetta_v2), a cross-platform Apple IIgs/65816 toolchain (v2.1.2). The toolchain's disassembler, **deasmiigs v2.0.0**, was used in 6502 mode to produce a machine-analyzed disassembly that goes far beyond linear disassembly.
+The `genetic_drift_complete.s` and `genetic_drift_annotated.s` files in this repository were produced using [Project Rosetta](https://github.com/BradHawthorne/rosetta), a cross-platform Apple IIgs/65816 toolchain (v2.1.2). The toolchain's disassembler, **deasmiigs v2.0.0**, was used in 6502 mode to produce a machine-analyzed disassembly that goes far beyond linear disassembly.
 
 ### What is Project Rosetta?
 
@@ -379,7 +379,7 @@ Both approaches have value: the linear disassembler is simple, hackable, and pro
 ## Requirements
 
 - **Python tools** (`extract_dos33.py`, `disasm6502.py`): Python 3.6+, no external dependencies
-- **Rosetta v2 toolchain** (`deasmiigs`): Built from source (C, CMake). See the [Rosetta project](https://github.com/nicholascross/rosetta_v2) for build instructions.
+- **Rosetta v2 toolchain** (`deasmiigs`): Built from source (C, CMake). See the [Rosetta project](https://github.com/BradHawthorne/rosetta) for build instructions.
 
 ## Limitations
 
