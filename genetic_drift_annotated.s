@@ -1,88 +1,45 @@
 ; ============================================================================
-; "Genetic Drift" - Complete Annotated Disassembly
+; "Genetic Drift" - Complete Disassembly
 ; ============================================================================
 ;
-; Game:       Genetic Drift (Apple II, 6502)
+; Game:       Genetic Drift
 ; Author:     Scott Schram
 ; Publisher:  Broderbund Software, 1981
-; Preserved:  by 4am / Passport.py (WOZ disk image)
 ;
-; Binary:     14,889 bytes ($3A29), loads at $37D7
-; Runtime:    $0000-$07FF (relocated) + $4000-$71FF (in-place)
+; Binary:     14,889 bytes, loads at $37D7, runs at $0000-$07FF + $4000-$71FF
 ;
-; Disassembled and annotated by Rosetta v2 Toolchain (deasmiigs) with
-; hand annotations derived from Scott Schram's own Claude Code analysis.
-; This annotated disassembly is a gift to the original author from the
-; Rosetta project, combining automated CFG/pattern analysis (74 functions,
-; 210 loops, 876 idioms detected) with hand-verified game logic annotations.
+; Disassembled by Rosetta v2 Toolchain (deasmiigs v2.1.2) - 6502 strict mode
+; with Apple II ROM symbols, user-provided function labels, and enhanced
+; data region detection.
 ;
-; HOW THE BINARY SELF-RELOCATES:
-;   The binary is loaded by DOS 3.3 as a contiguous block at $37D7.
-;   1. Bootstrap ($37D7-$37FF, 41 bytes) executes first:
-;      - Copies pages $38-$3F down to pages $00-$07 (2048 bytes)
-;      - This overwrites zero page, stack, and low memory with the
-;        relocated block containing the custom RWTS disk reader,
-;        Broderbund splash screen code, and HGR line lookup tables
-;   2. Bootstrap then JMPs to $57D7 (the real main entry point)
-;      - $57D7 is at file offset $57D7-$37D7 = $2000 in the binary
-;   3. Main game code ($4000-$71FF) stays at its load address
-;
-; WHY SELF-RELOCATE?
-;   The game needs code at $0000 (zero page for fast variable access)
-;   and the RWTS must run from low memory to access slot I/O.
-;   DOS 3.3 can't load directly to $0000 (it would overwrite the OS),
-;   so the binary loads high and copies down after gaining control.
+; The binary self-relocates at startup:
+;   1. Bootstrap at $37D7 copies $3800-$3FFF to $0000-$07FF (zero page +
+;      stack area, custom RWTS, Broderbund splash screen code)
+;   2. Bootstrap then jumps to $57D7 (the main entry point, which is at
+;      offset $57D7-$4000 = $17D7 within the main code segment)
+;   3. Main game code at $4000-$71FF stays at its load address
 ;
 ; ============================================================================
 ; MEMORY MAP
 ; ============================================================================
 ;
-;   $0000-$00FF : Zero page - game variables, pointers, counters
-;                 (Fastest access on 6502: 1 byte addresses, 1 fewer cycle)
-;   $0100-$01FF : Hardware stack (shared with relocated code)
-;   $0200-$07FF : Relocated code block:
-;                   $025D : Custom RWTS disk reader (Broderbund protection)
-;                   $02D1 : Disk data 6-and-2 decode routine
-;                   $0403 : Random number generator
-;                   $0416 : Character/digit rendering subroutine
-;                   $0700 : HGR line address lookup tables (192 entries)
-;   $2000-$3FFF : Hi-Res page 1 (screen memory, 8KB)
-;                 NO page flipping - single buffer only
-;   $4000-$71FF : Main game code + data (12,800 bytes, stays at load addr)
-;                   $4001 : DrawSprite - sprite rendering engine
-;                   $4120 : InitHiRes - screen setup
-;                   $43E0 : KeyboardHandler - input processing
-;                   $457F : MoveAllLasers - projectile movement
-;                   $4AE0 : AddScore - BCD score arithmetic
-;                   $4B65 : PunishmentRoutine - diamond penalty
-;                   $4C99 : LevelCompleteAnim (contains cheat code!)
-;                   $4D73 : LevelSetup
-;                   $4D87 : UpdateAlienPositions
-;                   $4F5B : CheckSatelliteHits
-;                   $52F3 : RedrawScreen
-;                   $53B8 : Alien type table (16 entries)
-;                   $5370 : 4-direction fire ammo
-;                   $56E4 : IncreaseDifficulty
-;                   $56F3 : LoadDifficultyTables
-;                   $576C : Difficulty lookup tables (8 tables × 12 entries)
-;                   $57D7 : MainEntry (real start after relocation)
-;                   $5809 : StartNewGame
-;                   $5875 : MainGameLoop (the core tick loop)
-;                   $5C78 : CheckAllTVs (level complete condition)
-;                   $5CB8 : LevelComplete
-;                   $5D34 : Projectile state tables
-;                   $5D7C : Sprite pointer tables
-;                   $6070 : Sprite data (directional arrows, aliens, etc.)
+;   $0000-$007F : Zero page variables (game state, pointers, counters)
+;   $0000-$07FF : Relocated code block
+;                   - Custom RWTS disk reader (reads nibble-encoded sectors)
+;                   - Broderbund splash screen display
+;                   - HGR line address lookup tables ($0700-$07FF)
+;   $4000-$71FF : Main game code (remains at load address)
+;                   - Game logic, graphics routines, input handling
+;                   - Shape tables, color tables, level data
 ;
-; ============================================================================
-;
-; GAME CONCEPT ("Genetic Drift"):
-;   You control a base at the center of the screen. 16 aliens (4 per side)
-;   surround you. Each alien cycles through 6 forms when hit:
-;     UFO -> Eye (blue) -> Eye (green) -> TV -> Diamond -> Bowtie -> [wrap]
-;   GOAL: Get ALL 16 aliens to become TVs simultaneously.
-;   TRAP: Hitting a TV cycles it to Diamond (5 more hits to get back!)
-;   PENALTY: Hearts transform an entire side to Diamonds.
+; KEY ENTRY POINTS:
+;   $37D7 : Bootstrap loader (initial entry from DOS)
+;   $57D7 : Main entry point (after relocation)
+;   $5875 : Main game loop
+;   $4120 : Graphics initialization (clears HGR, sets video mode)
+;   $40C0 : DrawSpriteXY - core sprite rendering engine
+;   $025D : RWTS sector read routine
+;   $02D1 : Disk data decode routine
 ;
 ; ============================================================================
 
@@ -126,87 +83,580 @@
         ; Emulation mode (6502)
 
 ; ============================================================================
-; SEGMENT 1: Bootstrap Loader ($37D7-$37FF, 41 bytes)
+; SEGMENT: Bootstrap Loader ($37D7-$37FF)
 ; ============================================================================
-; HOW: Uses indirect indexed addressing to copy 8 pages ($3800-$3FFF) to
-;      $0000-$07FF. ZP pointers: ($00)=src, ($02)=dst, $04=end page.
-;      Inner loop copies 256 bytes (one page), outer loop increments pages.
-; WHY: DOS 3.3 loads the entire binary starting at $37D7, but the game
-;      needs its RWTS and variables at $0000. The bootstrap copies the
-;      relocated block down, then jumps to the real entry point.
-;      The STA $C010 at entry clears any pending keypress from the user
-;      who typed "RUN GENETIC DRIFT" at the DOS prompt.
+; This 41-byte bootstrap is the initial entry point when the binary loads.
+; It copies 8 pages ($3800-$3FFF) down to $0000-$07FF, overwriting zero page,
+; the stack, and low memory with the relocated code block. After the copy
+; completes, it jumps to $57D7 to begin the main game.
 ; ============================================================================
 
-0037D7  8D 10 C0                      sta  $C010           ; KBDSTRB - Clear keyboard strobe {Keyboard} <keyboard_strobe>
-0037DA  A9 38                         lda  #$38            ; A=$0038
-0037DC  85 01                         sta  $01             ; A=$0038
-0037DE  A9 00                         lda  #$00            ; A=$0000
-0037E0  85 03                         sta  $03             ; A=$0000
-0037E2  A9 40                         lda  #$40            ; A=$0040
-0037E4  85 04                         sta  $04             ; A=$0040
-0037E6  A0 00                         ldy  #$00            ; A=$0040 Y=$0000
-0037E8  84 00                         sty  $00             ; A=$0040 Y=$0000
-0037EA  84 02                         sty  $02             ; A=$0040 Y=$0000
+; === Hardware Context Analysis ===
+; Total I/O reads:  0
+; Total I/O writes: 1
+;
+; Subsystem Access Counts:
+;   Keyboard        : 1
+;
+; Final Video Mode: TEXT40
+; Memory State: 80STORE=0 RAMRD=0 RAMWRT=0 ALTZP=0 LC_BANK=2 LC_RD=0 LC_WR=0
+; Speed Mode: Normal (1 MHz)
+;
+; Detected Hardware Patterns:
+;   (none)
+
+; Disassembly generated by DeAsmIIgs v2.0.0
+; Source: D:/Projects/rosetta_v2/misc/gd_bootstrap.bin
+; Base address: $0037D7
+; Size: 41 bytes
+; Analysis: 0 functions, 0 call sites
+
+        ; Emulation mode
+
+0037D7  8D 10 C0                      sta  CLRKBD          ; KBDSTRB - Clear keyboard strobe {Keyboard} <keyboard_strobe>
+0037DA  A9 38                         lda  #$38           
+0037DC  85 01                         sta  $01            
+0037DE  A9 00                         lda  #$00           
+0037E0  85 03                         sta  $03            
+0037E2  A9 40                         lda  #$40           
+0037E4  85 04                         sta  $04            
+0037E6  A0 00                         ldy  #$00           
+0037E8  84 00                         sty  $00            
+0037EA  84 02                         sty  $02            
 
 ; === while loop starts here (counter: Y 'iter_y') ===
-0037EC  B1 00             Bootstrap_CopyLoop    lda  ($00),Y         ; A=$0040 Y=$0000
-0037EE  91 02                         sta  ($02),Y         ; A=$0040 Y=$0000
-0037F0  C8                            iny                  ; A=$0040 Y=$0001
-0037F1  D0 F9                         bne  Bootstrap_CopyLoop        ; A=$0040 Y=$0001
+0037EC  B1 00                         lda  ($00),Y        
+0037EE  91 02                         sta  ($02),Y        
+0037F0  C8                            iny                 
+0037F1  D0 F9                         bne  Bootstrap_CopyLoop
 ; === End of while loop (counter: Y) ===
 
-0037F3  E6 01                         inc  $01             ; A=$0040 Y=$0001
-0037F5  E6 03                         inc  $03             ; A=$0040 Y=$0001
-0037F7  A5 01                         lda  $01             ; A=[$0001] Y=$0001
-0037F9  C5 04                         cmp  $04             ; A=[$0001] Y=$0001
-0037FB  D0 EF                         bne  Bootstrap_CopyLoop        ; A=[$0001] Y=$0001
+0037F3  E6 01                         inc  $01            
+0037F5  E6 03                         inc  $03            
+0037F7  A5 01                         lda  $01            
+0037F9  C5 04                         cmp  $04            
+0037FB  D0 EF                         bne  Bootstrap_CopyLoop
 ; === End of while loop (counter: Y) ===
 
-0037FD  4C D7 57                      jmp  $57D7           ; A=[$0001] Y=$0001
+0037FD  4C D7 57                      jmp  $57D7          
 
 ; ============================================================================
-; SEGMENT 2: Relocated Code Block ($0000-$07FF, 2048 bytes)
+; SEGMENT: Relocated Code Block ($0000-$07FF)
 ; ============================================================================
-; HOW: This block is stored in the binary at $3800-$3FFF but runs at
-;      $0000-$07FF after the bootstrap copies it down.
-;
-; WHY each sub-region is here:
-;   $0000-$00FF (Zero page): Game variables live here because zero-page
-;     addressing is the fastest on the 6502 (2 cycles vs 4 for absolute).
-;     Every frame accesses $10 (lives), $11 (direction), $30 (difficulty),
-;     $36 (fire flag), $3A (level) etc. - speed matters in a real-time game.
-;
-;   $0200-$02FF (RWTS): The custom disk reader MUST be in low memory
-;     because it accesses slot I/O via $C08C,X where X = slot * 16.
-;     Broderbund's RWTS uses non-standard prologue D5 AA B5 (vs standard
-;     D5 AA 96) as copy protection - standard disk utilities can't read it.
-;
-;   $0400-$04FF (Rendering): The character/digit renderer at $0416 is
-;     called frequently for score display and needs fast access.
-;
-;   $0700-$07FF (HGR tables): The Apple II hi-res screen has a notoriously
-;     non-linear memory layout (interleaved groups of 8 lines). These
-;     lookup tables at $0700 give instant scanline-to-address conversion
-;     rather than computing it each time. This is THE classic Apple II
-;     optimization - virtually every hi-res game uses it.
+; This 2048-byte block is copied from $3800-$3FFF to $0000-$07FF by the
+; bootstrap. It contains:
+;   - Zero page variables and interrupt vectors
+;   - Custom RWTS (Read/Write Track/Sector) disk I/O routines that read
+;     Broderbund's nibble-encoded disk format directly via slot I/O ($C08C,X)
+;   - Broderbund splash screen display code
+;   - HGR screen line address lookup tables ($0700-$07FF)
 ; ============================================================================
 
-; FUNC $000000: register -> A:X [I]
-; Proto: uint32_t func_000000(uint16_t param_A, uint16_t param_X, uint16_t param_Y);
-; Liveness: params(A,X,Y) returns(A,X,Y)
-; LUMA: int_brk
-000000  00 38                         brk  #$38            ; [SP-3]
+; === Optimization Hints Report ===
+; Total hints: 3
+; Estimated savings: 5 cycles/bytes
+
+; Address   Type              Priority  Savings  Description
+; ---------------------------------------------------------------
+; $0002BF   REDUNDANT_LOAD    MEDIUM    3        Redundant LDY: same value loaded at $0002AD
+; $0002E3   STRENGTH_RED      LOW       1        Multiple ASL A: consider using lookup table for multiply
+; $0002E4   STRENGTH_RED      LOW       1        Multiple ASL A: consider using lookup table for multiply
+
+; Loop Analysis Report
+; ====================
+; Total loops: 24
+;   for:       0
+;   while:     23
+;   do-while:  0
+;   infinite:  0
+;   counted:   1
+; Max nesting: 6
+;
+; Detected Loops:
+;   Header    Tail      Type      Nest  Counter
+;   ------    ----      ----      ----  -------
+;   $00001E   $00002C   while        0  -
+;   $0002D4   $0002EE   while        1  X: 0 step 1
+;                       ~51 iterations
+;   $0002D2   $0002F2   while        0  X: 0 step 1
+;                       ~51 iterations
+;   $000446   $00045A   while        1  Y: 0 step 1
+;   $000436   $00045F   while        0  X: 0 step 1
+;   $00025F   $000262   while        5  -
+;   $00025F   $000266   while        5  -
+;   $000268   $00026B   while        6  -
+;   $000264   $00026F   while        5  -
+;   $000272   $000275   while        5  -
+;   $000288   $00028B   while        3  -
+;   $000290   $000293   while        4  -
+;   $000288   $000298   counted      3  Y: 0 step -1
+;   $00025D   $00029D   while        0  -
+;   $00025E   $00029F   while        1  -
+;   $0002A5   $0002A8   while        2  -
+;   $0002A3   $0002B3   while        1  -
+;   $0002B7   $0002BA   while        2  -
+;   $0002B5   $0002C4   while        1  Y: 0 step 1
+;   $0002C6   $0002C9   while        1  -
+;   $00025D   $0002CE   while        0  Y: 0 step 1
+;   $00025D   $00027C   while        0  -
+;   $00025D   $000282   while        0  -
+;   $000211   $000225   while        0  Y: 0 step 1
+
+; Call Site Analysis Report
+; =========================
+; Total call sites: 7
+;   JSR calls:      7
+;   JSL calls:      0
+;   Toolbox calls:  0
+;
+; Parameter Statistics:
+;   Register params: 3
+;   Stack params:    0
+;
+; Calling Convention Analysis:
+;   Predominantly short calls (JSR/RTS)
+;   Register-based parameter passing
+;
+; Call Sites (first 20):
+;   $0006C0: JSR $0020E0 params: A X Y
+;   $0006C4: JSR $0020C0
+;   $0006C8: JSR $0020C0
+;   $00072C: JSR $002824
+;   $000734: JSR $002824
+;   $0007AC: JSR $002824
+;   $0007B4: JSR $002824
+
+; === Stack Frame Analysis (Sprint 5.3) ===
+; Functions with frames: 2
+
+; Function $00025D: none
+;   Frame: 0 bytes, Locals: 0, Params: 2
+;   Leaf: no, DP-relative: no
+;   Stack slots:
+;     +132: param_132 (2 bytes, 1 accesses)
+
+; Function $0002D1: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+
+; === Liveness Analysis Summary (Sprint 5.4) ===
+; Functions analyzed: 2
+; Functions with register params: 1
+; Functions with register returns: 2
+; Total dead stores detected: 10 (in 2 functions)
+;
+; Function Details:
+;   $00025D: params(X) returns(AXY) [9 dead]
+;   $0002D1: returns(AXY) [1 dead]
+
+; Function Signature Report
+; =========================
+; Functions analyzed:    2
+;   Leaf functions:      1
+;   Interrupt handlers:  1
+;   Stack params:        0
+;   Register params:     2
+;
+; Function Signatures:
+;   Entry     End       Conv       Return   Frame  Flags
+;   -------   -------   --------   ------   -----  -----
+;   $00025D   $0002D1   register   A:X         0   L
+;     Proto: uint32_t RWTS_ReadSector(uint16_t param_X);
+;   $0002D1   $000800   register   A:X         0   I
+;     Proto: uint32_t RWTS_DecodeData(void);
+;
+; Flags: L=Leaf, J=JSL/RTL, I=Interrupt, F=FrameSetup
+
+; Constant Propagation Analysis
+; =============================
+; Constants found: 8
+; Loads with known value: 5
+; Branches resolved: 0
+; Compares resolved: 0
+; Memory constants tracked: 0
+;
+; Final register state:
+;   A: unknown
+;   X: unknown
+;   Y: unknown
+;   S: [$0100-$01FF]
+;   DP: undefined
+;   DBR: undefined
+;   PBR: undefined
+;   P: undefined
+
+; ============================================================================
+; TYPE INFERENCE REPORT
+; ============================================================================
+;
+; Entries analyzed: 150
+; Bytes typed:      45
+; Words typed:      37
+; Pointers typed:   1
+; Arrays typed:     43
+; Structs typed:    64
+;
+; Inferred Types:
+;   Address   Type       Conf   R    W   Flags  Name
+;   -------   --------   ----   ---  --- -----  ----
+;   $0013B2   ARRAY      75%     1    0 I      arr_13B2 [elem=1]
+;   $000000   STRUCT     80%     9    3 IP     struct_0000 {size=16}
+;   $00D19B   ARRAY      75%     0    1 I      arr_D19B [elem=1]
+;   $0000BA   ARRAY      75%     1    0 I      arr_00BA [elem=1]
+;   $0085AD   ARRAY      75%     1    0 I      arr_85AD [elem=1]
+;   $000200   STRUCT     70%     1    3 I      struct_0200 {size=161}
+;   $000025   BYTE       70%     5    0 IP     byte_0025
+;   $00C08C   ARRAY      95%    21    0 I      arr_C08C [elem=1]
+;   $000048   BYTE       90%     3    3        byte_0048
+;   $0000A2   BYTE       50%     1    1        byte_00A2
+;   $0000A3   BYTE       50%     1    1        byte_00A3
+;   $00AAAF   ARRAY      75%     1    0 I      arr_AAAF [elem=1]
+;   $00094C   ARRAY      75%     1    0 I      arr_094C [elem=1]
+;   $00003F   BYTE       50%     1    1        byte_003F
+;   $00003C   BYTE       90%     3    4 P      byte_003C
+;   $000600   STRUCT     70%     1    1 I      struct_0600 {size=2}
+;   $00FDFB   ARRAY      75%     1    0 I      arr_FDFB [elem=1]
+;   $0000FC   BYTE       50%     2    0        byte_00FC
+;   $0001FB   ARRAY      75%     1    0 I      arr_01FB [elem=1]
+;   $008487   ARRAY      75%     1    0 I      arr_8487 [elem=1]
+;   $004F57   ARRAY      75%     1    0 I      arr_4F57 [elem=1]
+;   $000800   STRUCT     70%     5    2 I      struct_0800 {size=1}
+;   $002684   ARRAY      75%     1    0 I      arr_2684 [elem=1]
+;   $000026   PTR        80%     2    2 P      ptr_0026
+;   $0003CC   ARRAY      75%     1    0 I      arr_03CC [elem=1]
+;   $000399   ARRAY      75%     1    0 I      arr_0399 [elem=1]
+;   $000300   STRUCT     70%     0    0        struct_0300 {size=205}
+;   $00002A   BYTE       70%     4    0        byte_002A
+;   $000001   BYTE       90%     5    2        byte_0001
+;   $005D7C   ARRAY      85%     3    0 I      arr_5D7C [elem=1]
+;   $00044B   WORD       50%     1    1        word_044B
+;   $005E1D   ARRAY      85%     3    0 I      arr_5E1D [elem=1]
+;   $00044C   WORD       50%     1    1        word_044C
+;   $000002   BYTE       90%     7    5        byte_0002
+;   $000003   BYTE       80%     0    5        byte_0003
+;   $005EBE   ARRAY      85%     3    0 I      arr_5EBE [elem=1]
+;   $000004   BYTE       60%     3    0        byte_0004
+;   $005F5F   ARRAY      90%     4    0 I      arr_5F5F [elem=1]
+;   $000005   FLAG       50%     2    4        flag_0005
+;   $00416C   ARRAY      90%     4    0 I      arr_416C [elem=1]
+;   $000006   BYTE       90%     1    6 P      byte_0006
+;   $00422C   ARRAY      85%     3    0 I      arr_422C [elem=1]
+;   $000007   BYTE       60%     0    3        byte_0007
+;   $000400   STRUCT     70%     0    1        struct_0400 {size=40}
+;   $0004A7   WORD       50%     1    1        word_04A7
+;   $0004A8   WORD       50%     1    1        word_04A8
+;   $000008   FLAG       50%     2    0        flag_0008
+;   $000009   FLAG       50%     2    0        flag_0009
+;   $00000A   FLAG       60%     3    0        flag_000A
+;   $00000B   FLAG       50%     3    0 P      flag_000B
+;   $004C24   ARRAY      75%     1    0 I      arr_4C24 [elem=1]
+;   $00D24D   ARRAY      75%     1    0 I      arr_D24D [elem=1]
+;   $00002E   BYTE       50%     1    1 P      byte_002E
+;   $00A88D   ARRAY      75%     1    0 I      arr_A88D [elem=1]
+;   $00DE3E   ARRAY      75%     1    0 I      arr_DE3E [elem=1]
+;   $00C2AC   ARRAY      75%     1    0 I      arr_C2AC [elem=1]
+;   $0000F6   ARRAY      75%     1    0 I      arr_00F6 [elem=1]
+;   $00002D   ARRAY      75%     1    0 I      arr_002D [elem=1]
+;   $000056   ARRAY      75%     1    0 I      arr_0056 [elem=1]
+;   $0000D7   ARRAY      75%     1    0 I      arr_00D7 [elem=1]
+;   $00C000   STRUCT     70%     0    0        struct_C000 {size=132}
+;   $0002C0   ARRAY      75%     1    0 I      arr_02C0 [elem=1]
+;   $000700   STRUCT     70%     0    0        struct_0700 {size=248}
+;   $0002C1   ARRAY      75%     1    0 I      arr_02C1 [elem=1]
+;   $000100   ARRAY      75%     0    1 I      arr_0100 [elem=1]
+;   $0002F0   ARRAY      75%     1    0 I      arr_02F0 [elem=1]
+;   $00040F   ARRAY      75%     0    1 I      arr_040F [elem=1]
+;   $0002A0   ARRAY      75%     0    1 I      arr_02A0 [elem=1]
+;   $0000E6   BYTE       50%     2    0 P      byte_00E6
+;   $0000B9   BYTE       50%     2    0 P      byte_00B9
+;   $00C088   ARRAY      75%     1    0 I      arr_C088 [elem=1]
+;   $00C083   WORD       50%     2    0        word_C083
+;   $0000CE   ARRAY      75%     1    0 I      arr_00CE [elem=1]
+;   $003430   WORD       90%     6    0        word_3430
+;   $003400   STRUCT     70%     0    0        struct_3400 {size=49}
+;   $000035   BYTE       60%     3    0 P      byte_0035
+;   $00213D   ARRAY      85%     3    0 I      arr_213D [elem=1]
+;   $000029   BYTE       60%     3    0        byte_0029
+;   $003531   WORD       60%     3    0        word_3531
+;   $00223D   ARRAY      85%     3    0 I      arr_223D [elem=1]
+;   $003632   WORD       90%     6    0        word_3632
+;   $002622   ARRAY      85%     3    0 I      arr_2622 [elem=1]
+;   $002723   ARRAY      85%     3    0 I      arr_2723 [elem=1]
+;   $3B3733   LONG       90%     6    0        long_3B3733
+
+; ============================================================================
+; SWITCH/CASE DETECTION REPORT
+; ============================================================================
+;
+; Switches found:   4
+;   Jump tables:    4
+;   CMP chains:     0
+;   Computed:       0
+; Total cases:      0
+; Max cases/switch: 0
+;
+; Detected Switches:
+;
+; Switch #1 at $000418:
+;   Type:       jump_table
+;   Table:      $008D5D
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #2 at $000464:
+;   Type:       jump_table
+;   Table:      $008D5D
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #3 at $0004C2:
+;   Type:       jump_table
+;   Table:      $008D5D
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #4 at $0005F2:
+;   Type:       jump_table
+;   Table:      $005512
+;   Index Reg:  X
+;   Cases:      0
+
+; Cross-Reference Report
+; ======================
+; Total references: 182
+;   Calls: 8  Jumps: 8  Branches: 123  Data: 38
+;
+; Target Address  Type     From Address
+; -------------- -------- --------------
+; $000000         READ     $0004A6
+;
+; $00001E         BRANCH   $00002C
+;
+; $000028         INDIRECT  $0000B1
+;
+; $000035         BRANCH   $000036
+;
+; $000052         BRANCH   $000055
+; $000052         BRANCH   $000059
+;
+; $000057         BRANCH   $000062
+;
+; $00005B         BRANCH   $00005E
+;
+; $000060         BRANCH   $00006B
+;
+; $000064         BRANCH   $000067
+;
+; $00006D         BRANCH   $0000A6
+; $00006D         BRANCH   $000070
+;
+; $000076         BRANCH   $000079
+;
+; $00007F         BRANCH   $000082
+;
+; $000088         BRANCH   $00008B
+;
+; $000091         BRANCH   $000094
+;
+; $00009A         BRANCH   $00009D
+;
+; $0000A8         BRANCH   $0000AB
+;
+; $0000A9         BRANCH   $0000F4
+; $0000A9         BRANCH   $0000FD
+;
+; $0000B8         BRANCH   $0000AF
+;
+; $0000BD         BRANCH   $0000C8
+;
+; $0000C6         BRANCH   $0000D1
+;
+; $0000CA         BRANCH   $0000CD
+;
+; $0000D3         BRANCH   $0000E5
+; $0000D3         BRANCH   $0000EB
+; $0000D3         BRANCH   $0000D6
+;
+; $0000DB         BRANCH   $0000DE
+;
+; $0000ED         BRANCH   $0000F0
+;
+; $0000F6         BRANCH   $0000F9
+;
+; $000203         BRANCH   $00020A
+;
+; $00020F         JUMP     $00020C
+;
+; $000211         BRANCH   $000225
+;
+; $000217         READ     $000024
+;
+; $00021B         JUMP     $000618
+;
+; $000224         BRANCH   $00021D
+; $000224         BRANCH   $000219
+;
+; $00025D         BRANCH   $0002CE
+; $00025D         CALL     $000231
+; $00025D         BRANCH   $000282
+; $00025D         BRANCH   $00027C
+; $00025D         BRANCH   $00029D
+;
+; $00025E         BRANCH   $00029F
+;
+; $00025F         BRANCH   $000262
+; $00025F         BRANCH   $000266
+;
+; $000264         BRANCH   $00026F
+;
+; $000268         BRANCH   $00026B
+;
+; $000272         BRANCH   $000275
+;
+; $000284         BRANCH   $000279
+;
+; $000288         BRANCH   $00028B
+; $000288         BRANCH   $000298
+;
+; $000290         BRANCH   $000293
+;
+; $0002A1         BRANCH   $000280
+;
+; $0002A3         BRANCH   $0002B3
+;
+; $0002A5         BRANCH   $0002A8
+;
+; $0002B5         BRANCH   $0002C4
+;
+; $0002B7         BRANCH   $0002BA
+;
+; $0002C6         BRANCH   $0002C9
+;
+; $0002D0         CALL     $00062D
+; $0002D0         CALL     $000678
+;
+; $0002D1         CALL     $000234
+;
+; $0002D2         BRANCH   $0002F2
+;
+; $0002D4         BRANCH   $0002EE
+;
+; $0002FC         BRANCH   $0002F7
+;
+; $0003F2         INDIRECT  $00069C
+; $0003F2         WRITE    $0006E8
+;
+; $0003F3         WRITE    $0006DC
+;
+; $0003F4         WRITE    $0006E1
+;
+; $000400         WRITE    $000642
+;
+; $000413         BRANCH   $00040F
+;
+; $000416         CALL     $0007F3
+; $000416         JUMP     $0007F9
+;
+; $000427         WRITE    $000645
+;
+; $000436         BRANCH   $00045F
+;
+; $000446         BRANCH   $00045A
+;
+; $00044B         WRITE    $00041A
+;
+; $00044C         WRITE    $000420
+;
+; $00044F         BRANCH   $000448
+;
+; $000457         BRANCH   $000452
+;
+; $000461         BRANCH   $000438
+;
+; $000482         BRANCH   $0004BD
+;
+; $00049A         BRANCH   $0004B8
+;
+; $0004A7         WRITE    $000466
+;
+; $0004A8         WRITE    $00056C
+; $0004A8         WRITE    $00046C
+;
+; $0004AD         BRANCH   $00049C
+; $0004AD         BRANCH   $0004A0
+; $0004AD         BRANCH   $0004A4
+; $0004AD         BRANCH   $000488
+; $0004AD         BRANCH   $00048C
+;
+; $0004B5         BRANCH   $0004B0
+;
+; $0004BF         BRANCH   $000484
+;
+; $00050D         BRANCH   $0004FA
+; $00050D         BRANCH   $0004EA
+; $00050D         BRANCH   $0004E6
+; $00050D         BRANCH   $0004FE
+;
+; $00051F         BRANCH   $0004E2
+;
+; $00052D         BRANCH   $000588
+; $00052D         BRANCH   $0005A4
+;
+; $00053F         BRANCH   $000584
+;
+; ... and 82 more references
+
+; Stack Depth Analysis Report
+; ===========================
+; Entry depth: 0
+; Current depth: -491
+; Min depth: -496 (locals space: 496 bytes)
+; Max depth: 0
+;
+; Stack Operations:
+;   Push: 7  Pull: 15
+;   JSR/JSL: 10  RTS/RTL: 13
+;
+; WARNING: Stack imbalance detected at $000004
+;   Entry depth: 0, Return depth: -491
+;
+; Inferred Local Variables:
+;   Stack frame size: 496 bytes
+;   Offsets: S+$01 through S+$1F0
+
+; === Hardware Context Analysis ===
+; Total I/O reads:  8
+; Total I/O writes: 0
+;
+; Subsystem Access Counts:
+;   Language Card   : 8
+;
+; Final Video Mode: TEXT40
+; Memory State: 80STORE=0 RAMRD=0 RAMWRT=0 ALTZP=0 LC_BANK=2 LC_RD=0 LC_WR=0
+; Speed Mode: Normal (1 MHz)
+;
+; Detected Hardware Patterns:
+;   - Language card setup sequence detected
+
+; Disassembly generated by DeAsmIIgs v2.0.0
+; Source: D:/Projects/rosetta_v2/misc/gd_relocated.bin
+; Base address: $000000
+; Size: 2048 bytes
+; Analysis: 0 functions, 7 call sites, 2 liveness, stack: +0 max
+
+        ; Emulation mode
+
 ; LUMA: int_brk
 
 ; --- Data region ---
-000002  00004093                HEX     00004093 502901C0 09280000 00000300
-000012  6C1DB213                HEX     6C1DB213 D1D13C3B D4999BD1
+000000  00380000                HEX     00380000 40935029 01C00928 00000000
+000010  03006C1D                HEX     03006C1D B213D1D1 3C3BD499 9BD1
 
 ; === while loop starts here ===
-; --- End data region (28 bytes) ---
+; --- End data region (30 bytes) ---
 
-00001E  F9 BA 00          L_00001E    sbc  !$00BA,Y        ; [SP-10]
+00001E  F9 BA 00          loc_00001E  sbc  !$00BA,Y        ; [SP-10]
 000021  28                            plp                  ; [SP-13]
 ; LUMA: int_brk
 000022  00 18                         brk  #$18            ; [SP-16]
@@ -215,7 +665,7 @@
 000024  AE170225                HEX     AE170225 D007EF60
 ; --- End data region (8 bytes) ---
 
-00002C  F0 F0             L_00002C    beq  L_00001E        ; [SP-14]
+00002C  F0 F0                         beq  loc_00001E      ; [SP-14]
 ; === End of while loop ===
 
 
@@ -234,67 +684,65 @@
 0000CE  FBC9AFD0                HEX     FBC9AFD0 F3BD8CC0 10FB2A85 3FBD8CC0
 0000DE  10FB253F                HEX     10FB253F 913CC8D0 ECE63DC6 40D0E6BD
 0000EE  8CC010FB                HEX     8CC010FB C9AED0B3 BD8CC010 FBC9EED0
-0000FE  AA60                    HEX     AA60
-; --- End data region (210 bytes) ---
+0000FE  AA6007                  HEX     AA6007
+; LUMA: int_brk
+; --- End data region (211 bytes) ---
 
-000100  07 00             DiskBoot_Setup    ora  [$00]           ; [SP-24]
-000102  A9 4C                         lda  #$4C            ; A=$004C ; [SP-24]
-000104  8D 00 06                      sta  $0600           ; A=$004C ; [SP-24]
-000107  A9 00                         lda  #$00            ; A=$0000 ; [SP-24]
-000109  8D 01 06                      sta  $0601           ; A=$0000 ; [SP-24]
-00010C  A9 B0                         lda  #$B0            ; A=$00B0 ; [SP-24]
-00010E  8D 02 06                      sta  $0602           ; A=$00B0 ; [SP-24]
-000111  A9 EE                         lda  #$EE            ; A=$00EE ; [SP-24]
-; LUMA: epilogue_rts
-000113  60                            rts                  ; A=$00EE ; [SP-22]
+000101  00 A9                         brk  #$A9            ; [SP-24]
 
 ; --- Data region ---
-000114  FFFF0000                HEX     FFFF0000 FFFF0000 FFFF0000 FFFF0000
-000124  FFFF0000                HEX     FFFF0000 FFFF0000 FFFF0000 FFFF0000
-000134  FFFF0000                HEX     FFFF0000 FFFF0000 FFFF0000 FFFF0000
-000144  FFFF0000                HEX     FFFF0000 FFFF0000 FFFF0000 FFFF0000
-000154  FFFF0000                HEX     FFFF0000 FFFF0000 FFFF0000 FFFF0000
-000164  FFFF0000                HEX     FFFF0000 FFFF0000 FFFF0000 FFFF0000
-000174  FFFF0000                HEX     FFFF0000 FFFF0000 FFFF0000 FFFF0000
-000184  FFFF0000                HEX     FFFF0000 FFFF0000 FFFF0000 FFFF0000
-000194  FFFF0000                HEX     FFFF0000 FFFF0000 FFFF0000 FFFF0000
-0001A4  FFFF0000                HEX     FFFF0000 FFFF0000 FFFF0000 FFFF0000
-0001B4  FFFF0000                HEX     FFFF0000 FFFF0000 FFFF0000 FFFF0000
-0001C4  FFFF0000                HEX     FFFF0000 FFFF0000 FFFF0000 FFFF0000
-0001D4  FFFF0000                HEX     FFFF0000 17FBFDFB FDB2FB17 261726FC
-0001E4  1726FC68                HEX     1726FC68 00008417 FBFDFB01 E8FBFBFD
-0001F4  8784FA43                HEX     8784FA43 FD574F0F 2464EE04 06A200BD
+000103  4C8D0006                HEX     4C8D0006 A9008D01 06A9B08D 0206A9EE
+; LUMA: epilogue_rts
+000113  60FF                    HEX     60FF
+; --- End data region (18 bytes) ---
+
+000115  FF 00 00 FF                   sbc  >$FF0000,X      ; WARNING: not valid on 6502 ; [SP-22]
+
+; --- Data region ---
+000119  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF0000FF
+000129  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF0000FF
+000139  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF0000FF
+000149  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF0000FF
+000159  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF0000FF
+000169  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF0000FF
+000179  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF0000FF
+000189  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF0000FF
+000199  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF0000FF
+0001A9  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF0000FF
+0001B9  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF0000FF
+0001C9  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF000017
+0001D9  FBFDFBFD                HEX     FBFDFBFD B2FB1726 1726FC17 26FC6800
 ; LUMA: int_brk
-000204  00089D00                HEX     00089D00 02E8D0F7 4C0F02A0 AB
+0001E9  008417FB                HEX     008417FB FDFB01E8 FBFBFD87 84FA43FD
+0001F9  574F0F24                HEX     574F0F24 64EE0406 A200BD00 089D0002
+000209  E8D0F74C                HEX     E8D0F74C 0F02A0AB
 
 ; === while loop starts here (counter: Y 'iter_y') ===
-; --- End data region (253 bytes) ---
+; --- End data region (248 bytes) ---
 
-000211  98                DiskBoot_NibbleDecode    tya                  ; [SP-28]
+000211  98                            tya                  ; [SP-28]
 000212  85 3C                         sta  $3C             ; [SP-28]
 000214  4A                            lsr  a               ; [SP-28]
 000215  05 3C                         ora  $3C             ; [SP-28]
 000217  C9 FF                         cmp  #$FF            ; [SP-28]
-000219  D0 09                         bne  DiskBoot_StoreNibble        ; [SP-28]
-
-; === while loop starts here (counter: X 'i') ===
-00021B  C0 D5             DiskBoot_SkipSync    cpy  #$D5            ; [SP-28]
-00021D  F0 05                         beq  DiskBoot_StoreNibble        ; [SP-28]
+000219  D0 09                         bne  DiskBoot_StoreNibble ; [SP-28]
+00021B  C0 D5                         cpy  #$D5            ; [SP-28]
+00021D  F0 05                         beq  DiskBoot_StoreNibble ; [SP-28]
 00021F  8A                            txa                  ; [SP-28]
 000220  99 00 08                      sta  $0800,Y         ; [SP-28]
-000223  E8                            inx                  ; X=X+$01 ; [SP-28]
-000224  C8                DiskBoot_StoreNibble    iny                  ; X=X+$01 Y=Y+$01 ; [SP-28]
-000225  D0 EA                         bne  DiskBoot_NibbleDecode        ; X=X+$01 Y=Y+$01 ; [SP-28]
+000223  E8                            inx                  ; [SP-28]
+000224  C8                            iny                  ; [SP-28]
+000225  D0 EA                         bne  DiskBoot_NibbleDecode ; [SP-28]
 ; === End of while loop (counter: Y) ===
 
-000227  84 3D                         sty  $3D             ; X=X+$01 Y=Y+$01 ; [SP-28]
-000229  84 26                         sty  $26             ; X=X+$01 Y=Y+$01 ; [SP-28]
-00022B  A9 03                         lda  #$03            ; A=$0003 X=X+$01 Y=Y+$01 ; [SP-28]
-00022D  85 27                         sta  $27             ; A=$0003 X=X+$01 Y=Y+$01 ; [SP-28]
-00022F  A6 2B                         ldx  $2B             ; A=$0003 X=X+$01 Y=Y+$01 ; [SP-28]
-000231  20 5D 02                      jsr  RWTS_ReadSector        ; A=$0003 X=X+$01 Y=Y+$01 ; [SP-30]
-000234  20 D1 02                      jsr  RWTS_DecodeData        ; A=$0003 X=X+$01 Y=Y+$01 ; [SP-32]
-000237  4C 00 88                      jmp  $8800           ; A=$0003 X=X+$01 Y=Y+$01 ; [SP-32]
+000227  84 3D                         sty  $3D             ; [SP-28]
+000229  84 26                         sty  $26             ; [SP-28]
+00022B  A9 03                         lda  #$03            ; [SP-28]
+00022D  85 27                         sta  $27             ; [SP-28]
+00022F  A6 2B                         ldx  $2B             ; [SP-28]
+000231  20 5D 02                      jsr  RWTS_ReadSector ; [SP-30]
+000234  20 D1 02                      jsr  RWTS_DecodeData ; [SP-32]
+000237  4C 00 88                      jmp  $8800           ; [SP-32]
 ; LUMA: int_brk
 
 ; --- Data region ---
@@ -304,204 +752,188 @@
 ; LUMA: int_brk
 00025A  000000                  HEX     000000
 
-; === while loop starts here [nest:1] ===
+; === while loop starts here ===
 
-; FUNC $00025D: register -> A:X [L]
-; Proto: uint32_t func_00025D(uint16_t param_X);
+; FUNC $00025D (RWTS_ReadSector): register -> A:X [L]
+; Proto: uint32_t RWTS_ReadSector(uint16_t param_X);
 ; Liveness: params(X) returns(A,X,Y) [9 dead stores]
 ; --- End data region (35 bytes) ---
 
 ; ============================================================================
 ; CUSTOM RWTS - READ SECTOR ($025D)
 ; ============================================================================
-; HOW: Reads raw GCR-encoded nibbles from the disk drive's data latch
-;      at $C08C,X (where X = slot * 16). The read sequence is:
-;      1. Wait for nibble (high bit set = data ready, BPL loop)
-;      2. Search for prologue: D5 AA B5 (three-byte sync marker)
-;      3. Read 4-and-4 encoded address field (volume, track, sector)
-;      4. Verify checksum matches expected sector
-;      5. Read data field and decode with 6-and-2 encoding
-;
-; WHY D5 AA B5 instead of standard D5 AA 96:
-;      Standard Apple II disks use D5 AA 96 as the address prologue.
-;      Broderbund changed the third byte to B5 as copy protection.
-;      Programs like COPYA, Locksmith, and nibble copiers search for
-;      the standard D5 AA 96 pattern - they never find sectors on this
-;      disk. You need a "parameter" copy program that knows to look
-;      for B5 instead. This was simple but effective protection in 1981.
-;
-; WHY carry flag protocol:
-;      CLC before first sync attempt, SEC after address field mismatch.
-;      BCC loops back to try again; BCS means "found address, read data".
-;      This clever use of the carry flag avoids an explicit state variable.
+; Broderbund's custom disk read routine. Searches for sectors with
+; the non-standard prologue D5 AA B5 (instead of standard D5 AA 96).
+; This is the copy protection - standard disk utilities can't read these.
+; Reads nibbles directly via $C08C,X (disk data latch).
 ; ============================================================================
-00025D  18                RWTS_ReadSector    clc                  ; A=$0003 X=X+$01 Y=Y+$01 ; [SP-86]
+00025D  18                            clc                  ; [SP-86]
 
-; === while loop starts here [nest:2] ===
-00025E  08                RWTS_SyncLoop    php                  ; A=$0003 X=X+$01 Y=Y+$01 ; [SP-87]
-
-; === while loop starts here [nest:6] ===
-; LUMA: data_array_x
-00025F  BD 8C C0          RWTS_WaitNibble1    lda  $C08C,X         ; $C08C - Unknown I/O register <slot_io>
-000262  10 FB                         bpl  RWTS_WaitNibble1        ; A=$0003 X=X+$01 Y=Y+$01 ; [SP-87]
-; === End of while loop ===
-
-
-; === while loop starts here [nest:6] ===
-000264  49 D5             RWTS_CheckD5    eor  #$D5            ; A=A^$D5 X=X+$01 Y=Y+$01 ; [SP-87]
-000266  D0 F7                         bne  RWTS_WaitNibble1        ; A=A^$D5 X=X+$01 Y=Y+$01 ; [SP-87]
-; === End of while loop ===
-
-
-; === while loop starts here [nest:7] ===
-; LUMA: data_array_x
-000268  BD 8C C0          RWTS_WaitNibble2    lda  $C08C,X         ; $C08C - Unknown I/O register <slot_io>
-00026B  10 FB                         bpl  RWTS_WaitNibble2        ; A=A^$D5 X=X+$01 Y=Y+$01 ; [SP-87]
-; === End of while loop ===
-
-00026D  C9 AA                         cmp  #$AA            ; A=A^$D5 X=X+$01 Y=Y+$01 ; [SP-87]
-00026F  D0 F3                         bne  RWTS_CheckD5        ; A=A^$D5 X=X+$01 Y=Y+$01 ; [SP-87]
-; === End of while loop ===
-
-000271  EA                            nop                  ; A=A^$D5 X=X+$01 Y=Y+$01 ; [SP-87]
-
-; === while loop starts here [nest:6] ===
-; LUMA: data_array_x
-000272  BD 8C C0          RWTS_WaitNibble3    lda  $C08C,X         ; $C08C - Unknown I/O register <slot_io>
-000275  10 FB                         bpl  RWTS_WaitNibble3        ; A=A^$D5 X=X+$01 Y=Y+$01 ; [SP-87]
-; === End of while loop ===
-
-000277  C9 B5                         cmp  #$B5            ; A=A^$D5 X=X+$01 Y=Y+$01 ; [SP-87]
-000279  F0 09                         beq  RWTS_ReadAddr        ; A=A^$D5 X=X+$01 Y=Y+$01 ; [SP-87]
-00027B  28                            plp                  ; A=A^$D5 X=X+$01 Y=Y+$01 ; [SP-86]
-00027C  90 DF                         bcc  RWTS_ReadSector        ; A=A^$D5 X=X+$01 Y=Y+$01 ; [SP-86]
-; === End of while loop ===
-
-00027E  49 AD                         eor  #$AD            ; A=A^$AD X=X+$01 Y=Y+$01 ; [SP-86]
-000280  F0 1F                         beq  RWTS_FoundSector        ; A=A^$AD X=X+$01 Y=Y+$01 ; [SP-86]
-000282  D0 D9                         bne  RWTS_ReadSector        ; A=A^$AD X=X+$01 Y=Y+$01 ; [SP-86]
-; === End of while loop ===
-
-000284  A0 03             RWTS_ReadAddr    ldy  #$03            ; A=A^$AD X=X+$01 Y=$0003 ; [SP-86]
-000286  84 2A                         sty  $2A             ; A=A^$AD X=X+$01 Y=$0003 ; [SP-86]
-
-; === while loop starts here [nest:4] ===
-; LUMA: data_array_x
-000288  BD 8C C0          RWTS_AddrNibble1    lda  $C08C,X         ; $C08C - Unknown I/O register <slot_io>
-00028B  10 FB                         bpl  RWTS_AddrNibble1        ; A=A^$AD X=X+$01 Y=$0003 ; [SP-86]
-; === End of while loop ===
-
-00028D  2A                            rol  a               ; A=A^$AD X=X+$01 Y=$0003 ; [SP-86]
-00028E  85 3C                         sta  $3C             ; A=A^$AD X=X+$01 Y=$0003 ; [SP-86]
+; === while loop starts here [nest:1] ===
+00025E  08                            php                  ; [SP-87]
 
 ; === while loop starts here [nest:5] ===
 ; LUMA: data_array_x
-000290  BD 8C C0          RWTS_AddrNibble2    lda  $C08C,X         ; $C08C - Unknown I/O register <slot_io>
-000293  10 FB                         bpl  RWTS_AddrNibble2        ; A=A^$AD X=X+$01 Y=$0003 ; [SP-86]
+00025F  BD 8C C0                      lda  S0_$0C,X        ; $C08C - Unknown I/O register <slot_io>
+000262  10 FB                         bpl  RWTS_WaitNibble1 ; [SP-87]
 ; === End of while loop ===
 
-000295  25 3C                         and  $3C             ; A=A^$AD X=X+$01 Y=$0003 ; [SP-86]
+
+; === while loop starts here [nest:5] ===
+000264  49 D5                         eor  #$D5            ; [SP-87]
+000266  D0 F7                         bne  RWTS_WaitNibble1 ; [SP-87]
+; === End of while loop ===
+
+
+; === while loop starts here [nest:6] ===
+; LUMA: data_array_x
+000268  BD 8C C0                      lda  S0_$0C,X        ; $C08C - Unknown I/O register <slot_io>
+00026B  10 FB                         bpl  RWTS_WaitNibble2 ; [SP-87]
+; === End of while loop ===
+
+00026D  C9 AA                         cmp  #$AA            ; [SP-87]
+00026F  D0 F3                         bne  RWTS_CheckD5    ; [SP-87]
+; === End of while loop ===
+
+000271  EA                            nop                  ; [SP-87]
+
+; === while loop starts here [nest:5] ===
+; LUMA: data_array_x
+000272  BD 8C C0                      lda  S0_$0C,X        ; $C08C - Unknown I/O register <slot_io>
+000275  10 FB                         bpl  RWTS_WaitNibble3 ; [SP-87]
+; === End of while loop ===
+
+000277  C9 B5                         cmp  #$B5            ; [SP-87]
+000279  F0 09                         beq  RWTS_ReadAddr   ; [SP-87]
+00027B  28                            plp                  ; [SP-86]
+00027C  90 DF                         bcc  RWTS_ReadSector ; [SP-86]
+; === End of while loop ===
+
+00027E  49 AD                         eor  #$AD            ; [SP-86]
+000280  F0 1F                         beq  RWTS_FoundSector ; [SP-86]
+000282  D0 D9                         bne  RWTS_ReadSector ; [SP-86]
+; === End of while loop ===
+
+000284  A0 03                         ldy  #$03            ; [SP-86]
+000286  84 2A                         sty  $2A             ; [SP-86]
+
+; === while loop starts here [nest:3] ===
+; LUMA: data_array_x
+000288  BD 8C C0                      lda  S0_$0C,X        ; $C08C - Unknown I/O register <slot_io>
+00028B  10 FB                         bpl  RWTS_AddrNibble1 ; [SP-86]
+; === End of while loop ===
+
+00028D  2A                            rol  a               ; [SP-86]
+00028E  85 3C                         sta  $3C             ; [SP-86]
+
+; === while loop starts here [nest:4] ===
+; LUMA: data_array_x
+000290  BD 8C C0                      lda  S0_$0C,X        ; $C08C - Unknown I/O register <slot_io>
+000293  10 FB                         bpl  RWTS_AddrNibble2 ; [SP-86]
+; === End of while loop ===
+
+000295  25 3C                         and  $3C             ; [SP-86]
 ; LUMA: loop_dey_bne
-000297  88                            dey                  ; A=A^$AD X=X+$01 Y=$0002 ; [SP-86]
-000298  D0 EE                         bne  RWTS_AddrNibble1        ; A=A^$AD X=X+$01 Y=$0002 ; [SP-86]
+000297  88                            dey                  ; [SP-86]
+000298  D0 EE                         bne  RWTS_AddrNibble1 ; [SP-86]
 ; === End of loop (counter: Y) ===
 
-00029A  28                            plp                  ; A=A^$AD X=X+$01 Y=$0002 ; [SP-85]
-00029B  C5 3D                         cmp  $3D             ; A=A^$AD X=X+$01 Y=$0002 ; [SP-85]
-00029D  D0 BE                         bne  RWTS_ReadSector        ; A=A^$AD X=X+$01 Y=$0002 ; [SP-85]
+00029A  28                            plp                  ; [SP-85]
+00029B  C5 3D                         cmp  $3D             ; [SP-85]
+00029D  D0 BE                         bne  RWTS_ReadSector ; [SP-85]
 ; === End of while loop ===
 
-00029F  B0 BD                         bcs  RWTS_SyncLoop        ; A=A^$AD X=X+$01 Y=$0002 ; [SP-85]
+00029F  B0 BD                         bcs  RWTS_SyncLoop   ; [SP-85]
 ; === End of while loop ===
 
-0002A1  A0 9A             RWTS_FoundSector    ldy  #$9A            ; A=A^$AD X=X+$01 Y=$009A ; [SP-85]
+0002A1  A0 9A                         ldy  #$9A            ; [SP-85]
+
+; === while loop starts here [nest:1] ===
+0002A3  84 3C                         sty  $3C             ; [SP-85]
 
 ; === while loop starts here [nest:2] ===
-0002A3  84 3C             RWTS_ReadDataLoop    sty  $3C             ; A=A^$AD X=X+$01 Y=$009A ; [SP-85]
-
-; === while loop starts here [nest:3] ===
-0002A5  BC 8C C0          L_0002A5    ldy  $C08C,X         ; $C08C - Unknown I/O register <slot_io>
-0002A8  10 FB                         bpl  L_0002A5        ; A=A^$AD X=X+$01 Y=$009A ; [SP-85]
+0002A5  BC 8C C0          loc_0002A5  ldy  S0_$0C,X        ; $C08C - Unknown I/O register <slot_io>
+0002A8  10 FB                         bpl  loc_0002A5      ; [SP-85]
 ; === End of while loop ===
 
-0002AA  59 00 08                      eor  $0800,Y         ; -> $089A ; A=A^$AD X=X+$01 Y=$009A ; [SP-85]
-0002AD  A4 3C                         ldy  $3C             ; A=A^$AD X=X+$01 Y=$009A ; [SP-85]
-0002AF  88                            dey                  ; A=A^$AD X=X+$01 Y=$0099 ; [SP-85]
-0002B0  99 00 08                      sta  $0800,Y         ; -> $0899 ; A=A^$AD X=X+$01 Y=$0099 ; [SP-85]
-0002B3  D0 EE                         bne  RWTS_ReadDataLoop        ; A=A^$AD X=X+$01 Y=$0099 ; [SP-85]
+0002AA  59 00 08                      eor  $0800,Y         ; -> $089A ; [SP-85]
+0002AD  A4 3C                         ldy  $3C             ; [SP-85]
+0002AF  88                            dey                  ; [SP-85]
+0002B0  99 00 08                      sta  $0800,Y         ; -> $0899 ; [SP-85]
+0002B3  D0 EE                         bne  RWTS_ReadDataLoop ; [SP-85]
 ; === End of while loop ===
 
 
-; === while loop starts here (counter: Y 'iter_y') [nest:2] ===
-0002B5  84 3C             L_0002B5    sty  $3C             ; A=A^$AD X=X+$01 Y=$0099 ; [SP-85]
+; === while loop starts here (counter: Y 'iter_y') [nest:1] ===
+0002B5  84 3C             loc_0002B5  sty  $3C             ; [SP-85]
 
-; === while loop starts here [nest:3] ===
-0002B7  BC 8C C0          L_0002B7    ldy  $C08C,X         ; $C08C - Unknown I/O register <slot_io>
-0002BA  10 FB                         bpl  L_0002B7        ; A=A^$AD X=X+$01 Y=$0099 ; [SP-85]
+; === while loop starts here [nest:2] ===
+0002B7  BC 8C C0          loc_0002B7  ldy  S0_$0C,X        ; $C08C - Unknown I/O register <slot_io>
+0002BA  10 FB                         bpl  loc_0002B7      ; [SP-85]
 ; === End of while loop ===
 
-0002BC  59 00 08                      eor  $0800,Y         ; -> $0899 ; A=A^$AD X=X+$01 Y=$0099 ; [SP-85]
-0002BF  A4 3C                         ldy  $3C             ; A=A^$AD X=X+$01 Y=$0099 ; [OPT] REDUNDANT_LOAD: Redundant LDY: same value loaded at $0002AD ; [SP-85]
-0002C1  91 26                         sta  ($26),Y         ; A=A^$AD X=X+$01 Y=$0099 ; [SP-85]
-0002C3  C8                            iny                  ; A=A^$AD X=X+$01 Y=$009A ; [SP-85]
-0002C4  D0 EF                         bne  L_0002B5        ; A=A^$AD X=X+$01 Y=$009A ; [SP-85]
+0002BC  59 00 08                      eor  $0800,Y         ; -> $0899 ; [SP-85]
+0002BF  A4 3C                         ldy  $3C             ; [OPT] REDUNDANT_LOAD: Redundant LDY: same value loaded at $0002AD ; [SP-85]
+0002C1  91 26                         sta  ($26),Y         ; [SP-85]
+0002C3  C8                            iny                  ; [SP-85]
+0002C4  D0 EF                         bne  loc_0002B5      ; [SP-85]
 ; === End of while loop (counter: Y) ===
 
 
-; === while loop starts here [nest:2] ===
-0002C6  BC 8C C0          L_0002C6    ldy  $C08C,X         ; $C08C - Unknown I/O register <slot_io>
-0002C9  10 FB                         bpl  L_0002C6        ; A=A^$AD X=X+$01 Y=$009A ; [SP-85]
+; === while loop starts here [nest:1] ===
+0002C6  BC 8C C0                      ldy  S0_$0C,X        ; $C08C - Unknown I/O register <slot_io>
+0002C9  10 FB                         bpl  $02C6           ; [SP-85]
 ; === End of while loop ===
 
-0002CB  59 00 08                      eor  $0800,Y         ; -> $089A ; A=A^$AD X=X+$01 Y=$009A ; [SP-85]
-0002CE  D0 8D                         bne  RWTS_ReadSector        ; A=A^$AD X=X+$01 Y=$009A ; [SP-85]
+0002CB  59 00 08                      eor  $0800,Y         ; -> $089A ; [SP-85]
+0002CE  D0 8D                         bne  RWTS_ReadSector ; [SP-85]
 ; === End of while loop (counter: Y) ===
 
-0002D0  60                            rts                  ; A=A^$AD X=X+$01 Y=$009A ; [SP-83]
+0002D0  60                            rts                  ; [SP-83]
 
-; FUNC $0002D1: register -> A:X [I]
-; Proto: uint32_t func_0002D1(void);
+; FUNC $0002D1 (RWTS_DecodeData): register -> A:X [I]
+; Proto: uint32_t RWTS_DecodeData(void);
 ; Liveness: returns(A,X,Y) [1 dead stores]
-0002D1  A8                RWTS_DecodeData    tay                  ; A=A^$AD X=X+$01 Y=A ; [SP-83]
+0002D1  A8                            tay                  ; [SP-83]
 
-; === while loop starts here (counter: X 'i', range: 0..51, iters: 51) [nest:1] ===
-0002D2  A2 00             L_0002D2    ldx  #$00            ; A=A^$AD X=$0000 Y=A ; [SP-83]
+; === while loop starts here (counter: X 'i', range: 0..51, iters: 51) ===
+0002D2  A2 00                         ldx  #$00            ; [SP-83]
 
-; === while loop starts here (counter: X 'iter_x', range: 0..51, iters: 51) [nest:2] ===
-0002D4  B9 00 08          L_0002D4    lda  $0800,Y         ; A=A^$AD X=$0000 Y=A ; [SP-83]
-0002D7  4A                            lsr  a               ; A=A^$AD X=$0000 Y=A ; [SP-83]
-0002D8  3E CC 03                      rol  $03CC,X         ; A=A^$AD X=$0000 Y=A ; [SP-83]
-0002DB  4A                            lsr  a               ; A=A^$AD X=$0000 Y=A ; [SP-83]
-0002DC  3E 99 03                      rol  $0399,X         ; A=A^$AD X=$0000 Y=A ; [SP-83]
-0002DF  85 3C                         sta  $3C             ; A=A^$AD X=$0000 Y=A ; [SP-83]
+; === while loop starts here (counter: X 'iter_x', range: 0..51, iters: 51) [nest:1] ===
+0002D4  B9 00 08          loc_0002D4  lda  $0800,Y         ; [SP-83]
+0002D7  4A                            lsr  a               ; [SP-83]
+0002D8  3E CC 03                      rol  $03CC,X         ; [SP-83]
+0002DB  4A                            lsr  a               ; [SP-83]
+0002DC  3E 99 03                      rol  $0399,X         ; [SP-83]
+0002DF  85 3C                         sta  $3C             ; [SP-83]
 ; LUMA: data_ptr_offset
-0002E1  B1 26                         lda  ($26),Y         ; A=A^$AD X=$0000 Y=A ; [SP-83]
-0002E3  0A                            asl  a               ; A=A^$AD X=$0000 Y=A ; [OPT] STRENGTH_RED: Multiple ASL A: consider using lookup table for multiply ; [SP-83]
-0002E4  0A                            asl  a               ; A=A^$AD X=$0000 Y=A ; [OPT] STRENGTH_RED: Multiple ASL A: consider using lookup table for multiply ; [SP-83]
-0002E5  0A                            asl  a               ; A=A^$AD X=$0000 Y=A ; [SP-83]
-0002E6  05 3C                         ora  $3C             ; A=A^$AD X=$0000 Y=A ; [SP-83]
-0002E8  91 26                         sta  ($26),Y         ; A=A^$AD X=$0000 Y=A ; [SP-83]
-0002EA  C8                            iny                  ; A=A^$AD X=$0000 Y=Y+$01 ; [SP-83]
-0002EB  E8                            inx                  ; A=A^$AD X=$0001 Y=Y+$01 ; [SP-83]
-0002EC  E0 33                         cpx  #$33            ; A=A^$AD X=$0001 Y=Y+$01 ; [SP-83]
-0002EE  D0 E4                         bne  L_0002D4        ; A=A^$AD X=$0001 Y=Y+$01 ; [SP-83]
+0002E1  B1 26                         lda  ($26),Y         ; [SP-83]
+0002E3  0A                            asl  a               ; [OPT] STRENGTH_RED: Multiple ASL A: consider using lookup table for multiply ; [SP-83]
+0002E4  0A                            asl  a               ; [OPT] STRENGTH_RED: Multiple ASL A: consider using lookup table for multiply ; [SP-83]
+0002E5  0A                            asl  a               ; [SP-83]
+0002E6  05 3C                         ora  $3C             ; [SP-83]
+0002E8  91 26                         sta  ($26),Y         ; [SP-83]
+0002EA  C8                            iny                  ; [SP-83]
+0002EB  E8                            inx                  ; [SP-83]
+0002EC  E0 33                         cpx  #$33            ; [SP-83]
+0002EE  D0 E4                         bne  loc_0002D4      ; [SP-83]
 ; === End of while loop (counter: X) ===
 
-0002F0  C6 2A                         dec  $2A             ; A=A^$AD X=$0001 Y=Y+$01 ; [SP-83]
-0002F2  D0 DE                         bne  L_0002D2        ; A=A^$AD X=$0001 Y=Y+$01 ; [SP-83]
+0002F0  C6 2A                         dec  $2A             ; [SP-83]
+0002F2  D0 DE                         bne  $02D2           ; [SP-83]
 ; === End of while loop (counter: X) ===
 
-0002F4  CC 00 03                      cpy  $0300           ; A=A^$AD X=$0001 Y=Y+$01 ; [SP-83]
-0002F7  D0 03                         bne  L_0002FC        ; A=A^$AD X=$0001 Y=Y+$01 ; [SP-83]
+0002F4  CC 00 03                      cpy  $0300           ; [SP-83]
+0002F7  D0 03                         bne  $02FC           ; [SP-83]
 ; LUMA: epilogue_rts
-0002F9  60                            rts                  ; A=A^$AD X=$0001 Y=Y+$01 ; [SP-81]
+0002F9  60                            rts                  ; [SP-81]
 ; LUMA: int_brk
 
 ; --- Data region ---
 0002FA  0000                    HEX     0000
 ; --- End data region (2 bytes) ---
 
-0002FC  4C 2D FF          L_0002FC    jmp  $FF2D           ; A=A^$AD X=$0001 Y=Y+$01 ; [SP-84]
+0002FC  4C 2D FF                      jmp  PRERR           ; [SP-84]
 ; LUMA: int_brk
 
 ; --- Data region ---
@@ -539,50 +971,50 @@
 00040F  5002E601                HEX     5002E601 850060
 ; --- End data region (279 bytes) ---
 
-000416  A8                L_000416    tay                  ; A=A^$AD X=$0001 Y=A ; [SP-466]
-000417  B9 7C 5D                      lda  $5D7C,Y         ; A=A^$AD X=$0001 Y=A ; [SP-466]
-00041A  8D 4B 04                      sta  $044B           ; A=A^$AD X=$0001 Y=A ; [SP-466]
-00041D  B9 1D 5E                      lda  $5E1D,Y         ; A=A^$AD X=$0001 Y=A ; [SP-466]
-000420  8D 4C 04                      sta  $044C           ; A=A^$AD X=$0001 Y=A ; [SP-466]
-000423  A5 02                         lda  $02             ; A=[$0002] X=$0001 Y=A ; [SP-466]
-000425  85 03                         sta  $03             ; A=[$0002] X=$0001 Y=A ; [SP-466]
-000427  18                            clc                  ; A=[$0002] X=$0001 Y=A ; [SP-466]
-000428  79 BE 5E                      adc  $5EBE,Y         ; A=[$0002] X=$0001 Y=A ; [SP-466]
-00042B  85 02                         sta  $02             ; A=[$0002] X=$0001 Y=A ; [SP-466]
-00042D  A5 04                         lda  $04             ; A=[$0004] X=$0001 Y=A ; [SP-466]
-00042F  AA                            tax                  ; A=[$0004] X=[$0004] Y=A ; [SP-466]
-000430  18                            clc                  ; A=[$0004] X=[$0004] Y=A ; [SP-466]
-000431  79 5F 5F                      adc  $5F5F,Y         ; A=[$0004] X=[$0004] Y=A ; [SP-466]
-000434  85 05                         sta  $05             ; A=[$0004] X=[$0004] Y=A ; [SP-466]
+000416  A8                            tay                  ; [SP-466]
+000417  B9 7C 5D                      lda  $5D7C,Y         ; [SP-466]
+00041A  8D 4B 04                      sta  $044B           ; [SP-466]
+00041D  B9 1D 5E                      lda  $5E1D,Y         ; [SP-466]
+000420  8D 4C 04                      sta  $044C           ; [SP-466]
+000423  A5 02                         lda  $02             ; [SP-466]
+000425  85 03                         sta  $03             ; [SP-466]
+000427  18                            clc                  ; [SP-466]
+000428  79 BE 5E                      adc  $5EBE,Y         ; [SP-466]
+00042B  85 02                         sta  $02             ; [SP-466]
+00042D  A5 04                         lda  $04             ; [SP-466]
+00042F  AA                            tax                  ; [SP-466]
+000430  18                            clc                  ; [SP-466]
+000431  79 5F 5F                      adc  $5F5F,Y         ; [SP-466]
+000434  85 05                         sta  $05             ; [SP-466]
 
-; === while loop starts here (counter: X 'iter_x') [nest:1] ===
-000436  E0 C0             L_000436    cpx  #$C0            ; A=[$0004] X=[$0004] Y=A ; [SP-466]
-000438  B0 27                         bcs  L_000461        ; A=[$0004] X=[$0004] Y=A ; [SP-466]
-00043A  BD 6C 41                      lda  $416C,X         ; A=[$0004] X=[$0004] Y=A ; [SP-466]
-00043D  85 06                         sta  $06             ; A=[$0004] X=[$0004] Y=A ; [SP-466]
-00043F  BD 2C 42                      lda  $422C,X         ; A=[$0004] X=[$0004] Y=A ; [SP-466]
-000442  85 07                         sta  $07             ; A=[$0004] X=[$0004] Y=A ; [SP-466]
-000444  A4 03                         ldy  $03             ; A=[$0004] X=[$0004] Y=A ; [SP-466]
+; === while loop starts here (counter: X 'iter_x') ===
+000436  E0 C0                         cpx  #$C0            ; [SP-466]
+000438  B0 27                         bcs  $0461           ; [SP-466]
+00043A  BD 6C 41                      lda  $416C,X         ; [SP-466]
+00043D  85 06                         sta  $06             ; [SP-466]
+00043F  BD 2C 42                      lda  $422C,X         ; [SP-466]
+000442  85 07                         sta  $07             ; [SP-466]
+000444  A4 03                         ldy  $03             ; [SP-466]
 
-; === while loop starts here (counter: Y 'iter_y') [nest:2] ===
-000446  C0 28             L_000446    cpy  #$28            ; A=[$0004] X=[$0004] Y=A ; [SP-466]
-000448  B0 05                         bcs  L_00044F        ; A=[$0004] X=[$0004] Y=A ; [SP-466]
-00044A  AD 1C 60                      lda  $601C           ; A=[$601C] X=[$0004] Y=A ; [SP-466]
-00044D  91 06                         sta  ($06),Y         ; A=[$601C] X=[$0004] Y=A ; [SP-466]
-00044F  EE 4B 04          L_00044F    inc  $044B           ; A=[$601C] X=[$0004] Y=A ; [SP-466]
-000452  D0 03                         bne  L_000457        ; A=[$601C] X=[$0004] Y=A ; [SP-466]
-000454  EE 4C 04                      inc  $044C           ; A=[$601C] X=[$0004] Y=A ; [SP-466]
-000457  C8                L_000457    iny                  ; A=[$601C] X=[$0004] Y=Y+$01 ; [SP-466]
-000458  C4 02                         cpy  $02             ; A=[$601C] X=[$0004] Y=Y+$01 ; [SP-466]
-00045A  90 EA                         bcc  L_000446        ; A=[$601C] X=[$0004] Y=Y+$01 ; [SP-466]
+; === while loop starts here (counter: Y 'iter_y') [nest:1] ===
+000446  C0 28                         cpy  #$28            ; [SP-466]
+000448  B0 05                         bcs  $044F           ; [SP-466]
+00044A  AD 1C 60                      lda  $601C           ; [SP-466]
+00044D  91 06                         sta  ($06),Y         ; [SP-466]
+00044F  EE 4B 04                      inc  $044B           ; [SP-466]
+000452  D0 03                         bne  $0457           ; [SP-466]
+000454  EE 4C 04                      inc  $044C           ; [SP-466]
+000457  C8                            iny                  ; [SP-466]
+000458  C4 02                         cpy  $02             ; [SP-466]
+00045A  90 EA                         bcc  $0446           ; [SP-466]
 ; === End of while loop (counter: Y) ===
 
-00045C  E8                            inx                  ; A=[$601C] X=X+$01 Y=Y+$01 ; [SP-466]
-00045D  E4 05                         cpx  $05             ; A=[$601C] X=X+$01 Y=Y+$01 ; [SP-466]
-00045F  90 D5                         bcc  L_000436        ; A=[$601C] X=X+$01 Y=Y+$01 ; [SP-466]
+00045C  E8                            inx                  ; [SP-466]
+00045D  E4 05                         cpx  $05             ; [SP-466]
+00045F  90 D5                         bcc  $0436           ; [SP-466]
 ; === End of while loop (counter: X) ===
 
-000461  60                L_000461    rts                  ; A=[$601C] X=X+$01 Y=Y+$01 ; [SP-464]
+000461  60                            rts                  ; [SP-464]
 
 ; --- Data region ---
 000462  A8B97C5D                HEX     A8B97C5D 8DA704B9 1D5E8DA8 04A50285
@@ -593,187 +1025,115 @@
 0004B2  EEA804C8                HEX     EEA804C8 C40290E0 E8E40590 C360
 ; --- End data region (94 bytes) ---
 
-0004C0  A8                L_0004C0    tay                  ; A=[$601C] X=X+$01 Y=[$601C] ; [SP-462]
-0004C1  B9 7C 5D                      lda  $5D7C,Y         ; A=[$601C] X=X+$01 Y=[$601C] ; [SP-462]
-0004C4  8D 05 41                      sta  $4105           ; A=[$601C] X=X+$01 Y=[$601C] ; [SP-462]
-0004C7  B9 1D 5E                      lda  $5E1D,Y         ; A=[$601C] X=X+$01 Y=[$601C] ; [SP-462]
-0004CA  8D 06 41                      sta  $4106           ; A=[$601C] X=X+$01 Y=[$601C] ; [SP-462]
-0004CD  A5 02                         lda  $02             ; A=[$0002] X=X+$01 Y=[$601C] ; [SP-462]
-0004CF  85 03                         sta  $03             ; A=[$0002] X=X+$01 Y=[$601C] ; [SP-462]
-0004D1  18                            clc                  ; A=[$0002] X=X+$01 Y=[$601C] ; [SP-462]
-0004D2  79 BE 5E                      adc  $5EBE,Y         ; A=[$0002] X=X+$01 Y=[$601C] ; [SP-462]
-0004D5  85 02                         sta  $02             ; A=[$0002] X=X+$01 Y=[$601C] ; [SP-462]
-0004D7  A5 04                         lda  $04             ; A=[$0004] X=X+$01 Y=[$601C] ; [SP-462]
-0004D9  AA                            tax                  ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004DA  18                            clc                  ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004DB  79 5F 5F                      adc  $5F5F,Y         ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004DE  85 05                         sta  $05             ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004E0  E0 C0                         cpx  #$C0            ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004E2  B0 3B                         bcs  L_00051F        ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004E4  E4 08                         cpx  $08             ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004E6  90 25                         bcc  L_00050D        ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004E8  E4 09                         cpx  $09             ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004EA  B0 21                         bcs  L_00050D        ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004EC  BD 6C 41                      lda  $416C,X         ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004EF  85 06                         sta  $06             ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004F1  BD 2C 42                      lda  $422C,X         ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004F4  85 07                         sta  $07             ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004F6  A4 03                         ldy  $03             ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004F8  C0 28                         cpy  #$28            ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004FA  B0 11                         bcs  L_00050D        ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004FC  C4 0A                         cpy  $0A             ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-0004FE  90 0D                         bcc  L_00050D        ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-000500  61 0B                         adc  ($0B,X)         ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-000502  9A                            txs                  ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-000503  AC AD 26                      ldy  $26AD           ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-462]
-000506  00 0C                         brk  #$0C            ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-465]
+0004C0  A8                            tay                  ; [SP-462]
+0004C1  B9 7C 5D                      lda  $5D7C,Y         ; [SP-462]
+0004C4  8D 05 41                      sta  $4105           ; [SP-462]
+0004C7  B9 1D 5E                      lda  $5E1D,Y         ; [SP-462]
+0004CA  8D 06 41                      sta  $4106           ; [SP-462]
+0004CD  A5 02                         lda  $02             ; [SP-462]
+0004CF  85 03                         sta  $03             ; [SP-462]
+0004D1  18                            clc                  ; [SP-462]
+0004D2  79 BE 5E                      adc  $5EBE,Y         ; [SP-462]
+0004D5  85 02                         sta  $02             ; [SP-462]
+0004D7  A5 04                         lda  $04             ; [SP-462]
+0004D9  AA                            tax                  ; [SP-462]
+0004DA  18                            clc                  ; [SP-462]
+0004DB  79 5F 5F                      adc  $5F5F,Y         ; [SP-462]
+0004DE  85 05                         sta  $05             ; [SP-462]
+0004E0  E0 C0                         cpx  #$C0            ; [SP-462]
+0004E2  B0 3B                         bcs  $051F           ; [SP-462]
+0004E4  E4 08                         cpx  $08             ; [SP-462]
+0004E6  90 25                         bcc  $050D           ; [SP-462]
+0004E8  E4 09                         cpx  $09             ; [SP-462]
+0004EA  B0 21                         bcs  $050D           ; [SP-462]
+0004EC  BD 6C 41                      lda  $416C,X         ; [SP-462]
+0004EF  85 06                         sta  $06             ; [SP-462]
+0004F1  BD 2C 42                      lda  $422C,X         ; [SP-462]
+0004F4  85 07                         sta  $07             ; [SP-462]
+0004F6  A4 03                         ldy  $03             ; [SP-462]
+0004F8  C0 28                         cpy  #$28            ; [SP-462]
+0004FA  B0 11                         bcs  $050D           ; [SP-462]
+0004FC  C4 0A                         cpy  $0A             ; [SP-462]
+0004FE  90 0D                         bcc  $050D           ; [SP-462]
+000500  61 0B                         adc  ($0B,X)         ; [SP-462]
+000502  9A                            txs                  ; [SP-462]
+000503  AC AD 26                      ldy  $26AD           ; [SP-462]
+000506  00 0C                         brk  #$0C            ; [SP-465]
 
 ; --- Data region ---
-000508  FF570677                HEX     FF570677 07
-; --- End data region (5 bytes) ---
+000508  FF570677                HEX     FF570677 078B0411 D2E5EF83 41A86CBB
+000518  EC8365AF                HEX     EC8365AF 0129DC
+; --- End data region (23 bytes) ---
 
-00050D  8B                L_00050D    phb                  ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-465]
-00050E  04 11                         tsb  $11             ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-465]
-000510  D2 E5                         cmp  ($E5)           ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-465]
-000512  EF 83 41 A8                   sbc  >$A84183        ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-465]
-000516  6C BB EC                      jmp  ($ECBB)         ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-465]
-
-; --- Data region ---
-000519  8365AF01                HEX     8365AF01 29DC
-; --- End data region (6 bytes) ---
-
-00051F  3E 24 4C          L_00051F    rol  $4C24,X         ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-465]
-000522  A6 85                         ldx  $85             ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-465]
-000524  AA                            tax                  ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-465]
-000525  0B                            phd                  ; A=[$0004] X=[$0004] Y=[$601C] ; [SP-466]
-000526  29 59                         and  #$59            ; A=A&$59 X=[$0004] Y=[$601C] ; [SP-466]
-000528  E0 BE                         cpx  #$BE            ; A=A&$59 X=[$0004] Y=[$601C] ; [SP-466]
-00052A  1E 4D D2                      asl  $D24D,X         ; A=A&$59 X=[$0004] Y=[$601C] ; [SP-466]
-
-; === while loop starts here (counter: X 'iter_x') [nest:1] ===
-00052D  5F EA 80 59       L_00052D    eor  >$5980EA,X      ; A=A&$59 X=[$0004] Y=[$601C] ; [SP-466]
-000531  B3 8F                         lda  ($8F,S),Y       ; A=A&$59 X=[$0004] Y=[$601C] ; [SP-466]
-000533  AB                            plb                  ; A=A&$59 X=[$0004] Y=[$601C] ; [SP-465]
-000534  28                            plp                  ; A=A&$59 X=[$0004] Y=[$601C] ; [SP-464]
-000535  55 20                         eor  $20,X           ; A=A&$59 X=[$0004] Y=[$601C] ; [SP-464]
-000537  6D E7 E7                      adc  $E7E7           ; A=A&$59 X=[$0004] Y=[$601C] ; [SP-464]
-00053A  10 3E                         bpl  L_00057A        ; A=A&$59 X=[$0004] Y=[$601C] ; [SP-464]
-00053C  81 E5                         sta  ($E5,X)         ; A=A&$59 X=[$0004] Y=[$601C] ; [SP-464]
-00053E  A0 B5                         ldy  #$B5            ; A=A&$59 X=[$0004] Y=$00B5 ; [SP-464]
-000540  91 2E                         sta  ($2E),Y         ; A=A&$59 X=[$0004] Y=$00B5 ; [SP-464]
-000542  C4 82                         cpy  $82             ; A=A&$59 X=[$0004] Y=$00B5 ; [SP-464]
-000544  A2 BE                         ldx  #$BE            ; A=A&$59 X=$00BE Y=$00B5 ; [SP-464]
-000546  EC 6A 35                      cpx  $356A           ; A=A&$59 X=$00BE Y=$00B5 ; [SP-464]
-000549  02 09                         cop  #$09            ; A=A&$59 X=$00BE Y=$00B5 ; [SP-467]
+00051F  3E 24 4C                      rol  $4C24,X         ; [SP-465]
+000522  A6 85                         ldx  $85             ; [SP-465]
+000524  AA                            tax                  ; [SP-465]
 
 ; --- Data region ---
-00054B  0AA99197                HEX     0AA99197 E883C0DB 9317A4E0 C154E4F0
-00055B  43E1610F                HEX     43E1610F 39D4E5A0 1054D886 0EC43C14
-00056B  3E8DA804                HEX     3E8DA804 A5028503 18F93EDE 058225
-; --- End data region (47 bytes) ---
+000525  0B2959E0                HEX     0B2959E0 BE1E4DD2 5FEA8059 B38FAB28
+000535  55206DE7                HEX     55206DE7 E7103E81 E5A0B591 2EC482A2
+000545  BEEC6A35                HEX     BEEC6A35 02090AA9 9197E883 C0DB9317
+000555  A4E0C154                HEX     A4E0C154 E4F043E1 610F39D4 E5A01054
+000565  D8860EC4                HEX     D8860EC4 3C143E8D A804A502 850318F9
+000575  3EDE0582                HEX     3EDE0582 25842A18 795F5F85 05E0C030
+000585  B9648810                HEX     B9648810 A36489B0 1FBD6C41 8506BDAC
+000595  C2058724                HEX     C2058724 8340A8B0 0FC40A90 0BC40B30
+0005A5  872D8080                HEX     872D8080 9186112E C68F2CF8 2BC680AC
+0005B5  60                      HEX     60
+; --- End data region (145 bytes) ---
 
-00057A  84 2A             L_00057A    sty  $2A             ; A=A&$59 X=$00BE Y=$00B5 ; [SP-467]
-00057C  18                            clc                  ; A=A&$59 X=$00BE Y=$00B5 ; [SP-467]
-00057D  79 5F 5F                      adc  $5F5F,Y         ; -> $6014 ; A=A&$59 X=$00BE Y=$00B5 ; [SP-467]
-000580  85 05                         sta  $05             ; A=A&$59 X=$00BE Y=$00B5 ; [SP-467]
-000582  E0 C0                         cpx  #$C0            ; A=A&$59 X=$00BE Y=$00B5 ; [SP-467]
-000584  30 B9                         bmi  $053F           ; A=A&$59 X=$00BE Y=$00B5 ; [SP-467]
-; === End of while loop (counter: X) ===
-
-000586  64 88                         stz  $88             ; A=A&$59 X=$00BE Y=$00B5 ; [SP-467]
-000588  10 A3                         bpl  L_00052D        ; A=A&$59 X=$00BE Y=$00B5 ; [SP-467]
-; === End of while loop (counter: X) ===
-
-00058A  64 89                         stz  $89             ; A=A&$59 X=$00BE Y=$00B5 ; [SP-467]
-00058C  B0 1F                         bcs  L_0005AD        ; A=A&$59 X=$00BE Y=$00B5 ; [SP-467]
-00058E  BD 6C 41                      lda  $416C,X         ; -> $422A ; A=A&$59 X=$00BE Y=$00B5 ; [SP-467]
-000591  85 06                         sta  $06             ; A=A&$59 X=$00BE Y=$00B5 ; [SP-467]
-000593  BD AC C2                      lda  $C2AC,X         ; S2_$AC - Slot 2 ROM offset $AC {Slot}
-000596  05 87                         ora  $87             ; A=A&$59 X=$00BE Y=$00B5 ; [SP-467]
-000598  24 83                         bit  $83             ; A=A&$59 X=$00BE Y=$00B5 ; [SP-467]
-; Interrupt return (RTI)
-00059A  40                            rti                  ; A=A&$59 X=$00BE Y=$00B5 ; [SP-464]
+0005B6  6C AA 38                      jmp  ($38AA)         ; [SP-464]
 
 ; --- Data region ---
-00059B  A8B00FC4                HEX     A8B00FC4 0A900BC4 0B30872D 80809186
-0005AB  112E                    HEX     112E
-; --- End data region (18 bytes) ---
+0005B9  48404C2D                HEX     48404C2D B8EB4880 91547525 ADE911B5
+0005C9  F625AE69                HEX     F625AE69 8D2AAD2B 305196F6 2DAA0DAC
+0005D9  02B0D177                HEX     02B0D177 77AD2DC8 E898134C A0388D4C
+0005E9  A11889ED                HEX     A11889ED 3C11D556 ED7C1255 D774D310
+0005F9  F860                    HEX     F860
+; --- End data region (66 bytes) ---
 
-0005AD  C6 8F             L_0005AD    dec  $8F             ; A=A&$59 X=$00BE Y=$00B5 ; [SP-464]
-0005AF  2C F8 2B                      bit  $2BF8           ; A=A&$59 X=$00BE Y=$00B5 ; [SP-464]
-0005B2  C6 80                         dec  $80             ; A=A&$59 X=$00BE Y=$00B5 ; [SP-464]
-0005B4  AC 60 6C                      ldy  $6C60           ; A=A&$59 X=$00BE Y=$00B5 ; [SP-464]
-0005B7  AA                            tax                  ; A=A&$59 X=A Y=$00B5 ; [SP-464]
-0005B8  38                            sec                  ; A=A&$59 X=A Y=$00B5 ; [SP-464]
-0005B9  48                            pha                  ; A=A&$59 X=A Y=$00B5 ; [SP-465]
-; Interrupt return (RTI)
-0005BA  40                            rti                  ; A=A&$59 X=A Y=$00B5 ; [SP-462]
+0005FB  C1 94             loc_0005FB  cmp  ($94,X)         ; [SP-461]
 
 ; --- Data region ---
-0005BB  4C2DB8EB                HEX     4C2DB8EB 48809154 7525ADE9 11B5F625
-0005CB  AE698D2A                HEX     AE698D2A AD2B3051 96F62DAA 0DAC02B0
-0005DB  D17777AD                HEX     D17777AD 2DC8E898 134CA038 8D4CA118
-0005EB  89ED3C11                HEX     89ED3C11 D556ED7C 1255D774 D310F860
-; --- End data region (64 bytes) ---
+0005FD  5AC05DA9                HEX     5AC05DA9 D22CA9D0 2CA9CD2C A9C38502
+00060D  A200BD00                HEX     A200BD00 069D0002 E8D0F74C 1B02AD51
+00061D  C0AD54C0                HEX     C0AD54C0 A000A904 84008501 A902A01B
+00062D  20D002A2                HEX     20D002A2 BCA000A9 A09100C8 D0FBE601
+00063D  CAD0F6A5                HEX     CAD0F6A5 028D0004 8D27048D D0078DF7
+00064D  07A00084                HEX     07A00084 00B9C002 F0178501 B9C10285
+; String: "HH"
+00065D  03C8C8AE                HEX     03C8C8AE 30C0A603 CAD0FDC6 01D0F4F0
+00066D  E44C00C6                HEX     E44C00C6 4A4A4A09 C0A00020 D002A200
+00067D  8A95009D                HEX     8A95009D 0001E8D0 F8A209BD F0029D0F
+00068D  04CA10F7                HEX     04CA10F7 99000299 A002C8C0 92D0F56C
+00069D  F2030084                HEX     F2030084 01A401E6 01B90007 F0112058
+0006AD  07A401E6                HEX     07A401E6 01B90007 2000074C A20600BD
+0006BD  88C060                  HEX     88C060
+; --- End data region (195 bytes) ---
 
-0005FB  C1 94             L_0005FB    cmp  ($94,X)         ; A=A&$59 X=A Y=$00B5 ; [SP-461]
-0005FD  5A                            phy                  ; A=A&$59 X=A Y=$00B5 ; [SP-462]
-0005FE  C0 5D                         cpy  #$5D            ; A=A&$59 X=A Y=$00B5 ; [SP-462]
-000600  A9 D2                         lda  #$D2            ; A=$00D2 X=A Y=$00B5 ; [SP-462]
-000602  2C A9 D0                      bit  $D0A9           ; A=$00D2 X=A Y=$00B5 ; [SP-462]
-000605  2C A9 CD                      bit  $CDA9           ; SLOTEXP_$5A9 - Slot expansion ROM offset $5A9 {Slot}
-000608  2C A9 C3                      bit  $C3A9           ; S3_$A9 - Slot 3 ROM offset $A9 {Slot}
-00060B  85 02                         sta  $02             ; A=$00D2 X=A Y=$00B5 ; [SP-462]
-00060D  A2 00                         ldx  #$00            ; A=$00D2 X=$0000 Y=$00B5 ; [SP-462]
-
-; === while loop starts here (counter: X 'iter_x') [nest:1] ===
-00060F  BD 00 06          L_00060F    lda  $0600,X         ; A=$00D2 X=$0000 Y=$00B5 ; [SP-462]
-000612  9D 00 02                      sta  $0200,X         ; A=$00D2 X=$0000 Y=$00B5 ; [SP-462]
-000615  E8                            inx                  ; A=$00D2 X=$0001 Y=$00B5 ; [SP-462]
-000616  D0 F7                         bne  L_00060F        ; A=$00D2 X=$0001 Y=$00B5 ; [SP-462]
-; === End of while loop (counter: X) ===
-
-000618  4C 1B 02                      jmp  DiskBoot_SkipSync        ; A=$00D2 X=$0001 Y=$00B5 ; [SP-462]
-; === End of while loop (counter: X) ===
-
-
-; --- Data region ---
-00061B  AD51C0AD                HEX     AD51C0AD 54C0A000 A9048400 8501A902
-00062B  A01B20D0                HEX     A01B20D0 02A2BCA0 00A9A091 00C8D0FB
-00063B  E601CAD0                HEX     E601CAD0 F6A5028D 00048D27 048DD007
-00064B  8DF707A0                HEX     8DF707A0 008400B9 C002F017 8501B9C1
-00065B  028503C8                HEX     028503C8 C8AE30C0 A603CAD0 FDC601D0
-00066B  F4F0E44C                HEX     F4F0E44C 00C64A4A 4A09C0A0 0020D002
-00067B  A2008A95                HEX     A2008A95 009D0001 E8D0F8A2 09BDF002
-00068B  9D0F04CA                HEX     9D0F04CA 10F79900 0299A002 C8C092D0
-00069B  F56CF203                HEX     F56CF203 008401A4 01E601B9 0007F011
-0006AB  205807A4                HEX     205807A4 01E601B9 00072000 074CA206
-0006BB  00BD88C0                HEX     00BD88C0 60
-; --- End data region (165 bytes) ---
-
-0006C0  20 E0 20          L_0006C0    jsr  $20E0           ; Call $0020E0(A, X, Y)
-0006C3  D0 20                         bne  L_0006E5        ; A=$00D2 X=$0001 Y=$00B5 ; [SP-481]
-0006C5  C0 20                         cpy  #$20            ; A=$00D2 X=$0001 Y=$00B5 ; [SP-481]
-0006C7  B0 20                         bcs  $06E9           ; A=$00D2 X=$0001 Y=$00B5 ; [SP-481]
-0006C9  C0 20                         cpy  #$20            ; A=$00D2 X=$0001 Y=$00B5 ; [SP-481]
-0006CB  D0 20                         bne  L_0006ED        ; A=$00D2 X=$0001 Y=$00B5 ; [SP-481]
-0006CD  E0 00                         cpx  #$00            ; A=$00D2 X=$0001 Y=$00B5 ; [SP-481]
-0006CF  00 48                         brk  #$48            ; A=$00D2 X=$0001 Y=$00B5 ; [SP-484]
+0006C0  20 E0 20                      jsr  $20E0           ; Call $0020E0(A, X, Y)
+0006C3  D0 20                         bne  loc_0006E5      ; [SP-481]
+0006C5  C0 20                         cpy  #$20            ; [SP-481]
+0006C7  B0 20                         bcs  $06E9           ; [SP-481]
+0006C9  C0 20                         cpy  #$20            ; [SP-481]
+0006CB  D0 20                         bne  $06ED           ; [SP-481]
+0006CD  E0 00                         cpx  #$00            ; [SP-481]
+0006CF  00 48                         brk  #$48            ; [SP-484]
 
 ; --- Data region ---
 0006D1  AD83C0AD                HEX     AD83C0AD 83C06848 8DFDFF8D F30349A5
 0006E1  8DF40368                HEX     8DF40368
 ; --- End data region (20 bytes) ---
 
-0006E5  8C FC FF          L_0006E5    sty  $FFFC           ; RESET_VEC - RESET vector
-0006E8  8C F2 03                      sty  $03F2           ; A=$00D2 X=$0001 Y=$00B5 ; [SP-483]
-0006EB  60                            rts                  ; A=$00D2 X=$0001 Y=$00B5 ; [SP-481]
+0006E5  8C FC FF          loc_0006E5  sty  RESET_VEC       ; RESET_VEC - RESET vector
+0006E8  8C F2 03                      sty  $03F2           ; [SP-483]
+0006EB  60                            rts                  ; [SP-481]
 
 ; --- Data region ---
 0006EC  00                      HEX     00
 ; --- End data region (1 bytes) ---
 
-0006ED  00 00             L_0006ED    brk  #$00            ; A=$00D2 X=$0001 Y=$00B5 ; [SP-484]
+0006ED  00 00                         brk  #$00            ; [SP-484]
 
 ; --- Data region ---
 0006EF  00C2D2B0                HEX     00C2D2B0 C4C5D2C2 D5CEC400 00000000
@@ -796,154 +1156,1785 @@
 0007FF  02                      HEX     02
 
 ; ============================================================================
-; SEGMENT 3: Main Game Code ($4000-$71FF, 12,800 bytes)
+; SEGMENT: Main Game Code ($4000-$71FF)
 ; ============================================================================
-; This is the heart of the game - all logic, rendering, and data tables.
-; It stays at its load address (no relocation needed for this block).
+; The main game code remains at its load address. Contains:
+;   - Sprite rendering engine ($40C0-$411F)
+;   - HGR initialization and screen clear ($4120-$416B)
+;   - HGR line address tables ($416C-$42EB)
+;   - Game logic, input handling, collision detection
+;   - Alien evolution and difficulty systems
+;   - Sound generation routines
+;   - Sprite bitmap data ($6000+)
+; ============================================================================
+
+; === Optimization Hints Report ===
+; Total hints: 29
+; Estimated savings: 113 cycles/bytes
+
+; Address   Type              Priority  Savings  Description
+; ---------------------------------------------------------------
+; $004CD0   PEEPHOLE          MEDIUM    4        Load after store: 2 byte pattern at $004CD0
+; $005CD1   PEEPHOLE          MEDIUM    4        Load after store: 2 byte pattern at $005CD1
+; $004311   REDUNDANT_LOAD    MEDIUM    3        Redundant LDA: same value loaded at $00430D
+; $00497C   REDUNDANT_LOAD    MEDIUM    3        Redundant LDA: same value loaded at $004976
+; $00499E   REDUNDANT_LOAD    MEDIUM    3        Redundant LDA: same value loaded at $004998
+; $0049CE   REDUNDANT_LOAD    MEDIUM    3        Redundant LDA: same value loaded at $0049CA
+; $004A28   REDUNDANT_LOAD    MEDIUM    3        Redundant LDA: same value loaded at $004A20
+; $004A7F   REDUNDANT_LOAD    MEDIUM    3        Redundant LDA: same value loaded at $004A77
+; $004A94   REDUNDANT_LOAD    MEDIUM    3        Redundant LDA: same value loaded at $004A8E
+; $004F49   REDUNDANT_LOAD    MEDIUM    3        Redundant LDX: same value loaded at $004F39
+; $005274   REDUNDANT_LOAD    MEDIUM    3        Redundant LDA: same value loaded at $005262
+; $00528F   REDUNDANT_LOAD    MEDIUM    3        Redundant LDA: same value loaded at $005282
+; $0052B1   REDUNDANT_LOAD    MEDIUM    3        Redundant LDA: same value loaded at $0052A4
+; $00574C   REDUNDANT_LOAD    MEDIUM    3        Redundant LDA: same value loaded at $005741
+; $005757   REDUNDANT_LOAD    MEDIUM    3        Redundant LDA: same value loaded at $00574C
+; $005762   REDUNDANT_LOAD    MEDIUM    3        Redundant LDA: same value loaded at $005757
+; $004B10   STRENGTH_RED      LOW       1        Multiple ASL A: consider using lookup table for multiply
+; $004B6E   STRENGTH_RED      LOW       1        Multiple ASL A: consider using lookup table for multiply
+; $0055BD   STRENGTH_RED      LOW       1        Multiple ASL A: consider using lookup table for multiply
+; $0049C2   TAIL_CALL         HIGH      6        Tail call: JSR/JSL at $0049C2 followed by RTS
+; $004D4F   TAIL_CALL         HIGH      6        Tail call: JSR/JSL at $004D4F followed by RTS
+; $004D6A   TAIL_CALL         HIGH      6        Tail call: JSR/JSL at $004D6A followed by RTS
+; $004E34   TAIL_CALL         HIGH      6        Tail call: JSR/JSL at $004E34 followed by RTS
+; $004E87   TAIL_CALL         HIGH      6        Tail call: JSR/JSL at $004E87 followed by RTS
+; $004EDC   TAIL_CALL         HIGH      6        Tail call: JSR/JSL at $004EDC followed by RTS
+; $004F31   TAIL_CALL         HIGH      6        Tail call: JSR/JSL at $004F31 followed by RTS
+; $005333   TAIL_CALL         HIGH      6        Tail call: JSR/JSL at $005333 followed by RTS
+; $0055DC   TAIL_CALL         HIGH      6        Tail call: JSR/JSL at $0055DC followed by RTS
+; $005D05   TAIL_CALL         HIGH      6        Tail call: JSR/JSL at $005D05 followed by RTS
+
+; Loop Analysis Report
+; ====================
+; Total loops: 198
+;   for:       0
+;   while:     191
+;   do-while:  0
+;   infinite:  0
+;   counted:   7
+; Max nesting: 61
 ;
-; CODE ORGANIZATION (roughly top to bottom):
-;   $4001-$41FF : Sprite rendering engine + HGR init + clipping
-;   $4200-$42FF : HGR line address tables (data, 384 bytes)
-;   $42EC-$43FF : Title screen, game var init, keyboard handler
-;   $4400-$46FF : Sprite clear/draw, projectile movement (all 4 dirs)
-;   $4700-$4AFF : Alien rendering, game over, scoring (BCD)
-;   $4B00-$4DFF : Punishment routine, sound, level anim, level setup
-;   $4E00-$4FFF : Alien hit/evolution, satellite collision
-;   $5000-$52FF : Satellite spawn/draw, screen redraw
-;   $5300-$56FF : Alien direction rendering, 4-dir fire, difficulty
-;   $5700-$57CF : Difficulty lookup tables (96 bytes of tuning data)
-;   $57D7-$5AFF : MAIN ENTRY + game loop + collision + timing
-;   $5B00-$5DFF : Input processing, star twinkle, TV check, level complete
-;   $5D34-$5D7B : Projectile state tables (4 projectiles × 16 fields)
-;   $5D7C-$5FFF : Sprite pointer/width/height tables
-;   $6000-$71FF : SPRITE DATA (~4,608 bytes of pre-shifted pixel data)
+; Detected Loops:
+;   Header    Tail      Type      Nest  Counter
+;   ------    ----      ----      ----  -------
+;   $00415B   $0057D8   while        9  Y: 0 step 1
+;                       ~192 iterations
+;   $004120   $0057DB   while        6  Y: 0 step 1
+;                       ~192 iterations
+;   $004128   $00412C   while       15  Y: 0 step 1
+;   $004128   $004132   counted     15  X: 0 step -1
+;   $0043B5   $0057DE   while       14  Y: 0 step 1
+;                       ~192 iterations
+;   $0043B9   $0043CA   while       27  X: 0 step 1
+;                       ~192 iterations
+;   $0042FC   $0057FB   while        8  Y: 0 step 1
+;                       ~192 iterations
+;   $0042EC   $004391   while       18  -
+;   $0042EC   $004396   while       18  -
+;   $0042EC   $0043A8   while       18  -
+;   $0042EC   $0043AD   while       18  -
+;   $0057FE   $005807   while       50  -
+;   $004D73   $005811   while       35  A: 0 step -1
+;   $004D77   $004D84   while       49  -
+;   $004387   $005820   while       12  A: 0 step -1
+;   $0056F3   $005829   while       47  Y: 0 step 1
+;                       ~192 iterations
+;   $005376   $005722   while       50  X: 0 step 1
+;   $005376   $005725   while       50  X: 0 step 1
+;   $005376   $005728   while       50  X: 0 step 1
+;   $00573C   $005769   while       54  -
+;   $005370   $00582C   while       43  Y: 0 step 1
+;                       ~192 iterations
+;   $005B79   $005B83   while       17  -
+;   $005B8B   $005B90   while       19  -
+;   $005B79   $005BB1   while       17  -
+;   $005B79   $005BA6   while       17  -
+;   $0052E5   $005836   while       41  Y: 0 step 1
+;                       ~192 iterations
+;   $0052E9   $0052ED   while       58  -
+;   $0043CD   $005848   while       12  Y: 0 step 1
+;                       ~192 iterations
+;   $00413E   $00584B   while        6  Y: 0 step 1
+;                       ~192 iterations
+;   $00414E   $004153   while       18  Y: 0 step 1
+;   ... and 168 more loops
+
+; Call Site Analysis Report
+; =========================
+; Total call sites: 181
+;   JSR calls:      173
+;   JSL calls:      8
+;   Toolbox calls:  0
 ;
-; WHY PRE-SHIFTED SPRITES:
-;   On the Apple II, each byte of hi-res memory holds 7 pixels.
-;   To draw a sprite at an arbitrary X position, you'd need to shift
-;   the sprite data by 0-6 pixels - expensive on the 6502.
-;   Instead, 7 copies of each sprite are stored, each pre-shifted
-;   by one additional pixel. To draw at X, just pick shift = X mod 7
-;   and use that copy. This trades memory for speed - the classic
-;   Apple II game programming trick.
+; Parameter Statistics:
+;   Register params: 138
+;   Stack params:    20
+;
+; Calling Convention Analysis:
+;   Predominantly short calls (JSR/RTS)
+;   Register-based parameter passing
+;
+; Call Sites (first 20):
+;   $00402D: JSL $110844
+;   $004079: JSR $000810
+;   $004306: JSR $000416 params: A
+;   $004313: JSR $000416 params: A
+;   $004320: JSR $000416 params: A
+;   $00432D: JSR $000416 params: A
+;   $00433A: JSR $000416 params: A
+;   $004347: JSR $000416 params: A
+;   $004354: JSR $000416 params: A
+;   $004361: JSR $000416 params: A
+;   $00436E: JSR $000416 params: A
+;   $004371: JSR $004387
+;   $004374: JSR $00439E
+;   $004391: JSR $0042EC params: A
+;   $004396: JSR $0042EC params: A
+;   $0046AC: JSR $000140
+;   $0046C8: JSR $000140
+;   $0046E4: JSR $000140
+;   $004700: JSR $000140
+;   $00471C: JSR $000140
+;   ... and 161 more call sites
+
+; === I/O Pattern Sequences: 1 detected ===
+;   $4134: video_mode_read - Enable graphics mode
+
+; === Stack Frame Analysis (Sprint 5.3) ===
+; Functions with frames: 70
+
+; Function $0040C0: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004120: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $00413E: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $00415B: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $0042EC: push_only
+;   Frame: 2 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+;   Saves: A
+
+; Function $0042FC: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $00437A: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004387: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $00439E: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $0043B5: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $0043CD: none
+;   Frame: 0 bytes, Locals: 0, Params: 2
+;   Leaf: no, DP-relative: no
+;   Stack slots:
+;     +133: param_133 (2 bytes, 1 accesses)
+
+; Function $0043E0: none
+;   Frame: 0 bytes, Locals: 0, Params: 2
+;   Leaf: no, DP-relative: no
+;   Stack slots:
+;     +133: param_133 (2 bytes, 1 accesses)
+
+; Function $004441: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004499: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $0044C4: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $0044EF: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $00450E: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $00457F: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004641: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $00464B: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004658: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004914: push_only
+;   Frame: 2 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+;   Saves: A
+
+; Function $004940: none
+;   Frame: 0 bytes, Locals: 0, Params: 4
+;   Leaf: no, DP-relative: no
+;   Stack slots:
+;     +133: param_133 (2 bytes, 1 accesses)
+;     +169: param_169 (2 bytes, 1 accesses)
+
+; Function $0049C6: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004A2F: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004A86: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004AE0: none
+;   Frame: 0 bytes, Locals: 0, Params: 2
+;   Leaf: no, DP-relative: no
+;   Stack slots:
+;      +76: param_76 (2 bytes, 1 accesses)
+
+; Function $004B0C: none
+;   Frame: 0 bytes, Locals: 0, Params: 2
+;   Leaf: no, DP-relative: no
+;   Stack slots:
+;      +76: param_76 (2 bytes, 1 accesses)
+
+; Function $004B65: none
+;   Frame: 0 bytes, Locals: 0, Params: 4
+;   Leaf: no, DP-relative: no
+;   Stack slots:
+;      +76: param_76 (2 bytes, 2 accesses)
+;     +141: param_141 (2 bytes, 1 accesses)
+
+; Function $004C3C: none
+;   Frame: 0 bytes, Locals: 0, Params: 2
+;   Leaf: no, DP-relative: no
+;   Stack slots:
+;      +76: param_76 (2 bytes, 3 accesses)
+
+; Function $004C56: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004C71: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004C99: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004D33: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004D73: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004D87: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004DC4: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004DE3: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004E38: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004E8B: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004EE0: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004F35: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $004F5B: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $005227: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $00527F: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $0052A1: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $0052C3: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $0052C9: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $0052CF: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $0052E5: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $0052F3: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $00533B: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $005370: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $005376: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $005591: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $0055E3: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $00560E: none
+;   Frame: 0 bytes, Locals: 0, Params: 4
+;   Leaf: no, DP-relative: no
+;   Stack slots:
+;      +76: param_76 (2 bytes, 3 accesses)
+;     +208: param_208 (2 bytes, 1 accesses)
+
+; Function $0056C9: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $0056E4: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $0056F3: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $005B4F: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $005B62: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $005B6F: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $005B77: none
+;   Frame: 0 bytes, Locals: 0, Params: 2
+;   Leaf: no, DP-relative: no
+;   Stack slots:
+;       +4: param_4 (2 bytes, 2 accesses)
+
+; Function $005C1C: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $005C28: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $005C6C: push_only
+;   Frame: 2 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+;   Saves: A
+
+; Function $005C78: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $005D14: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+; Function $005D27: none
+;   Frame: 0 bytes, Locals: 0, Params: 0
+;   Leaf: no, DP-relative: no
+
+
+; === Liveness Analysis Summary (Sprint 5.4) ===
+; Functions analyzed: 70
+; Functions with register params: 55
+; Functions with register returns: 70
+; Total dead stores detected: 361 (in 52 functions)
+;
+; Function Details:
+;   $0040C0: returns(AXY) [2 dead]
+;   $004120: returns(AXY) [2 dead]
+;   $00413E: returns(AXY) 
+;   $00415B: params(XY) returns(AXY) 
+;   $0042EC: params(A) returns(AXY) [20 dead]
+;   $0042FC: returns(AXY) [16 dead]
+;   $00437A: returns(AXY) [7 dead]
+;   $004387: returns(AXY) [6 dead]
+;   $00439E: returns(AXY) [3 dead]
+;   $0043B5: returns(AXY) 
+;   $0043CD: params(XY) returns(AXY) [2 dead]
+;   $0043E0: params(XY) returns(AXY) 
+;   $004441: returns(AXY) 
+;   $004499: params(Y) returns(AXY) [13 dead]
+;   $0044C4: params(Y) returns(AXY) [7 dead]
+;   $0044EF: params(XY) returns(AXY) [1 dead]
+;   $00450E: params(Y) returns(AXY) [8 dead]
+;   $00457F: params(Y) returns(AXY) [5 dead]
+;   $004641: params(AXY) returns(AXY) 
+;   $00464B: returns(AXY) 
+;   $004658: params(AXY) returns(AXY) [1 dead]
+;   $004914: params(AX) returns(AXY) [3 dead]
+;   $004940: params(XY) returns(AXY) [12 dead]
+;   $0049C6: params(XY) returns(AXY) [14 dead]
+;   $004A2F: params(XY) returns(AXY) [12 dead]
+;   $004A86: params(XY) returns(AXY) [8 dead]
+;   $004AE0: params(X) returns(AXY) [21 dead]
+;   $004B0C: params(X) returns(AXY) [18 dead]
+;   $004B65: returns(AXY) [7 dead]
+;   $004C3C: params(XY) returns(AXY) [5 dead]
+;   $004C56: params(XY) returns(AXY) [5 dead]
+;   $004C71: params(XY) returns(AXY) [2 dead]
+;   $004C99: params(Y) returns(AXY) [7 dead]
+;   $004D33: params(Y) returns(AXY) [1 dead]
+;   $004D73: params(Y) returns(AXY) 
+;   $004D87: params(Y) returns(AXY) 
+;   $004DC4: returns(AXY) [8 dead]
+;   $004DE3: params(XY) returns(AXY) [6 dead]
+;   $004E38: params(XY) returns(AXY) [6 dead]
+;   $004E8B: params(XY) returns(AXY) [6 dead]
+;   $004EE0: params(XY) returns(AXY) [6 dead]
+;   $004F35: params(AY) returns(AXY) [2 dead]
+;   $004F5B: returns(AXY) [10 dead]
+;   $005227: params(Y) returns(AXY) 
+;   $00527F: params(A) returns(AXY) [15 dead]
+;   $0052A1: params(A) returns(AXY) [9 dead]
+;   $0052C3: params(X) returns(AXY) [2 dead]
+;   $0052C9: params(X) returns(AXY) [2 dead]
+;   $0052CF: params(X) returns(AXY) [2 dead]
+;   $0052E5: params(Y) returns(AXY) 
+;   $0052F3: params(AXY) returns(AXY) 
+;   $00533B: params(X) returns(AXY) [1 dead]
+;   $005370: params(XY) returns(AXY) 
+;   $005376: params(XY) returns(AXY) 
+;   $005591: returns(AXY) [5 dead]
+;   $0055E3: params(AXY) returns(AXY) 
+;   $00560E: params(Y) returns(AXY) [2 dead]
+;   $0056C9: params(Y) returns(AXY) [2 dead]
+;   $0056E4: params(XY) returns(AXY) 
+;   $0056F3: params(Y) returns(AXY) [5 dead]
+;   $005B4F: params(Y) returns(AXY) [3 dead]
+;   $005B62: params(XY) returns(AXY) [1 dead]
+;   $005B6F: params(AY) returns(AXY) 
+;   $005B77: params(Y) returns(AXY) [4 dead]
+;   $005C1C: params(XY) returns(AXY) [1 dead]
+;   $005C28: returns(AXY) [7 dead]
+;   $005C6C: params(AXY) returns(AXY) [2 dead]
+;   $005C78: params(Y) returns(AXY) 
+;   $005D14: params(Y) returns(AXY) [24 dead]
+;   $005D27: params(XY) returns(AXY) [22 dead]
+
+; Function Signature Report
+; =========================
+; Functions analyzed:    70
+;   Leaf functions:      26
+;   Interrupt handlers:  8
+;   Stack params:        0
+;   Register params:     67
+;
+; Function Signatures:
+;   Entry     End       Conv       Return   Frame  Flags
+;   -------   -------   --------   ------   -----  -----
+;   $0040C0   $004120   register   A:X         0   L
+;     Proto: uint32_t DrawSpriteXY(void);
+;   $004120   $00413E   register   A:X         0   I
+;     Proto: uint32_t InitHiRes(void);
+;   $00413E   $00415B   register   A:X         0   L
+;     Proto: uint32_t ClearPlayfield(void);
+;   $00415B   $0042EC   register   A:X         0   
+;     Proto: uint32_t SetClipBounds(uint16_t param_X, uint16_t param_Y);
+;   $0042EC   $0042FC   register   A:X         0   
+;     Proto: uint32_t PrintHexByte(uint16_t param_A);
+;   $0042FC   $00437A   unknown    A:X         0   
+;   $00437A   $004387   register   A:X         0   L
+;   $004387   $00439E   unknown    A:X         0   
+;   $00439E   $0043B5   unknown    A:X         0   
+;   $0043B5   $0043CD   register   A:X         0   L
+;     Proto: uint32_t SetupTitle(void);
+;   $0043CD   $0043E0   register   A:X         0   L
+;     Proto: uint32_t PerFrameUpdate(uint16_t param_X, uint16_t param_Y);
+;   $0043E0   $004441   register   A:X         0   LI
+;     Proto: uint32_t KeyboardHandler(uint16_t param_X, uint16_t param_Y);
+;   $004441   $004499   register   A:X         0   
+;     Proto: uint32_t ClearSpriteArea(void);
+;   $004499   $0044C4   register   A:X         0   
+;     Proto: uint32_t DrawProjectile(uint16_t param_Y);
+;   $0044C4   $0044EF   register   A:X         0   I
+;     Proto: uint32_t DrawHitFlash(uint16_t param_Y);
+;   $0044EF   $00450E   register   A:X         0   L
+;     Proto: uint32_t DrawHitFlash_B(uint16_t param_X, uint16_t param_Y);
+;   $00450E   $00457F   register   A:X         0   
+;     Proto: uint32_t PeriodicGameLogic(uint16_t param_Y);
+;   $00457F   $004641   register   A:X         0   
+;     Proto: uint32_t MoveAllLasers(uint16_t param_Y);
+;   $004641   $00464B   register   A:X         0   L
+;     Proto: uint32_t MoveLaserUp(uint16_t param_A, uint16_t param_X, uint16_t param_Y);
+;   $00464B   $004658   register   A:X         0   L
+;     Proto: uint32_t MoveLaserLeft(void);
+;   $004658   $004914   register   A:X         0   
+;     Proto: uint32_t MoveLaserDownRight(uint16_t param_A, uint16_t param_X, uint16_t param_Y);
+;   $004914   $004940   register   A:X         0   
+;     Proto: uint32_t DrawAlienRow(uint16_t param_A, uint16_t param_X);
+;   $004940   $0049C6   register   A:X         0   
+;     Proto: uint32_t UpdateAlienAnim(uint16_t param_X, uint16_t param_Y);
+;   $0049C6   $004A2F   register   A:X         0   
+;     Proto: uint32_t DrawAlienSide(uint16_t param_X, uint16_t param_Y);
+;   $004A2F   $004A86   register   A:X         0   
+;     Proto: uint32_t DrawAlienSideB(uint16_t param_X, uint16_t param_Y);
+;   $004A86   $004AE0   register   A:X         0   I
+;     Proto: uint32_t GameOver(uint16_t param_X, uint16_t param_Y);
+;   $004AE0   $004B0C   register   A:X         0   
+;     Proto: uint32_t AddScore(uint16_t param_X);
+;   $004B0C   $004B65   register   A:X         0   
+;     Proto: uint32_t SelectProjectileType(uint16_t param_X);
+;   $004B65   $004C3C   register   A:X         0   
+;   $004C3C   $004C56   register   A:X         0   L
+;     Proto: uint32_t PlayPunishSound(uint16_t param_X, uint16_t param_Y);
+;   $004C56   $004C71   register   A:X         0   LJ
+;     Proto: uint32_t PlayTone(uint16_t param_X, uint16_t param_Y);
+;   $004C71   $004C99   register   A:X         0   L
+;     Proto: uint32_t PlayToneB(uint16_t param_X, uint16_t param_Y);
+;   $004C99   $004D33   register   A:X         0   
+;     Proto: uint32_t LevelCompleteAnim(uint16_t param_Y);
+;   $004D33   $004D73   register   A:X         0   
+;     Proto: uint32_t DisplayLevelNum(uint16_t param_Y);
+;   $004D73   $004D87   register   A:X         0   L
+;     Proto: uint32_t LevelSetup(uint16_t param_Y);
+;   $004D87   $004DC4   register   A:X         0   
+;     Proto: uint32_t UpdateAlienPositions(uint16_t param_Y);
+;   $004DC4   $004DE3   register   A:X         0   
+;   $004DE3   $004E38   register   A:X         0   
+;     Proto: uint32_t AlienEvolve(uint16_t param_X, uint16_t param_Y);
+;   $004E38   $004E8B   register   A:X         0   
+;     Proto: uint32_t AlienHitHandler(uint16_t param_X, uint16_t param_Y);
+;   $004E8B   $004EE0   register   A:X         0   
+;     Proto: uint32_t AlienHitHandlerB(uint16_t param_X, uint16_t param_Y);
+;   $004EE0   $004F35   register   A:X         0   
+;     Proto: uint32_t AlienHitHandlerC(uint16_t param_X, uint16_t param_Y);
+;   $004F35   $004F5B   register   A:X         0   L
+;     Proto: uint32_t PlaySound(uint16_t param_A, uint16_t param_Y);
+;   $004F5B   $005227   register   A:X         0   JI
+;     Proto: uint32_t CheckSatelliteHits(void);
+;   $005227   $00527F   register   A:X         0   
+;     Proto: uint32_t SpawnSatellite(uint16_t param_Y);
+;   $00527F   $0052A1   register   A:X         0   L
+;     Proto: uint32_t DrawSatellite(uint16_t param_A);
+;   $0052A1   $0052C3   register   A:X         0   LI
+;     Proto: uint32_t DrawSatelliteB(uint16_t param_A);
+;   $0052C3   $0052C9   register   A:X         0   
+;     Proto: uint32_t DrawSatelliteC(uint16_t param_X);
+;   $0052C9   $0052CF   register   A:X         0   
+;     Proto: uint32_t DrawSatelliteD(uint16_t param_X);
+;   $0052CF   $0052E5   register   A:X         0   L
+;     Proto: uint32_t DrawSatelliteE(uint16_t param_X);
+;   $0052E5   $0052F3   register   A:X         0   L
+;     Proto: uint32_t DrawBase(uint16_t param_Y);
+;   ... and 20 more functions
+;
+; Flags: L=Leaf, J=JSL/RTL, I=Interrupt, F=FrameSetup
+
+; Constant Propagation Analysis
+; =============================
+; Constants found: 405
+; Loads with known value: 300
+; Branches resolved: 0
+; Compares resolved: 0
+; Memory constants tracked: 69
+;
+; Final register state:
+;   A: unknown
+;   X: unknown
+;   Y: $00B8 (set at $007109)
+;   S: $00A2 (set at $00702D)
+;   DP: undefined
+;   DBR: undefined
+;   PBR: undefined
+;   P: undefined
+;
+; Memory constants (first 20):
+;   $000006 = $0000 (abs)
+;   $00000A = $0009 (dp)
+;   $000008 = $0001 (dp)
+;   $00000B = $0028 (dp)
+;   $000009 = $00C0 (dp)
+;   $000002 = $0017 (dp)
+;   $000004 = $0056 (dp)
+;   $000024 = $0000 (dp)
+;   $000025 = $0000 (dp)
+;   $00002A = $0000 (dp)
+;   $005D54 = $0000 (abs)
+;   $000019 = $0000 (dp)
+;   $004C55 = $0090 (abs)
+;   $004C8D = $0090 (abs)
+;   $0053C4 = $0006 (abs)
+;   $0053BC = $0006 (abs)
+;   $0053C0 = $0006 (abs)
+;   $005D58 = $0000 (abs)
+;   $919190 = $00A2 (abs)
+;   $000093 = $00A2 (abs)
+;   ... and 49 more
+
 ; ============================================================================
-;   - Shape tables, color lookup tables, and level data
+; TYPE INFERENCE REPORT
 ; ============================================================================
+;
+; Entries analyzed: 512
+; Bytes typed:      99
+; Words typed:      115
+; Pointers typed:   7
+; Arrays typed:     222
+; Structs typed:    370
+;
+; Inferred Types:
+;   Address   Type       Conf   R    W   Flags  Name
+;   -------   --------   ----   ---  --- -----  ----
+;   $000008   BYTE       90%    12    1 P      byte_0008
+;   $000000   STRUCT     80%    84   19 IP     struct_0000 {size=256}
+;   $000020   BYTE       90%    21    3 IP     byte_0020
+;   $005D7C   ARRAY      75%     1    0 I      arr_5D7C [elem=1]
+;   $004105   WORD       50%     1    1        word_4105
+;   $005E1D   ARRAY      75%     1    0 I      arr_5E1D [elem=1]
+;   $004106   WORD       50%     1    1        word_4106
+;   $000002   BYTE       90%    60   38 IP     byte_0002
+;   $000003   BYTE       70%     5    1 IP     byte_0003
+;   $005EBE   ARRAY      75%     1    0 I      arr_5EBE [elem=1]
+;   $000004   BYTE       90%     7   58 IP     byte_0004
+;   $005F5F   ARRAY      75%     1    0 I      arr_5F5F [elem=1]
+;   $000005   FLAG       60%     9    4        flag_0005
+;   $000009   FLAG       50%     5    1        flag_0009
+;   $00416C   ARRAY      95%     7    0 I      arr_416C [elem=1]
+;   $000006   BYTE       90%    26   16 IP     byte_0006
+;   $00422C   ARRAY      95%     7    0 I      arr_422C [elem=1]
+;   $000007   BYTE       90%     6    7 IP     byte_0007
+;   $00000B   FLAG       50%     3    1        flag_000B
+;   $004100   STRUCT     70%     0    0        struct_4100 {size=7}
+;   $00C000   STRUCT     70%     5    0        struct_C000 {size=17}
+;   $003430   WORD       90%     6    0        word_3430
+;   $000025   BYTE       90%    14    2 P      byte_0025
+;   $003400   STRUCT     70%     0    0        struct_3400 {size=49}
+;   $000035   BYTE       90%     6    2 IP     byte_0035
+;   $00213D   ARRAY      85%     3    0 I      arr_213D [elem=1]
+;   $000029   BYTE       90%     9    2        byte_0029
+;   $003531   WORD       60%     3    0        word_3531
+;   $00223D   ARRAY      85%     3    0 I      arr_223D [elem=1]
+;   $00002A   BYTE       90%    13    2 IP     byte_002A
+;   $003632   WORD       90%     6    0        word_3632
+;   $002622   ARRAY      85%     3    0 I      arr_2622 [elem=1]
+;   $002723   ARRAY      85%     3    0 I      arr_2723 [elem=1]
+;   $3B3733   LONG       90%     6    0        long_3B3733
+;   $00000D   BYTE       90%     4    3        byte_000D
+;   $00000C   BYTE       90%    10    3 IP     byte_000C
+;   $000010   BYTE       90%     5    5        byte_0010
+;   $00C010   WORD       70%     1    3        word_C010
+;   $000036   BYTE       80%     3    4 I      byte_0036
+;   $000011   BYTE       90%     7    8 IP     byte_0011
+;   $005D3C   ARRAY      80%     2    0 I      arr_5D3C [elem=1]
+;   $005D44   ARRAY      80%     2    0 I      arr_5D44 [elem=1]
+;   $001AA5   ARRAY      85%     3    0 I      arr_1AA5 [elem=1]
+;   $0047AA   ARRAY      95%     5    0 I      arr_47AA [elem=1]
+;   $004692   ARRAY      95%     5    0 I      arr_4692 [elem=1]
+;   $0048D3   ARRAY      95%     6    0 I      arr_48D3 [elem=1]
+;   $0048AD   ARRAY      85%     3    0 I      arr_48AD [elem=1]
+;   $004800   STRUCT     70%     0    0        struct_4800 {size=212}
+;   $00478B   ARRAY      85%     3    0 I      arr_478B [elem=1]
+;   $004509   WORD       60%     2    1        word_4509
+;   $005D48   ARRAY      95%     8    4 I      arr_5D48 [elem=1]
+;   $000019   BYTE       90%     8   24        byte_0019
+;   $005D4C   ARRAY      95%     5    3 I      arr_5D4C [elem=1]
+;   $00001A   BYTE       90%     3    6        byte_001A
+;   $005D50   ARRAY      95%     7    4 I      arr_5D50 [elem=1]
+;   $005D54   ARRAY      95%     9    9 I      arr_5D54 [elem=1]
+;   $00450A   ARRAY      75%     1    0 I      arr_450A [elem=1]
+;   $00821E   ARRAY      75%     1    0 I      arr_821E [elem=1]
+;   $004500   STRUCT     70%     0    0        struct_4500 {size=11}
+;   $005D00   STRUCT     75%     0    0        struct_5D00 {size=20}
+;   $000012   BYTE       90%    11    2        byte_0012
+;   $005D58   ARRAY      95%     5    8 I      arr_5D58 [elem=1]
+;   $005D64   ARRAY      95%    10    3 I      arr_5D64 [elem=1]
+;   $00001E   BYTE       70%     2    2        byte_001E
+;   $005D5C   ARRAY      95%    10    5 I      arr_5D5C [elem=1]
+;   $00001C   BYTE       90%     3    4 I      byte_001C
+;   $005D60   ARRAY      95%     6    4 I      arr_5D60 [elem=1]
+;   $00001D   BYTE       90%     2    4        byte_001D
+;   $00C030   WORD       90%     4    3        word_C030
+;   $004655   WORD       50%     1    1        word_4655
+;   $000046   ARRAY      80%     3    0 IP     arr_0046 [elem=1]
+;   $000060   BYTE       90%     9    0 IP     byte_0060
+;   $000013   BYTE       60%     2    1        byte_0013
+;   $0000A6   ARRAY      75%     1    0 I      arr_00A6 [elem=1]
+;   $000016   BYTE       70%     7    2 I      byte_0016
+;   $000017   BYTE       60%     1    2        byte_0017
+;   $000001   BYTE       90%    18    0 IP     byte_0001
+;   $000D0D   WORD       50%     2    0        word_0D0D
+;   $000E0E   WORD       50%     2    0        word_0E0E
+;   $000D00   STRUCT     70%     0    0        struct_0D00 {size=14}
+;   $000E00   STRUCT     70%     0    0        struct_0E00 {size=15}
+;   $000015   ARRAY      95%     5    0 I      arr_0015 [elem=1]
+;   $001919   ARRAY      80%     2    0 I      arr_1919 [elem=1]
+;   $001A1A   ARRAY      75%     1    0 I      arr_1A1A [elem=1]
+;   $001900   STRUCT     70%     0    0        struct_1900 {size=26}
+;   $001D1D   ARRAY      80%     2    0 I      arr_1D1D [elem=1]
+;   $001E1E   ARRAY      95%     6    0 I      arr_1E1E [elem=1]
+;   $001D00   STRUCT     70%     0    0        struct_1D00 {size=30}
+;   $001F1E   ARRAY      75%     1    0 I      arr_1F1E [elem=1]
+;   $001E00   STRUCT     70%     4    0 I      struct_1E00 {size=31}
+;   $000021   BYTE       90%    11    2 P      byte_0021
+;   $000022   BYTE       70%     1    3 P      byte_0022
+;   $000024   BYTE       90%    15    2        byte_0024
+;   $000026   BYTE       90%    12    2        byte_0026
+;   $00001B   BYTE       70%     2    2        byte_001B
+;   $000023   BYTE       90%     7    2        byte_0023
+;   $00001F   BYTE       70%     2    2        byte_001F
+;   $000028   BYTE       90%    12    6 P      byte_0028
+;   $000027   BYTE       90%     7    6        byte_0027
+;   $005B67   WORD       90%     0    6        word_5B67
+;   $0053B8   ARRAY      95%    12    5 I      arr_53B8 [elem=1]
+;   $004B58   ARRAY      75%     1    0 I      arr_4B58 [elem=1]
+;   $004B5C   ARRAY      75%     1    0 I      arr_4B5C [elem=1]
+;   $004B60   ARRAY      75%     1    0 I      arr_4B60 [elem=1]
+;   $00AD00   ARRAY      75%     1    0 I      arr_AD00 [elem=1]
+;   $000057   ARRAY      95%    12    0 I      arr_0057 [elem=1]
+;   $0057D6   WORD       50%     2    0        word_57D6
+;   $0053F8   WORD       90%    12   12        word_53F8
+;   $0053C4   ARRAY      95%     8    3 I      arr_53C4 [elem=1]
+;   $0053F3   WORD       70%     3    1        word_53F3
+;   $0053E8   ARRAY      95%     8    0 I      arr_53E8 [elem=1]
+;   $005300   STRUCT     70%     0    0        struct_5300 {size=197}
+;   $0053D6   ARRAY      95%     5    0 I      arr_53D6 [elem=1]
+;   $0053BC   ARRAY      95%     8    3 I      arr_53BC [elem=1]
+;   $0053F1   WORD       70%     3    1        word_53F1
+;   $0053DD   ARRAY      95%     5    0 I      arr_53DD [elem=1]
+;   $0053EC   WORD       70%     3    1        word_53EC
+;   $0053E4   ARRAY      95%    12    0 I      arr_53E4 [elem=1]
+;   $0053C8   ARRAY      95%     5    0 I      arr_53C8 [elem=1]
+;   $0053C0   ARRAY      95%     8    3 I      arr_53C0 [elem=1]
+;   $0053EE   WORD       70%     3    1        word_53EE
+;   $0053CF   ARRAY      95%     5    0 I      arr_53CF [elem=1]
+;   $004C54   WORD       90%     3    3        word_4C54
+;   $004C55   WORD       90%     4    3        word_4C55
+;   $00003A   BYTE       90%     6    1        byte_003A
+;   $0000A5   BYTE       50%     2    0        byte_00A5
+;   $004C98   WORD       50%     1    1        word_4C98
+;   $004C00   STRUCT     80%     0    0        struct_4C00 {size=153}
+;   $000030   BYTE       90%     4    2 P      byte_0030
+;   $004D32   WORD       50%     1    1        word_4D32
+;   $004D6E   ARRAY      75%     1    0 I      arr_4D6E [elem=1]
+;   $000074   ARRAY      80%     3    0 IP     arr_0074 [elem=1]
+;   $0021F0   ARRAY      75%     1    0 I      arr_21F0 [elem=1]
+;   $004DBD   ARRAY      75%     1    0 I      arr_4DBD [elem=1]
+;   $0000A9   ARRAY      85%     6    0 I      arr_00A9 [elem=1]
+;   $00C420   WORD       60%     3    0        word_C420
+;   $00BCAE   WORD       60%     3    0        word_BCAE
+;   $0053FC   WORD       90%     4    4        word_53FC
+;   $0053FA   WORD       90%     4    4        word_53FA
+;   $000038   BYTE       60%     2    1 P      byte_0038
+;   $0030A2   ARRAY      75%     1    0 I      arr_30A2 [elem=1]
+;   $00EAEA   ARRAY      75%     1    0 I      arr_EAEA [elem=1]
+;   $000050   BYTE       90%     9    0 P      byte_0050
+;   $005212   ARRAY      95%     9    3 I      arr_5212 [elem=1]
+;   $00520E   ARRAY      95%     5    1 I      arr_520E [elem=1]
+;   $004FFD   ARRAY      75%     1    0 I      arr_4FFD [elem=1]
+;   $005200   STRUCT     75%     0    0        struct_5200 {size=241}
+;   $005221   ARRAY      85%     1    2 I      arr_5221 [elem=1]
+;   $000084   BYTE       60%     4    2 I      byte_0084
+;   $000080   BYTE       90%     0    9 P      byte_0080
+;   $007C7D   ARRAY      80%     2    0 I      arr_7C7D [elem=1]
+;   $007677   ARRAY      75%     1    0 I      arr_7677 [elem=1]
+;   $000073   ARRAY      75%     1    0 I      arr_0073 [elem=1]
+;   $000064   BYTE       50%     3    0 I      byte_0064
+;   $005A5C   ARRAY      75%     1    0 I      arr_5A5C [elem=1]
+;   $005657   ARRAY      75%     1    0 I      arr_5657 [elem=1]
+;   $000053   ARRAY      75%     1    0 I      arr_0053 [elem=1]
+;   $004B4D   WORD       50%     2    0        word_4B4D
+;   $000045   BYTE       50%     2    0        byte_0045
+;   $003C3D   ARRAY      75%     1    0 I      arr_3C3D [elem=1]
+;   $003839   ARRAY      75%     1    0 I      arr_3839 [elem=1]
+;   $000031   BYTE       50%     1    1 P      byte_0031
+;   $002D2D   WORD       80%     5    0        word_2D2D
+;   $002D00   STRUCT     80%     0    0        struct_2D00 {size=46}
+;   $000032   BYTE       60%     2    1 P      byte_0032
+;   $000037   ARRAY      75%     1    0 I      arr_0037 [elem=1]
+;   $003B3A   ARRAY      75%     1    0 I      arr_3B3A [elem=1]
+;   $003F3E   ARRAY      75%     1    0 I      arr_3F3E [elem=1]
+;   $000047   BYTE       50%     2    0        byte_0047
+;   $000067   BYTE       50%     2    0        byte_0067
+;   $000077   ARRAY      80%     2    0 I      arr_0077 [elem=1]
+;   $00807F   ARRAY      80%     2    0 I      arr_807F [elem=1]
+;   $000096   ARRAY      75%     0    2 IP     arr_0096 [elem=1]
+;   $009B9A   ARRAY      75%     0    1 I      arr_9B9A [elem=1]
+;   $009E9D   ARRAY      75%     0    1 I      arr_9E9D [elem=1]
+;   $0000A1   PTR        80%     3    0 P      ptr_00A1
+;   $0000A0   PTR        80%     9   16 IP     ptr_00A0
+;   $009B9C   ARRAY      75%     0    1 I      arr_9B9C [elem=1]
+;   $009798   ARRAY      75%     0    1 I      arr_9798 [elem=1]
+;   $000094   ARRAY      80%     1    2 IP     arr_0094 [elem=1]
+;   $000090   BYTE       70%     1    4 IP     byte_0090
+;   $000095   ARRAY      80%     2    2 IP     arr_0095 [elem=1]
+;   $007678   ARRAY      75%     1    0 I      arr_7678 [elem=1]
+;   $000070   BYTE       90%    11    0 P      byte_0070
+;   $005B5D   ARRAY      75%     1    0 I      arr_5B5D [elem=1]
+;   $000054   ARRAY      75%     1    0 I      arr_0054 [elem=1]
+;   $00003F   BYTE       90%     8    0 IP     byte_003F
+;   $003B3D   ARRAY      75%     1    0 I      arr_3B3D [elem=1]
+;   $003738   ARRAY      75%     1    0 I      arr_3738 [elem=1]
+;   $000034   ARRAY      75%     2    3 I      arr_0034 [elem=1]
+;   $00403F   ARRAY      75%     1    0 I      arr_403F [elem=1]
+;   $000056   ARRAY      75%     1    0 I      arr_0056 [elem=1]
+;   $005C5B   ARRAY      75%     1    0 I      arr_5C5B [elem=1]
+;   $00615F   ARRAY      75%     1    0 I      arr_615F [elem=1]
+;   $000066   BYTE       90%    10    0        byte_0066
+;   $000082   PTR        80%     8    1 IP     ptr_0082
+;   $0000D4   ARRAY      90%     4    7 IP     arr_00D4 [elem=1]
+;   $0000CF   BYTE       60%     2    1 P      byte_00CF
+;   $000052   BYTE       50%     3    0 I      byte_0052
+;   $005226   WORD       60%     2    1        word_5226
+;   $00527E   WORD       70%     2    2        word_527E
+;   $005102   ARRAY      75%     1    0 I      arr_5102 [elem=1]
+;   $005002   ARRAY      75%     1    0 I      arr_5002 [elem=1]
+;   $00521A   ARRAY      75%     1    0 I      arr_521A [elem=1]
+;   $0052F1   WORD       50%     1    1        word_52F1
+;   $0052F2   WORD       50%     1    1        word_52F2
+;   $0052F0   WORD       50%     1    1        word_52F0
+;   $005337   ARRAY      75%     1    0 I      arr_5337 [elem=1]
+;   $0000BD   ARRAY      75%     5    0 IP     arr_00BD [elem=1]
+;   $0021D0   ARRAY      75%     1    0 I      arr_21D0 [elem=1]
+;   $005362   ARRAY      75%     1    0 I      arr_5362 [elem=1]
+;   $005366   ARRAY      75%     1    0 I      arr_5366 [elem=1]
+;   $00536A   ARRAY      75%     1    0 I      arr_536A [elem=1]
+;   $00536F   WORD       80%     3    2        word_536F
+;   $0017D0   ARRAY      80%     2    0 I      arr_17D0 [elem=1]
+;   $005D68   ARRAY      80%     2    0 I      arr_5D68 [elem=1]
+;   $005D6C   ARRAY      80%     2    0 I      arr_5D6C [elem=1]
+;   $005D70   ARRAY      80%     2    0 I      arr_5D70 [elem=1]
+;   $00006D   BYTE       70%     4    0        byte_006D
+;   $0002FE   ARRAY      75%     1    0 I      arr_02FE [elem=1]
+;   $0053F9   WORD       90%     4    4        word_53F9
+;   $0053F7   WORD       60%     2    1        word_53F7
+;   $0053F5   WORD       60%     2    1        word_53F5
+;   $0053FB   WORD       90%     4    4        word_53FB
+;   $0053F4   WORD       60%     2    1        word_53F4
+;   $0053F6   WORD       60%     2    1        word_53F6
+;   $00558D   WORD       50%     1    1        word_558D
+;   $00558F   WORD       70%     3    1        word_558F
+;   $005500   STRUCT     80%     0    0        struct_5500 {size=227}
+;   $00002C   BYTE       90%     4    5 P      byte_002C
+;   $0055E1   WORD       50%     1    1        word_55E1
+;   $0055E0   WORD       50%     1    1        word_55E0
+;   $0055E2   WORD       60%     2    1        word_55E2
+;   $0000D0   BYTE       90%     2    6 IP     byte_00D0
+;   $0000C6   PTR        80%     2    0 P      ptr_00C6
+;   $00002F   BYTE       50%     1    1        byte_002F
+;   $005778   ARRAY      75%     1    0 I      arr_5778 [elem=1]
+;   $005784   ARRAY      75%     1    0 I      arr_5784 [elem=1]
+;   $005790   ARRAY      75%     1    0 I      arr_5790 [elem=1]
+;   $00579C   ARRAY      75%     1    0 I      arr_579C [elem=1]
+;   $0057CC   WORD       50%     1    1        word_57CC
+;   $0057A8   ARRAY      75%     1    0 I      arr_57A8 [elem=1]
+;   $0057B4   ARRAY      75%     1    0 I      arr_57B4 [elem=1]
+;   $0057C0   ARRAY      75%     1    0 I      arr_57C0 [elem=1]
+;   $005700   STRUCT     80%     1    0        struct_5700 {size=207}
+;   $0056F2   WORD       90%     5    2        word_56F2
+;   $005600   STRUCT     70%     0    0        struct_5600 {size=243}
+;   $00F5F7   ARRAY      75%     1    0 I      arr_F5F7 [elem=1]
+;   $0000E4   BYTE       50%     2    0        byte_00E4
+;   $0000F4   ARRAY      80%     3    1 IP     arr_00F4 [elem=1]
+;   $0000F0   ARRAY      75%     1    3 IP     arr_00F0 [elem=1]
+;   $00181E   ARRAY      75%     1    0 I      arr_181E [elem=1]
+;   $00002D   BYTE       90%     2    4        byte_002D
+;   $00002E   BYTE       70%     1    3        byte_002E
+;   $00002B   BYTE       70%     1    3        byte_002B
+;   $005D34   ARRAY      75%     1    0 I      arr_5D34 [elem=1]
+;   $005D38   ARRAY      90%     4    0 I      arr_5D38 [elem=1]
+;   $0057CD   WORD       50%     1    1        word_57CD
+;   $0057CE   WORD       50%     1    1        word_57CE
+;   $000285   ARRAY      85%     3    0 I      arr_0285 [elem=1]
+;   $005BB4   ARRAY      85%     2    1 I      arr_5BB4 [elem=1]
+;   $005BD4   ARRAY      80%     1    1 I      arr_5BD4 [elem=1]
+;   $005BF4   ARRAY      90%     2    2 I      arr_5BF4 [elem=1]
+;   $0000FF   PTR        80%     1    0 P      ptr_00FF
+;   $005C14   ARRAY      80%     2    0 I      arr_5C14 [elem=1]
+;   $005D13   WORD       80%     3    2        word_5D13
+;   $0054BD   ARRAY      75%     1    0 I      arr_54BD [elem=1]
+;   $000BF0   ARRAY      75%     1    0 I      arr_0BF0 [elem=1]
+;   $005D6B   ARRAY      75%     1    0 I      arr_5D6B [elem=1]
+;   $0000B1   ARRAY      75%     1    0 I      arr_00B1 [elem=1]
+;   $000058   PTR        80%     1    0 P      ptr_0058
+;   $007BBA   ARRAY      75%     1    0 I      arr_7BBA [elem=1]
+;   $00A477   ARRAY      75%     1    0 I      arr_A477 [elem=1]
+;   $004F43   ARRAY      75%     1    0 I      arr_4F43 [elem=1]
+;   $0000A3   ARRAY      75%     0    1 I      arr_00A3 [elem=1]
+;   $00E3CE   ARRAY      75%     1    0 I      arr_E3CE [elem=1]
+;   $00A792   ARRAY      75%     1    0 I      arr_A792 [elem=1]
+;   $00100A   ARRAY      75%     1    0 I      arr_100A [elem=1]
+;   $0000C5   PTR        80%     1    0 P      ptr_00C5
+;   $00005D   ARRAY      80%     2    0 I      arr_005D [elem=1]
+;   $006060   ARRAY      75%     1    0 I      arr_6060 [elem=1]
+;   $000061   BYTE       60%     3    0 P      byte_0061
+;   $000065   BYTE       90%     6    0        byte_0065
+;   $006E00   STRUCT     70%     0    0        struct_6E00 {size=111}
+;   $003333   ARRAY      85%     3    0 I      arr_3333 [elem=1]
+;   $00363C   ARRAY      75%     1    0 I      arr_363C [elem=1]
+;   $00333F   ARRAY      85%     3    0 I      arr_333F [elem=1]
+;   $003F3F   ARRAY      90%     5    0 I      arr_3F3F [elem=1]
+;   $00303F   ARRAY      75%     1    0 I      arr_303F [elem=1]
+;   $003F30   ARRAY      75%     1    0 I      arr_3F30 [elem=1]
+;   $003C38   ARRAY      75%     1    0 I      arr_3C38 [elem=1]
+;   $000033   ARRAY      80%     2    0 I      arr_0033 [elem=1]
+;   $00061C   ARRAY      75%     1    0 I      arr_061C [elem=1]
+;   $003F33   ARRAY      75%     1    0 I      arr_3F33 [elem=1]
+;   $003F1E   ARRAY      75%     1    0 I      arr_3F1E [elem=1]
+;   $003E30   ARRAY      75%     1    0 I      arr_3E30 [elem=1]
+;   $003F00   STRUCT     70%     4    0 I      struct_3F00 {size=1}
+;   $003F1F   ARRAY      75%     1    0 I      arr_3F1F [elem=1]
+;   $003303   ARRAY      85%     3    0 I      arr_3303 [elem=1]
+;   $001F1F   ARRAY      75%     1    0 I      arr_1F1F [elem=1]
+;   $000C33   ARRAY      75%     1    0 I      arr_0C33 [elem=1]
+;   $00331E   ARRAY      80%     2    0 I      arr_331E [elem=1]
+;   $003F63   ARRAY      75%     1    0 I      arr_3F63 [elem=1]
+;   $003F03   ARRAY      80%     2    0 I      arr_3F03 [elem=1]
+;   $001E3C   ARRAY      75%     1    0 I      arr_1E3C [elem=1]
+;   $00413C   ARRAY      75%     1    0 I      arr_413C [elem=1]
+;   $00301E   ARRAY      75%     1    0 I      arr_301E [elem=1]
+;   $003030   ARRAY      75%     1    0 I      arr_3030 [elem=1]
+;   $001E30   ARRAY      75%     1    0 I      arr_1E30 [elem=1]
+;   $003000   STRUCT     70%     0    0        struct_3000 {size=49}
+;   $001E33   ARRAY      75%     1    0 I      arr_1E33 [elem=1]
+;   $000C1E   ARRAY      80%     2    0 I      arr_0C1E [elem=1]
+;   $003F0C   ARRAY      75%     1    0 I      arr_3F0C [elem=1]
+;   $000C00   STRUCT     70%     0    0        struct_0C00 {size=31}
+;   $00B082   ARRAY      85%     3    0 I      arr_B082 [elem=1]
+;   $00A886   ARRAY      85%     3    0 I      arr_A886 [elem=1]
+;   $00AC8A   ARRAY      85%     3    0 I      arr_AC8A [elem=1]
+;   $00AA9A   ARRAY      85%     3    0 I      arr_AA9A [elem=1]
+;   $00ABAA   ARRAY      85%     3    0 I      arr_ABAA [elem=1]
+;   $00ABEA   ARRAY      95%     6    0 I      arr_ABEA [elem=1]
+;   $00FFEA   ARRAY      85%     3    0 I      arr_FFEA [elem=1]
+;   $00AB00   STRUCT     70%     0    0        struct_AB00 {size=235}
+;   $00AAEA   ARRAY      85%     3    0 I      arr_AAEA [elem=1]
+;   $00ACAA   ARRAY      85%     3    0 I      arr_ACAA [elem=1]
+;   $00A89A   ARRAY      85%     3    0 I      arr_A89A [elem=1]
+;   $00B08A   ARRAY      85%     3    0 I      arr_B08A [elem=1]
+;   $00A086   ARRAY      85%     3    0 I      arr_A086 [elem=1]
+;   $00C082   ARRAY      85%     3    0 I      arr_C082 [elem=1]
+;   $000C03   ARRAY      75%     1    0 I      arr_0C03 [elem=1]
+;   $0000C0   BYTE       90%     1   22 IP     byte_00C0
+;   $0000E0   ARRAY      80%     0    3 I      arr_00E0 [elem=1]
+;   $00AE00   ARRAY      85%     0    3 I      arr_AE00 [elem=1]
+;   $AE81F4   LONG       50%     2    0        long_AE81F4
+;   $00E000   ARRAY      80%     0    2 I      arr_E000 [elem=1]
+;   $000040   BYTE       90%    16    0 IP     byte_0040
+;   $000700   LONG       50%     3    0        long_0700
+;   $00631E   ARRAY      80%     2    0 I      arr_631E [elem=1]
+;   $003300   STRUCT     70%     2    0 I      struct_3300 {size=1}
+;   $003B3F   ARRAY      80%     2    0 I      arr_3B3F [elem=1]
+;   $006333   ARRAY      80%     2    0 I      arr_6333 [elem=1]
+;   $003002   ARRAY      80%     2    0 I      arr_3002 [elem=1]
+;   $002806   ARRAY      80%     2    0 I      arr_2806 [elem=1]
+;   $002C0A   ARRAY      80%     2    0 I      arr_2C0A [elem=1]
+;   $002A1A   ARRAY      80%     2    0 I      arr_2A1A [elem=1]
+;   $002B2A   ARRAY      80%     2    0 I      arr_2B2A [elem=1]
+;   $002B6A   ARRAY      90%     4    0 I      arr_2B6A [elem=1]
+;   $007F6A   ARRAY      80%     2    0 I      arr_7F6A [elem=1]
+;   $002B00   STRUCT     70%     0    0        struct_2B00 {size=107}
+;   $002A6A   ARRAY      80%     2    0 I      arr_2A6A [elem=1]
+;   $002C2A   ARRAY      80%     2    0 I      arr_2C2A [elem=1]
+;   $00281A   ARRAY      80%     2    0 I      arr_281A [elem=1]
+;   $00300A   ARRAY      80%     2    0 I      arr_300A [elem=1]
+;   $002006   ARRAY      80%     2    0 I      arr_2006 [elem=1]
+;   $004002   ARRAY      80%     2    0 I      arr_4002 [elem=1]
+;   $00DF00   STRUCT     70%     3    0 I      struct_DF00 {size=1}
+;   $00CFFF   ARRAY      80%     2    0 I      arr_CFFF [elem=1]
+;   $00AA00   ARRAY      80%     2    0 I      arr_AA00 [elem=1]
+;   $009ED0   ARRAY      80%     1    1 I      arr_9ED0 [elem=1]
+;   $00BDD0   ARRAY      85%     0    3 I      arr_BDD0 [elem=1]
+;   $00BD00   STRUCT     75%     0    0        struct_BD00 {size=209}
+;   $CF0000   LONG       50%     2    0        long_CF0000
+;   $0000CC   BYTE       60%     1    2 P      byte_00CC
+;   $0000DC   BYTE       60%     0    3        byte_00DC
+;   $0000D5   ARRAY      75%     2    0 I      arr_00D5 [elem=1]
+;   $0000AA   BYTE       90%     5    8 IP     byte_00AA
+;   $0000A8   BYTE       90%     2    8 P      byte_00A8
+;   $008BE0   ARRAY      75%     0    1 I      arr_8BE0 [elem=1]
+;   $00ABC0   ARRAY      75%     1    0 I      arr_ABC0 [elem=1]
+;   $003E63   ARRAY      75%     1    0 I      arr_3E63 [elem=1]
+;   $003A01   ARRAY      75%     1    0 I      arr_3A01 [elem=1]
+;   $00007C   BYTE       70%     4    0 P      byte_007C
+;   $000078   BYTE       50%     2    0 P      byte_0078
+;   $000018   BYTE       50%     6    0 IP     byte_0018
+;   $00081C   ARRAY      80%     2    0 I      arr_081C [elem=1]
+;   $001F00   WORD       50%     2    0        word_1F00
+;   $000400   WORD       50%     2    0        word_0400
+;   $007C01   ARRAY      75%     1    0 I      arr_7C01 [elem=1]
+;   $0000F7   ARRAY      75%     1    0 I      arr_00F7 [elem=1]
+;   $0095A0   ARRAY      75%     0    1 I      arr_95A0 [elem=1]
+;   $000055   ARRAY      75%     1    0 I      arr_0055 [elem=1]
+;   $000075   WORD       50%     2    0        word_0075
+;   $005560   ARRAY      75%     1    0 I      arr_5560 [elem=1]
+;   $3A7000   LONG       50%     2    0        long_3A7000
+;   $000B60   ARRAY      75%     1    0 I      arr_0B60 [elem=1]
+;   $002B40   ARRAY      75%     1    0 I      arr_2B40 [elem=1]
+;   $002E00   ARRAY      75%     1    0 I      arr_2E00 [elem=1]
+;   $002007   ARRAY      75%     1    0 I      arr_2007 [elem=1]
+;   $0000DD   ARRAY      80%     0    2 I      arr_00DD [elem=1]
+;   $00E881   ARRAY      75%     1    1 I      arr_E881 [elem=1]
+;   $00A085   WORD       50%     2    0        word_A085
+;   $000081   ARRAY      80%     3    6 IP     arr_0081 [elem=1]
+
+; ============================================================================
+; SWITCH/CASE DETECTION REPORT
+; ============================================================================
+;
+; Switches found:   34
+;   Jump tables:    32
+;   CMP chains:     2
+;   Computed:       0
+; Total cases:      142
+; Max cases/switch: 64
+;
+; Detected Switches:
+;
+; Switch #1 at $0040C2:
+;   Type:       jump_table
+;   Table:      $008D5D
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #2 at $004413:
+;   Type:       cmp_chain
+;   Index Reg:  A
+;   Cases:      2
+;   Case Details:
+;     Value   Target      Label
+;     -----   --------    -----
+;       193   $00441C     sw_4413_case_193
+;       198   $00441C     sw_4413_case_198
+;
+; Switch #3 at $00500C:
+;   Type:       jump_table
+;   Table:      $00797A
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #4 at $0050A7:
+;   Type:       jump_table
+;   Table:      $007F7E
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #5 at $005143:
+;   Type:       jump_table
+;   Table:      $00797A
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #6 at $0051F0:
+;   Type:       jump_table
+;   Table:      $007F7E
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #7 at $0059A7:
+;   Type:       cmp_chain
+;   Index Reg:  A
+;   Cases:      2
+;   Default:    $0059C2
+;   Case Details:
+;     Value   Target      Label
+;     -----   --------    -----
+;       191   $0059B5     sw_59A7_case_191
+;     deflt   $0059C2     sw_59A7_default
+;
+; Switch #8 at $006647:
+;   Type:       jump_table
+;   Table:      $007403
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #9 at $006667:
+;   Type:       jump_table
+;   Table:      $005600
+;   Index Reg:  X
+;   Cases:      2
+;   Case Details:
+;     Value   Target      Label
+;     -----   --------    -----
+;         0   $004C03     sw_6667_case_0
+;         1   $0054C5     sw_6667_case_1
+;
+; Switch #10 at $006671:
+;   Type:       jump_table
+;   Table:      $007000
+;   Index Reg:  X
+;   Cases:      64
+;     (too many cases to list - 64 total)
+;
+; Switch #11 at $006698:
+;   Type:       jump_table
+;   Table:      $007803
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #12 at $0066C0:
+;   Type:       jump_table
+;   Table:      $007E00
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #13 at $0066C4:
+;   Type:       jump_table
+;   Table:      $003800
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #14 at $006830:
+;   Type:       jump_table
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #15 at $006842:
+;   Type:       jump_table
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #16 at $0068B0:
+;   Type:       jump_table
+;   Table:      $00040F
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #17 at $0068BA:
+;   Type:       jump_table
+;   Table:      $00400F
+;   Index Reg:  X
+;   Cases:      64
+;     (too many cases to list - 64 total)
+;
+; Switch #18 at $006AC8:
+;   Type:       jump_table
+;   Table:      $003800
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #19 at $006B14:
+;   Type:       jump_table
+;   Table:      $007E00
+;   Index Reg:  X
+;   Cases:      0
+;
+; Switch #20 at $006B22:
+;   Type:       jump_table
+;   Table:      $005C03
+;   Index Reg:  X
+;   Cases:      8
+;   Case Details:
+;     Value   Target      Label
+;     -----   --------    -----
+;         0   $0099A0     sw_6B22_case_0
+;         1   $00A0A0     sw_6B22_case_1
+;         2   $00C3AE     sw_6B22_case_2
+;         3   $00A08A     sw_6B22_case_3
+;         4   $00A0D0     sw_6B22_case_4
+;         5   $0080F4     sw_6B22_case_5
+;         6   $00A5A0     sw_6B22_case_6
+;         7   $00D6A0     sw_6B22_case_7
+;
+; ... and 14 more switches
+
+; Cross-Reference Report
+; ======================
+; Total references: 1180
+;   Calls: 211  Jumps: 104  Branches: 584  Data: 264
+;
+; Target Address  Type     From Address
+; -------------- -------- --------------
+; $000000         INDIRECT  $006830
+; $000000         CALL     $006DBA
+; $000000         READ     $004104
+; $000000         CALL     $0069CC
+; $000000         CALL     $006C89
+; $000000         READ     $006991
+; $000000         INDIRECT  $006842
+; $000000         READ     $005224
+;
+; $000004         CALL     $006D5D
+;
+; $000010         CALL     $006BC1
+;
+; $000040         CALL     $006DB5
+;
+; $00005E         READ     $004B62
+;
+; $000080         WRITE    $006994
+;
+; $000081         READ     $00698E
+;
+; $000403         CALL     $0056C9
+; $000403         CALL     $0055D2
+; $000403         CALL     $005B8B
+; $000403         CALL     $004B23
+; $000403         CALL     $005B79
+; $000403         CALL     $005251
+; $000403         CALL     $005BA8
+;
+; $000416         JUMP     $00529E
+; $000416         CALL     $0054BC
+; $000416         JUMP     $00439B
+; $000416         JUMP     $004384
+; $000416         JUMP     $0043DD
+; $000416         CALL     $005458
+; $000416         CALL     $00436E
+; $000416         CALL     $005AF7
+; $000416         CALL     $004361
+; $000416         CALL     $005B2E
+; $000416         CALL     $004354
+; $000416         CALL     $004347
+; $000416         CALL     $0042F3
+; $000416         JUMP     $0042F9
+; $000416         CALL     $004306
+; $000416         CALL     $004313
+; $000416         CALL     $004320
+; $000416         CALL     $00432D
+; $000416         JUMP     $0043B2
+; $000416         CALL     $00433A
+; $000416         CALL     $004D5D
+; $000416         CALL     $004D6A
+;
+; $000462         JUMP     $005B5F
+; $000462         JUMP     $0044C1
+; $000462         JUMP     $00442D
+; $000462         CALL     $004ACD
+;
+; $00076B         BRANCH   $006F98
+;
+; $000810         CALL     $004079
+;
+; $000A55         CALL     $006A24
+;
+; $0010A4         BRANCH   $007021
+;
+; $0010A7         BRANCH   $007024
+;
+; $0010AD         WRITE    $005201
+;
+; $0010B9         BRANCH   $007036
+;
+; $0010BC         BRANCH   $007039
+;
+; $0010BF         BRANCH   $00703C
+;
+; $0010DA         BRANCH   $007057
+;
+; $001100         BRANCH   $00703F
+;
+; $0012F5         BRANCH   $006A52
+;
+; $001858         JUMP     $005E0B
+;
+; $002004         CALL     $00679D
+;
+; $002020         CALL     $00488E
+; $002020         CALL     $00488B
+;
+; $002824         CALL     $00422C
+;
+; $0034EB         BRANCH   $006A40
+;
+; $0034F7         BRANCH   $006A4C
+;
+; $003BEE         BRANCH   $006A43
+;
+; $003BF4         BRANCH   $006A49
+;
+; $003FF1         BRANCH   $006A46
+;
+; $004001         CALL     $0068E1
+;
+; $00400F         INDIRECT  $0068BA
+;
+; $00408A         BRANCH   $004080
+;
+; $004090         BRANCH   $004086
+;
+; $004096         BRANCH   $00408C
+;
+; $00409C         BRANCH   $004092
+;
+; $0040A2         BRANCH   $004098
+;
+; $0040A8         BRANCH   $00409E
+;
+; $0040C0         JUMP     $0052C0
+; $0040C0         CALL     $0054A2
+; $0040C0         CALL     $0059E0
+; $0040C0         CALL     $004BB8
+; $0040C0         CALL     $00543E
+; $0040C0         CALL     $005ABC
+; $0040C0         CALL     $005AC9
+; $0040C0         CALL     $004A17
+; $0040C0         JUMP     $005D31
+; $0040C0         JUMP     $00443E
+; $0040C0         CALL     $004BE1
+; $0040C0         CALL     $004AC5
+; $0040C0         CALL     $005B21
+; $0040C0         JUMP     $0044EC
+; $0040C0         JUMP     $005D24
+;
+; $0040E0         BRANCH   $00411D
+;
+; $0040F6         BRANCH   $004174
+;
+; $0040F8         BRANCH   $004118
+; $0040F8         BRANCH   $004176
+;
+; $0040FA         BRANCH   $004178
+;
+; $0040FC         BRANCH   $00417A
+;
+; $004105         WRITE    $0040C4
+;
+; $004106         BRANCH   $004184
+;
+; ... and 1080 more references
+
+; Stack Depth Analysis Report
+; ===========================
+; Entry depth: 0
+; Current depth: -1719
+; Min depth: -1719 (locals space: 1719 bytes)
+; Max depth: 61
+;
+; Stack Operations:
+;   Push: 95  Pull: 98
+;   JSR/JSL: 216  RTS/RTL: 205
+;
+; WARNING: Stack imbalance detected at $00411F
+;   Entry depth: 0, Return depth: -1719
+;
+; Inferred Local Variables:
+;   Stack frame size: 1719 bytes
+;   Offsets: S+$01 through S+$6B7
+
+; === Resolved Jump Tables ===
+;
+; Jump Table at $005600 (2 entries, 2-byte each)
+; Dispatch code at $006667 (indirect)
+;   [ 0] $004C03
+;   [ 1] $0054C5
+
+; === Hardware Context Analysis ===
+; Total I/O reads:  13
+; Total I/O writes: 5
+;
+; Subsystem Access Counts:
+;   Keyboard        : 7
+;   Speaker         : 7
+;   Joystick        : 1
+;   Video           : 3
+;
+; Final Video Mode: HIRES
+; Memory State: 80STORE=0 RAMRD=0 RAMWRT=0 ALTZP=0 LC_BANK=2 LC_RD=0 LC_WR=0
+; Speed Mode: Normal (1 MHz)
+;
+; Detected Hardware Patterns:
+;   - Speaker toggle detected (7 accesses)
+
+; Disassembly generated by DeAsmIIgs v2.0.0
+; Source: D:/Projects/rosetta_v2/misc/gd_main.bin
+; Base address: $004000
+; Size: 12800 bytes
+; Analysis: 0 functions, 181 call sites, 70 liveness, stack: +61 max
+
+        ; Emulation mode
+
+; === Analysis Summary ===
+; Basic blocks: 167
+; CFG edges: 1049
+; Loops detected: 198
+; Patterns matched: 510
+; Branch targets: 339
+; Functions: 70
+; Call edges: 155
+;
+; Loops:
+;   $00415B: while loop
+;   $004120: while loop
+;   $004128: while loop
+;   $004128: loop
+;   $0043B5: while loop
+;   $0043B9: while loop
+;   $0042FC: while loop
+;   $0042EC: while loop
+;   $0042EC: while loop
+;   $0042EC: while loop
+;   $0042EC: while loop
+;   $0057FE: while loop
+;   $004D73: while loop
+;   $004D77: while loop
+;   $004387: while loop
+;   $0056F3: while loop
+;   $005376: while loop
+;   $005376: while loop
+;   $005376: while loop
+;   $00573C: while loop
+;   $005370: while loop
+;   $005B79: while loop
+;   $005B8B: while loop
+;   $005B79: while loop
+;   $005B79: while loop
+;   $0052E5: while loop
+;   $0052E9: while loop
+;   $0043CD: while loop
+;   $00413E: while loop
+;   $00414E: while loop
+;   $004140: while loop
+;   $005852: while loop
+;   $00437A: while loop
+;   $00457F: while loop
+;   $004583: while loop
+;   $004641: while loop
+;   $004914: while loop
+;   $004658: while loop
+;   $0049DC: while loop
+;   $0040C0: while loop
+;   $0040F8: while loop
+;   $0040E0: while loop
+;   $00464B: while loop
+;   $004914: while loop
+;   $004A3D: while loop
+;   $0045A4: while loop
+;   $0045A4: while loop
+;   $0045F9: while loop
+;   $0045EC: while loop
+;   $0045EC: while loop
+;   $0052F3: while loop
+;   $005316: while loop
+;   $0052C9: while loop
+;   $0052A1: while loop
+;   $0040C0: while loop
+;   $0052C3: while loop
+;   $00527F: while loop
+;   $005B70: loop
+;   $005B62: loop
+;   $004F5B: while loop
+;   $004F5F: while loop
+;   $004F9F: while loop
+;   $004F35: while loop
+;   $004F3D: loop
+;   $004F3B: loop
+;   $004F4D: loop
+;   $004F4B: loop
+;   $004AE0: while loop
+;   $004387: while loop
+;   $0043CD: while loop
+;   $004441: while loop
+;   $00448A: while loop
+;   $004455: while loop
+;   $004455: while loop
+;   $00447A: while loop
+;   $005C7A: while loop
+;   $0040C0: while loop
+;   $0040C0: while loop
+;   $005C90: while loop
+;   $004AE0: while loop
+;   $004D33: while loop
+;   $004C99: while loop
+;   $004C71: while loop
+;   $004C56: while loop
+;   $004D09: while loop
+;   $005C6E: while loop
+;   $005C6D: while loop
+;   $004CB7: while loop
+;   $004CB7: while loop
+;   $004CA8: while loop
+;   $005B62: while loop
+;   $004C3C: while loop
+;   $004C13: while loop
+;   $004C18: while loop
+;   $004BC1: while loop
+;   $004BC6: while loop
+;   $0040C0: while loop
+;   $004B98: while loop
+;   $004B9D: while loop
+;   $0040C0: while loop
+;   $004BEA: while loop
+;   $004BEF: while loop
+;   $005CD4: while loop
+;   $005CE3: while loop
+;   $005839: while loop
+;   $00413E: while loop
+;   $00437A: while loop
+;   $005B4F: while loop
+;   $005227: while loop
+;   $005251: while loop
+;   $00525D: while loop
+;   $005251: while loop
+;   $005251: while loop
+;   $005229: while loop
+;   $005227: while loop
+;   $005227: while loop
+;   $005227: while loop
+;   $0052C9: while loop
+;   $0044C4: while loop
+;   $0040C0: while loop
+;   $004D87: while loop
+;   $004D8C: while loop
+;   $00562E: while loop
+;   $005680: while loop
+;   $005657: while loop
+;   $0056A9: while loop
+;   $004DC4: while loop
+;   $004AE0: while loop
+;   $004441: while loop
+;   $004DC4: while loop
+;   $004DC4: while loop
+;   $004DC4: while loop
+;   $00597A: while loop
+;   $0043E0: while loop
+;   $00538E: while loop
+;   $0040C0: while loop
+;   $005591: while loop
+;   $004B0C: while loop
+;   $004B18: while loop
+;   $0055C9: while loop
+;   $0055E3: while loop
+;   $005529: while loop
+;   $00554F: while loop
+;   $0052A1: while loop
+;   $00527F: while loop
+;   $005461: while loop
+;   $005487: while loop
+;   $0040C0: while loop
+;   $0054C5: while loop
+;   $0054EB: while loop
+;   $0052A1: while loop
+;   $00527F: while loop
+;   $0053FD: while loop
+;   $005423: while loop
+;   $0040C0: while loop
+;   $005875: while loop
+;   $00450E: while loop
+;   $004512: while loop
+;   $0044C4: while loop
+;   $004499: while loop
+;   $005A13: while loop
+;   $005A9E: while loop
+;   $0040C0: while loop
+;   $0040C0: while loop
+;   $005AD0: while loop
+;   $005AE8: while loop
+;   $005AE8: while loop
+;   $005AE2: while loop
+;   $005B3C: while loop
+;   $005B3C: while loop
+;   $005839: while loop
+;   $0040C0: while loop
+;   $005839: while loop
+;   $004441: while loop
+;   $0044C4: while loop
+;   $0044C4: while loop
+;   $00437A: while loop
+;   $004B65: while loop
+;   $004B78: while loop
+;   $005A56: while loop
+;   $0044C4: while loop
+;   $00437A: while loop
+;   $004AE0: while loop
+;   $005A56: while loop
+;   $0056C9: while loop
+;   $0044C4: while loop
+;   $004441: while loop
+;   $0058CB: while loop
+;   $0044C4: while loop
+;   $004441: while loop
+;   $004AE0: while loop
+;   $004499: while loop
+;   $004B65: while loop
+;   $004A86: while loop
+;   $004AA5: while loop
+;   $0040C0: while loop
+;   $00439E: while loop
+;   $005809: while loop
+;
+; Pattern summary:
+;   GS/OS calls: 17
+;
+; Call graph:
+;   $0040C0: 10 caller(s)
+;   $004120: 1 caller(s)
+;   $00413E: 2 caller(s)
+;   $00415B: 1 caller(s)
+;   $0042EC: 4 caller(s)
+;   $0042FC: 1 caller(s)
+;   $00437A: 4 caller(s)
+;   $004387: 2 caller(s)
+;   $00439E: 2 caller(s)
+;   $0043B5: 1 caller(s)
+;   $0043CD: 2 caller(s)
+;   $0043E0: 1 caller(s)
+;   $004441: 5 caller(s)
+;   $004499: 2 caller(s)
+;   $0044C4: 7 caller(s)
+;   $0044EF: 2 caller(s)
+;   $00450E: 1 caller(s)
+;   $00457F: 1 caller(s)
+;   $004641: 1 caller(s)
+;   $00464B: 1 caller(s)
+;   $004658: 1 caller(s)
+;   $004914: 2 caller(s)
+;   $004940: 1 caller(s)
+;   $0049C6: 1 caller(s)
+;   $004A2F: 1 caller(s)
+;   $004A86: 1 caller(s)
+;   $004AE0: 5 caller(s)
+;   $004B0C: 1 caller(s)
+;   $004B65: 2 caller(s)
+;   $004C3C: 2 caller(s)
+;   $004C56: 1 caller(s)
+;   $004C71: 1 caller(s)
+;   $004C99: 1 caller(s)
+;   $004D33: 1 caller(s)
+;   $004D73: 1 caller(s)
+;   $004D87: 1 caller(s)
+;   $004DC4: 4 caller(s)
+;   $004DE3: 1 caller(s)
+;   $004E38: 1 caller(s)
+;   $004E8B: 1 caller(s)
+;   $004EE0: 1 caller(s)
+;   $004F35: 2 caller(s)
+;   $004F5B: 1 caller(s)
+;   $005227: 4 caller(s)
+;   $00527F: 7 caller(s)
+;   $0052A1: 8 caller(s)
+;   $0052C3: 2 caller(s)
+;   $0052C9: 3 caller(s)
+;   $0052CF: 2 caller(s)
+;   $0052E5: 1 caller(s)
+;   $0052F3: 1 caller(s)
+;   $00533B: 1 caller(s)
+;   $005370: 1 caller(s)
+;   $005376: 3 caller(s)
+;   $005591: 1 caller(s)
+;   $0055E3: 1 caller(s)
+;   $00560E: 5 caller(s)
+;   $0056C9: 1 caller(s)
+;   $0056E4: 2 caller(s)
+;   $0056F3: 1 caller(s)
+;   $005B4F: 8 caller(s)
+;   $005B62: 4 caller(s)
+;   $005B6F: 2 caller(s)
+;   $005B77: 1 caller(s)
+;   $005C1C: 4 caller(s)
+;   $005C28: 1 caller(s)
+;   $005C6C: 3 caller(s)
+;   $005C78: 1 caller(s)
+;   $005D14: 1 caller(s)
+;   $005D27: 1 caller(s)
+;
+
 
 ; --- Data region ---
 004000  49                      HEX     49
+; --- End data region (1 bytes) ---
+
+004001  24 12                         bit  $12            
+004003  49 24                         eor  #$24            ; A=A^$24
+
+; --- Data region ---
+004005  12                      HEX     12
+; --- End data region (1 bytes) ---
+
+004006  49 24                         eor  #$24            ; A=comp@$4006
+
+; --- Data region ---
+004008  12492412                HEX     12492412 49241249 24124924 12492412
+004018  49241249                HEX     49241249 24124924 12492412 49241249
+004028  11224408                HEX     11224408 11224408 11224408 11224408
+004038  11224408                HEX     11224408 11224408 11224408 11224408
+004048  11224408                HEX     11224408 11224408 21084210 04210842
+004058  10042108                HEX     10042108 42100421 08421004 21084210
+004068  04210842                HEX     04210842 10042108 42100421 08421004
+004078  41201008                HEX     41201008 04024120 10080402 41201008
+004088  04024120                HEX     04024120 10080402 41201008 04024120
+004098  10080402                HEX     10080402 41201008 7F7F7F7F 7F7F7F7F
+0040A8  7F7F7F7F                HEX     7F7F7F7F 7F7F7F7F 7F7F7F7F 7F7F7F7F
+0040B8  7F7F7F7F                HEX     7F7F7F7F 7F7F7F7F
 
 ; === while loop starts here (counter: X 'i') ===
 
-; FUNC $004001: register -> A:X []
-; Proto: uint32_t func_004001(uint16_t param_X);
-; Liveness: params(X) returns(A,X,Y) [9 dead stores]
-; --- End data region (1 bytes) ---
-
-004001  24 12             DrawSprite    bit  $12            
-004003  49 24                         eor  #$24            ; A=A^$24
-004005  12 49                         ora  ($49)           ; A=A^$24
-004007  24 12                         bit  $12             ; A=A^$24
-004009  49 24                         eor  #$24            ; A=A^$24
-00400B  12 49                         ora  ($49)           ; A=A^$24
-00400D  24 12                         bit  $12             ; A=A^$24
-00400F  49 24                         eor  #$24            ; A=A^$24
-004011  12 49                         ora  ($49)           ; A=A^$24
-004013  24 12                         bit  $12             ; A=A^$24
-004015  49 24                         eor  #$24            ; A=A^$24
-004017  12 49                         ora  ($49)           ; A=A^$24
-004019  24 12                         bit  $12             ; A=A^$24
-00401B  49 24                         eor  #$24            ; A=A^$24
-00401D  12 49                         ora  ($49)           ; A=A^$24
-00401F  24 12                         bit  $12             ; A=A^$24
-004021  49 24                         eor  #$24            ; A=A^$24
-004023  12 49                         ora  ($49)           ; A=A^$24
-004025  24 12                         bit  $12             ; A=A^$24
-004027  49 11                         eor  #$11            ; A=A^$11
-; LUMA: gsos_inline_call
-004029  22 44 08 11                   jsl  >$110844        ; A=A^$11
-; LUMA: gsos_inline_call
-00402D  22 44 08 11                   jsl  >$110844        ; A=A^$11 ; [SP-3]
-; LUMA: gsos_inline_call
-004031  22 44 08 11                   jsl  >$110844        ; A=A^$11 ; [SP-6]
-; LUMA: gsos_inline_call
-004035  22 44 08 11                   jsl  >$110844        ; A=A^$11 ; [SP-9]
-; LUMA: gsos_inline_call
-004039  22 44 08 11                   jsl  >$110844        ; A=A^$11 ; [SP-12]
-; LUMA: gsos_inline_call
-00403D  22 44 08 11                   jsl  >$110844        ; A=A^$11 ; [SP-15]
-; LUMA: gsos_inline_call
-004041  22 44 08 11                   jsl  >$110844        ; A=A^$11 ; [SP-18]
-; LUMA: gsos_inline_call
-004045  22 44 08 11                   jsl  >$110844        ; A=A^$11 ; [SP-21]
-; LUMA: gsos_inline_call
-004049  22 44 08 11                   jsl  >$110844        ; A=A^$11 ; [SP-24]
-; LUMA: gsos_inline_call
-00404D  22 44 08 21                   jsl  >$210844        ; A=A^$11 ; [SP-27]
-004051  08                            php                  ; A=A^$11 ; [SP-28]
-004052  42 10                         wdm  #$10            ; A=A^$11 ; [SP-28]
-004054  04 21                         tsb  $21             ; A=A^$11 ; [SP-28]
-004056  08                            php                  ; A=A^$11 ; [SP-29]
-004057  42 10                         wdm  #$10            ; A=A^$11 ; [SP-29]
-004059  04 21                         tsb  $21             ; A=A^$11 ; [SP-29]
-00405B  08                            php                  ; A=A^$11 ; [SP-30]
-00405C  42 10                         wdm  #$10            ; A=A^$11 ; [SP-30]
-00405E  04 21                         tsb  $21             ; A=A^$11 ; [SP-30]
-004060  08                            php                  ; A=A^$11 ; [SP-31]
-004061  42 10                         wdm  #$10            ; A=A^$11 ; [SP-31]
-004063  04 21                         tsb  $21             ; A=A^$11 ; [SP-31]
-004065  08                            php                  ; A=A^$11 ; [SP-32]
-004066  42 10                         wdm  #$10            ; A=A^$11 ; [SP-32]
-004068  04 21                         tsb  $21             ; A=A^$11 ; [SP-32]
-00406A  08                            php                  ; A=A^$11 ; [SP-33]
-00406B  42 10                         wdm  #$10            ; A=A^$11 ; [SP-33]
-00406D  04 21                         tsb  $21             ; A=A^$11 ; [SP-33]
-00406F  08                            php                  ; A=A^$11 ; [SP-34]
-004070  42 10                         wdm  #$10            ; A=A^$11 ; [SP-34]
-004072  04 21                         tsb  $21             ; A=A^$11 ; [SP-34]
-004074  08                            php                  ; A=A^$11 ; [SP-35]
-004075  42 10                         wdm  #$10            ; A=A^$11 ; [SP-35]
-004077  04 41                         tsb  $41             ; A=A^$11 ; [SP-35]
-004079  20 10 08                      jsr  $0810           ; A=A^$11 ; [SP-37]
-00407C  04 02                         tsb  $02             ; A=A^$11 ; [SP-37]
-00407E  41 20                         eor  ($20,X)         ; A=A^$11 ; [SP-37]
-004080  10 08                         bpl  L_00408A        ; A=A^$11 ; [SP-37]
-004082  04 02                         tsb  $02             ; A=A^$11 ; [SP-37]
-004084  41 20                         eor  ($20,X)         ; A=A^$11 ; [SP-37]
-004086  10 08                         bpl  L_004090        ; A=A^$11 ; [SP-37]
-004088  04 02                         tsb  $02             ; A=A^$11 ; [SP-37]
-00408A  41 20             L_00408A    eor  ($20,X)         ; A=A^$11 ; [SP-37]
-00408C  10 08                         bpl  L_004096        ; A=A^$11 ; [SP-37]
-00408E  04 02                         tsb  $02             ; A=A^$11 ; [SP-37]
-004090  41 20             L_004090    eor  ($20,X)         ; A=A^$11 ; [SP-37]
-004092  10 08                         bpl  L_00409C        ; A=A^$11 ; [SP-37]
-004094  04 02                         tsb  $02             ; A=A^$11 ; [SP-37]
-004096  41 20             L_004096    eor  ($20,X)         ; A=A^$11 ; [SP-37]
-004098  10 08                         bpl  $40A2           ; A=A^$11 ; [SP-37]
-00409A  04 02                         tsb  $02             ; A=A^$11 ; [SP-37]
-00409C  41 20             L_00409C    eor  ($20,X)         ; A=A^$11 ; [SP-37]
-00409E  10 08                         bpl  L_0040A8        ; A=A^$11 ; [SP-37]
-0040A0  7F 7F 7F 7F                   adc  >$7F7F7F,X      ; A=A^$11 ; [SP-37]
-0040A4  7F 7F 7F 7F                   adc  >$7F7F7F,X      ; A=A^$11 ; [SP-37]
-0040A8  7F 7F 7F 7F       L_0040A8    adc  >$7F7F7F,X      ; A=A^$11 ; [SP-37]
-0040AC  7F 7F 7F 7F                   adc  >$7F7F7F,X      ; A=A^$11 ; [SP-37]
-0040B0  7F 7F 7F 7F                   adc  >$7F7F7F,X      ; A=A^$11 ; [SP-37]
-0040B4  7F 7F 7F 7F                   adc  >$7F7F7F,X      ; A=A^$11 ; [SP-37]
-0040B8  7F 7F 7F 7F                   adc  >$7F7F7F,X      ; A=A^$11 ; [SP-37]
-0040BC  7F 7F 7F 7F                   adc  >$7F7F7F,X      ; A=A^$11 ; [SP-37]
-
-; === while loop starts here (counter: $00, range: 0..17265, step: 17268, iters: 74302934238097) [nest:1] [inner] ===
-
-; FUNC $0040C0: register -> A:X [L]
-; Proto: uint32_t func_0040C0(void);
+; FUNC $0040C0 (DrawSpriteXY): register -> A:X [L]
+; Proto: uint32_t DrawSpriteXY(void);
 ; Liveness: returns(A,X,Y) [2 dead stores]
-0040C0  A8                DrawSpriteXY    tay                  ; A=A^$11 Y=A ; [SP-37]
+; --- End data region (184 bytes) ---
+
+0040C0  A8                            tay                  ; A=comp@$4006 Y=A ; [SP-37]
 ; LUMA: data_array_y
-0040C1  B9 7C 5D                      lda  $5D7C,Y         ; A=A^$11 Y=A ; [SP-37]
-0040C4  8D 05 41                      sta  $4105           ; A=A^$11 Y=A ; [SP-37]
+0040C1  B9 7C 5D                      lda  $5D7C,Y         ; A=comp@$4006 Y=A ; [SP-37]
+0040C4  8D 05 41                      sta  $4105           ; A=comp@$4006 Y=A ; [SP-37]
 ; LUMA: data_array_y
-0040C7  B9 1D 5E                      lda  $5E1D,Y         ; A=A^$11 Y=A ; [SP-37]
-0040CA  8D 06 41                      sta  $4106           ; A=A^$11 Y=A ; [SP-37]
+0040C7  B9 1D 5E                      lda  $5E1D,Y         ; A=comp@$4006 Y=A ; [SP-37]
+0040CA  8D 06 41                      sta  $4106           ; A=comp@$4006 Y=A ; [SP-37]
 0040CD  A5 02                         lda  $02             ; A=[$0002] Y=A ; [SP-37]
 0040CF  85 03                         sta  $03             ; A=[$0002] Y=A ; [SP-37]
 0040D1  18                            clc                  ; A=[$0002] Y=A ; [SP-37]
@@ -955,13 +2946,13 @@
 0040DB  79 5F 5F                      adc  $5F5F,Y         ; A=[$0004] X=[$0004] Y=A ; [SP-37]
 0040DE  85 05                         sta  $05             ; A=[$0004] X=[$0004] Y=A ; [SP-37]
 
-; === while loop starts here (counter: $00, range: 0..17372, step: 17373, iters: 96795677972487) [nest:15] [inner] ===
-0040E0  E0 C0             DrawSprite_RowLoop    cpx  #$C0            ; A=[$0004] X=[$0004] Y=A ; [SP-37]
-0040E2  B0 3B                         bcs  DrawSprite_Done        ; A=[$0004] X=[$0004] Y=A ; [SP-37]
+; === while loop starts here (counter: X 'iter_x', iters: 77326591215179) [nest:14] ===
+0040E0  E0 C0                         cpx  #$C0            ; A=[$0004] X=[$0004] Y=A ; [SP-37]
+0040E2  B0 3B                         bcs  DrawSprite_Done ; A=[$0004] X=[$0004] Y=A ; [SP-37]
 0040E4  E4 08                         cpx  $08             ; A=[$0004] X=[$0004] Y=A ; [SP-37]
-0040E6  90 25                         bcc  DrawSprite_NextRow        ; A=[$0004] X=[$0004] Y=A ; [SP-37]
+0040E6  90 25                         bcc  DrawSprite_NextRow ; A=[$0004] X=[$0004] Y=A ; [SP-37]
 0040E8  E4 09                         cpx  $09             ; A=[$0004] X=[$0004] Y=A ; [SP-37]
-0040EA  B0 21                         bcs  DrawSprite_NextRow        ; A=[$0004] X=[$0004] Y=A ; [SP-37]
+0040EA  B0 21                         bcs  DrawSprite_NextRow ; A=[$0004] X=[$0004] Y=A ; [SP-37]
 ; LUMA: data_array_x
 0040EC  BD 6C 41                      lda  $416C,X         ; A=[$0004] X=[$0004] Y=A ; [SP-37]
 0040EF  85 06                         sta  $06             ; A=[$0004] X=[$0004] Y=A ; [SP-37]
@@ -970,96 +2961,82 @@
 0040F4  85 07                         sta  $07             ; A=[$0004] X=[$0004] Y=A ; [SP-37]
 0040F6  A4 03                         ldy  $03             ; A=[$0004] X=[$0004] Y=A ; [SP-37]
 
-; === while loop starts here (counter: $00 '', range: 0..17320, step: 17132, iters: 73581379732397) [nest:16] [inner] ===
-0040F8  C0 28             DrawSprite_ColLoop    cpy  #$28            ; A=[$0004] X=[$0004] Y=A ; [SP-37]
-0040FA  B0 11                         bcs  DrawSprite_NextRow        ; A=[$0004] X=[$0004] Y=A ; [SP-37]
+; === while loop starts here (counter: Y 'iter_y') [nest:15] ===
+0040F8  C0 28                         cpy  #$28            ; A=[$0004] X=[$0004] Y=A ; [SP-37]
+0040FA  B0 11                         bcs  DrawSprite_NextRow ; A=[$0004] X=[$0004] Y=A ; [SP-37]
 0040FC  C4 0A                         cpy  $0A             ; A=[$0004] X=[$0004] Y=A ; [SP-37]
-0040FE  90 0D                         bcc  DrawSprite_NextRow        ; A=[$0004] X=[$0004] Y=A ; [SP-37]
+0040FE  90 0D                         bcc  DrawSprite_NextRow ; A=[$0004] X=[$0004] Y=A ; [SP-37]
 004100  C4 0B                         cpy  $0B             ; A=[$0004] X=[$0004] Y=A ; [SP-37]
-004102  B0 09                         bcs  DrawSprite_NextRow        ; A=[$0004] X=[$0004] Y=A ; [SP-37]
+004102  B0 09                         bcs  DrawSprite_NextRow ; A=[$0004] X=[$0004] Y=A ; [SP-37]
 ; LUMA: hw_keyboard_read
 004104  AD 00 00                      lda  !$0000          ; A=[$0000] X=[$0004] Y=A ; [SP-37]
 004107  49 FF                         eor  #$FF            ; A=A^$FF X=[$0004] Y=A ; [SP-37]
 004109  31 06                         and  ($06),Y         ; A=A^$FF X=[$0004] Y=A ; [SP-37]
 00410B  91 06                         sta  ($06),Y         ; A=A^$FF X=[$0004] Y=A ; [SP-37]
-00410D  EE 05 41          DrawSprite_NextRow    inc  $4105           ; A=A^$FF X=[$0004] Y=A ; [SP-37]
-004110  D0 03                         bne  DrawSprite_IncCol        ; A=A^$FF X=[$0004] Y=A ; [SP-37]
+00410D  EE 05 41                      inc  $4105           ; A=A^$FF X=[$0004] Y=A ; [SP-37]
+004110  D0 03                         bne  DrawSprite_IncCol ; A=A^$FF X=[$0004] Y=A ; [SP-37]
 004112  EE 06 41                      inc  $4106           ; A=A^$FF X=[$0004] Y=A ; [SP-37]
-004115  C8                DrawSprite_IncCol    iny                  ; A=A^$FF X=[$0004] Y=Y+$01 ; [SP-37]
+004115  C8                            iny                  ; A=A^$FF X=[$0004] Y=Y+$01 ; [SP-37]
 004116  C4 02                         cpy  $02             ; A=A^$FF X=[$0004] Y=Y+$01 ; [SP-37]
-004118  90 DE                         bcc  DrawSprite_ColLoop        ; A=A^$FF X=[$0004] Y=Y+$01 ; [SP-37]
-; === End of while loop (counter: $00) ===
+004118  90 DE                         bcc  DrawSprite_ColLoop ; A=A^$FF X=[$0004] Y=Y+$01 ; [SP-37]
+; === End of while loop (counter: Y) ===
 
 00411A  E8                            inx                  ; A=A^$FF X=X+$01 Y=Y+$01 ; [SP-37]
 00411B  E4 05                         cpx  $05             ; A=A^$FF X=X+$01 Y=Y+$01 ; [SP-37]
-00411D  90 C1                         bcc  DrawSprite_RowLoop        ; A=A^$FF X=X+$01 Y=Y+$01 ; [SP-37]
-; === End of while loop (counter: $00) ===
+00411D  90 C1                         bcc  DrawSprite_RowLoop ; A=A^$FF X=X+$01 Y=Y+$01 ; [SP-37]
+; === End of while loop (counter: X) ===
 
 ; LUMA: epilogue_rts
-00411F  60                DrawSprite_Done    rts                  ; A=A^$FF X=X+$01 Y=Y+$01 ; [SP-35]
+00411F  60                            rts                  ; A=A^$FF X=X+$01 Y=Y+$01 ; [SP-35]
 
-; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:7] ===
+; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:6] ===
 
-; FUNC $004120: register -> A:X [I]
-; Proto: uint32_t func_004120(void);
+; FUNC $004120 (InitHiRes): register -> A:X [I]
+; Proto: uint32_t InitHiRes(void);
 ; Liveness: returns(A,X,Y) [2 dead stores]
 ; ---------------------------------------------------------------------------
-; INIT HI-RES ($4120) - InitHiRes
-; HOW: Fills $2000-$3FFF with $00 (black, 8192 bytes = 32 pages × 256),
-;      then reads three soft switches to set the video mode:
-;        $C050 (TXTCLR) = switch from text to graphics
-;        $C057 (HIRES)  = select hi-res (not lo-res)
-;        $C052 (MIXCLR) = full-screen graphics (no 4-line text window)
-;
-; WHY read (LDA) not write (STA) for soft switches: On the Apple II,
-;      these switches are memory-mapped I/O that toggle on ANY access.
-;      LDA is used because it doesn't modify any register we care about
-;      (the value read is meaningless). STA would also work but would
-;      write a byte to the I/O address, which some peripherals interpret.
-;
-; WHY no page flipping: Most smooth-animation games alternate between
-;      HGR page 1 ($2000) and page 2 ($4000), drawing on the hidden
-;      page while displaying the other. Genetic Drift can't do this
-;      because its code starts at $4000 - it would overwrite page 2!
-;      Instead, it draws directly to page 1 (some flicker is visible).
+; INIT HI-RES ($4120)
+; Clears HGR page 1 ($2000-$3FFF), then enables graphics mode:
+;   $C050 = TXTCLR (graphics), $C057 = HIRES, $C052 = MIXCLR (full screen)
+; No page flipping - this game uses page 1 only.
 ; ---------------------------------------------------------------------------
-004120  A9 00             InitHiRes    lda  #$00            ; A=$0000 X=X+$01 Y=Y+$01 ; [SP-35]
+004120  A9 00                         lda  #$00            ; A=$0000 X=X+$01 Y=Y+$01 ; [SP-35]
 004122  A2 20                         ldx  #$20            ; A=$0000 X=$0020 Y=Y+$01 ; [SP-35]
 004124  A8                            tay                  ; A=$0000 X=$0020 Y=$0000 ; [SP-35]
 004125  8E 2A 41                      stx  $412A           ; A=$0000 X=$0020 Y=$0000 ; [SP-35]
 
-; === while loop starts here (counter: Y 'iter_y') [nest:16] ===
-004128  99 00 40          InitHiRes_ClearLoop    sta  $4000,Y         ; A=$0000 X=$0020 Y=$0000 ; [SP-35]
+; === while loop starts here (counter: Y 'iter_y') [nest:15] ===
+004128  99 00 40                      sta  $4000,Y         ; A=$0000 X=$0020 Y=$0000 ; [SP-35]
 00412B  C8                            iny                  ; A=$0000 X=$0020 Y=$0001 ; [SP-35]
-00412C  D0 FA                         bne  InitHiRes_ClearLoop        ; A=$0000 X=$0020 Y=$0001 ; [SP-35]
+00412C  D0 FA                         bne  InitHiRes_ClearLoop ; A=$0000 X=$0020 Y=$0001 ; [SP-35]
 ; === End of while loop (counter: Y) ===
 
 00412E  EE 2A 41                      inc  $412A           ; A=$0000 X=$0020 Y=$0001 ; [SP-35]
 ; LUMA: loop_dex_bne
 004131  CA                            dex                  ; A=$0000 X=$001F Y=$0001 ; [SP-35]
-004132  D0 F4                         bne  InitHiRes_ClearLoop        ; A=$0000 X=$001F Y=$0001 ; [SP-35]
+004132  D0 F4                         bne  InitHiRes_ClearLoop ; A=$0000 X=$001F Y=$0001 ; [SP-35]
 ; === End of loop (counter: X) ===
 
 ; LUMA: hw_keyboard_read
 ; -- video_mode_read: Enable graphics mode --
-004134  AD 50 C0                      lda  $C050           ; TXTCLR - Enable graphics mode {Video} <video_mode_read>
+004134  AD 50 C0                      lda  TXTCLR          ; TXTCLR - Enable graphics mode {Video} <video_mode_read>
 ; LUMA: hw_keyboard_read
-004137  AD 57 C0                      lda  $C057           ; HIRES - Hi-res graphics mode {Video} <video_mode_read>
+004137  AD 57 C0                      lda  HIRES           ; HIRES - Hi-res graphics mode {Video} <video_mode_read>
 ; LUMA: hw_keyboard_read
-00413A  AD 52 C0                      lda  $C052           ; MIXCLR - Full screen graphics {Video} <video_mode_read>
+00413A  AD 52 C0                      lda  MIXCLR          ; MIXCLR - Full screen graphics {Video} <video_mode_read>
 ; LUMA: epilogue_rts
 00413D  60                            rts                  ; A=[$C052] X=$001F Y=$0001 ; [SP-33]
 
-; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:7] ===
+; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:6] ===
 
-; FUNC $00413E: register -> A:X [L]
-; Proto: uint32_t func_00413E(void);
+; FUNC $00413E (ClearPlayfield): register -> A:X [L]
+; Proto: uint32_t ClearPlayfield(void);
 ; Liveness: returns(A,X,Y)
-00413E  A6 08             ClearPlayfield    ldx  $08             ; A=[$C052] X=$001F Y=$0001 ; [SP-33]
+00413E  A6 08                         ldx  $08             ; A=[$C052] X=$001F Y=$0001 ; [SP-33]
 
-; === while loop starts here (counter: X 'iter_x') [nest:18] ===
+; === while loop starts here (counter: X 'iter_x') [nest:17] ===
 ; LUMA: data_array_x
-004140  BD 6C 41          ClearPF_RowLoop    lda  $416C,X         ; -> $418B ; A=[$C052] X=$001F Y=$0001 ; [SP-33]
+004140  BD 6C 41                      lda  $416C,X         ; -> $418B ; A=[$C052] X=$001F Y=$0001 ; [SP-33]
 004143  85 06                         sta  $06             ; A=[$C052] X=$001F Y=$0001 ; [SP-33]
 ; LUMA: data_array_x
 004145  BD 2C 42                      lda  $422C,X         ; -> $424B ; A=[$C052] X=$001F Y=$0001 ; [SP-33]
@@ -1067,27 +3044,27 @@
 00414A  A4 0A                         ldy  $0A             ; A=[$C052] X=$001F Y=$0001 ; [SP-33]
 00414C  A9 00                         lda  #$00            ; A=$0000 X=$001F Y=$0001 ; [SP-33]
 
-; === while loop starts here (counter: Y 'iter_y') [nest:19] ===
-00414E  91 06             ClearPF_ColLoop    sta  ($06),Y         ; A=$0000 X=$001F Y=$0001 ; [SP-33]
+; === while loop starts here (counter: Y 'iter_y') [nest:18] ===
+00414E  91 06                         sta  ($06),Y         ; A=$0000 X=$001F Y=$0001 ; [SP-33]
 004150  C8                            iny                  ; A=$0000 X=$001F Y=$0002 ; [SP-33]
 004151  C4 0B                         cpy  $0B             ; A=$0000 X=$001F Y=$0002 ; [SP-33]
-004153  90 F9                         bcc  ClearPF_ColLoop        ; A=$0000 X=$001F Y=$0002 ; [SP-33]
+004153  90 F9                         bcc  ClearPF_ColLoop ; A=$0000 X=$001F Y=$0002 ; [SP-33]
 ; === End of while loop (counter: Y) ===
 
 004155  E8                            inx                  ; A=$0000 X=$0020 Y=$0002 ; [SP-33]
 004156  E4 09                         cpx  $09             ; A=$0000 X=$0020 Y=$0002 ; [SP-33]
-004158  90 E6                         bcc  ClearPF_RowLoop        ; A=$0000 X=$0020 Y=$0002 ; [SP-33]
+004158  90 E6                         bcc  ClearPF_RowLoop ; A=$0000 X=$0020 Y=$0002 ; [SP-33]
 ; === End of while loop (counter: X) ===
 
 ; LUMA: epilogue_rts
 00415A  60                            rts                  ; A=$0000 X=$0020 Y=$0002 ; [SP-31]
 
-; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:10] ===
+; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:9] ===
 
-; FUNC $00415B: register -> A:X []
-; Proto: uint32_t func_00415B(uint16_t param_X, uint16_t param_Y);
+; FUNC $00415B (SetClipBounds): register -> A:X []
+; Proto: uint32_t SetClipBounds(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y)
-00415B  A9 09             SetClipBounds    lda  #$09            ; A=$0009 X=$0020 Y=$0002 ; [SP-31]
+00415B  A9 09                         lda  #$09            ; A=$0009 X=$0020 Y=$0002 ; [SP-31]
 00415D  85 0A                         sta  $0A             ; A=$0009 X=$0020 Y=$0002 ; [SP-31]
 00415F  A9 01                         lda  #$01            ; A=$0001 X=$0020 Y=$0002 ; [SP-31]
 004161  85 08                         sta  $08             ; A=$0001 X=$0020 Y=$0002 ; [SP-31]
@@ -1137,15 +3114,15 @@
 0042CC  22262A2E                HEX     22262A2E 32363A3E 22262A2E 32363A3E
 0042DC  23272B2F                HEX     23272B2F 33373B3F 23272B2F 33373B3F
 
-; === while loop starts here [nest:19] ===
+; === while loop starts here [nest:18] ===
 
-; FUNC $0042EC: register -> A:X []
-; Proto: uint32_t func_0042EC(uint16_t param_A);
+; FUNC $0042EC (PrintHexByte): register -> A:X []
+; Proto: uint32_t PrintHexByte(uint16_t param_A);
 ; Frame: push_only [saves: A]
 ; Liveness: params(A) returns(A,X,Y) [20 dead stores]
 ; --- End data region (384 bytes) ---
 
-0042EC  48                PrintHexByte    pha                  ; A=$00C0 X=$0020 Y=$0002 ; [SP-41]
+0042EC  48                            pha                  ; A=$00C0 X=$0020 Y=$0002 ; [SP-41]
 0042ED  4A                            lsr  a               ; A=$00C0 X=$0020 Y=$0002 ; [SP-41]
 0042EE  4A                            lsr  a               ; A=$00C0 X=$0020 Y=$0002 ; [SP-41]
 0042EF  4A                            lsr  a               ; A=$00C0 X=$0020 Y=$0002 ; [SP-41]
@@ -1156,11 +3133,11 @@
 0042F7  29 0F                         and  #$0F            ; A=A&$0F X=$0020 Y=$0002 ; [SP-42]
 0042F9  4C 16 04                      jmp  $0416           ; A=A&$0F X=$0020 Y=$0002 ; [SP-42]
 
-; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:9] ===
+; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:8] ===
 
-; FUNC $0042FC: unknown -> A:X []
+; FUNC $0042FC (DrawTitleScreen): unknown -> A:X []
 ; Liveness: returns(A,X,Y) [16 dead stores]
-0042FC  A9 01             DrawTitleScreen    lda  #$01            ; A=$0001 X=$0020 Y=$0002 ; [SP-42]
+0042FC  A9 01                         lda  #$01            ; A=$0001 X=$0020 Y=$0002 ; [SP-42]
 0042FE  85 02                         sta  $02             ; A=$0001 X=$0020 Y=$0002 ; [SP-42]
 004300  A9 08                         lda  #$08            ; A=$0008 X=$0020 Y=$0002 ; [SP-42]
 004302  85 04                         sta  $04             ; A=$0008 X=$0020 Y=$0002 ; [SP-42]
@@ -1214,69 +3191,69 @@
 00436A  85 04                         sta  $04             ; A=$0084 X=$0020 Y=$0002 ; [SP-58]
 00436C  A9 19                         lda  #$19            ; A=$0019 X=$0020 Y=$0002 ; [SP-58]
 00436E  20 16 04                      jsr  $0416           ; Call $000416(A)
-004371  20 87 43                      jsr  InitGameVarsB        ; A=$0019 X=$0020 Y=$0002 ; [SP-62]
-004374  20 9E 43                      jsr  InitGameVarsC        ; A=$0019 X=$0020 Y=$0002 ; [SP-64]
-004377  4C CD 43                      jmp  PerFrameUpdate        ; A=$0019 X=$0020 Y=$0002 ; [SP-64]
+004371  20 87 43                      jsr  InitGameVarsB   ; A=$0019 X=$0020 Y=$0002 ; [SP-62]
+004374  20 9E 43                      jsr  InitGameVarsC   ; A=$0019 X=$0020 Y=$0002 ; [SP-64]
+004377  4C CD 43                      jmp  PerFrameUpdate  ; A=$0019 X=$0020 Y=$0002 ; [SP-64]
 
-; === while loop starts here (counter: $00) [nest:8] [inner] ===
+; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:7] ===
 
-; FUNC $00437A: register -> A:X [L]
+; FUNC $00437A (InitGameVarsA): register -> A:X [L]
 ; Liveness: returns(A,X,Y) [7 dead stores]
-00437A  A9 56             InitGameVarsA    lda  #$56            ; A=$0056 X=$0020 Y=$0002 ; [SP-64]
+00437A  A9 56                         lda  #$56            ; A=$0056 X=$0020 Y=$0002 ; [SP-64]
 00437C  85 04                         sta  $04             ; A=$0056 X=$0020 Y=$0002 ; [SP-64]
 00437E  A9 17                         lda  #$17            ; A=$0017 X=$0020 Y=$0002 ; [SP-64]
 004380  85 02                         sta  $02             ; A=$0017 X=$0020 Y=$0002 ; [SP-64]
 004382  A9 18                         lda  #$18            ; A=$0018 X=$0020 Y=$0002 ; [SP-64]
 004384  4C 16 04                      jmp  $0416           ; A=$0018 X=$0020 Y=$0002 ; [SP-64]
 
-; === while loop starts here (counter: A 'counter_a') [nest:13] ===
+; === while loop starts here (counter: A 'counter_a') [nest:12] ===
 
-; FUNC $004387: unknown -> A:X []
+; FUNC $004387 (InitGameVarsB): unknown -> A:X []
 ; Liveness: returns(A,X,Y) [6 dead stores]
-004387  A9 01             InitGameVarsB    lda  #$01            ; A=$0001 X=$0020 Y=$0002 ; [SP-64]
+004387  A9 01                         lda  #$01            ; A=$0001 X=$0020 Y=$0002 ; [SP-64]
 004389  85 02                         sta  $02             ; A=$0001 X=$0020 Y=$0002 ; [SP-64]
 00438B  A9 54                         lda  #$54            ; A=$0054 X=$0020 Y=$0002 ; [SP-64]
 00438D  85 04                         sta  $04             ; A=$0054 X=$0020 Y=$0002 ; [SP-64]
 00438F  A5 0D                         lda  $0D             ; A=[$000D] X=$0020 Y=$0002 ; [SP-64]
-004391  20 EC 42                      jsr  PrintHexByte        ; Call $0042EC(A)
+004391  20 EC 42                      jsr  PrintHexByte    ; Call $0042EC(A)
 ; === End of while loop ===
 
 004394  A5 0C                         lda  $0C             ; A=[$000C] X=$0020 Y=$0002 ; [SP-66]
-004396  20 EC 42                      jsr  PrintHexByte        ; Call $0042EC(A)
+004396  20 EC 42                      jsr  PrintHexByte    ; Call $0042EC(A)
 ; === End of while loop ===
 
 004399  A9 00                         lda  #$00            ; A=$0000 X=$0020 Y=$0002 ; [SP-68]
 00439B  4C 16 04                      jmp  $0416           ; A=$0000 X=$0020 Y=$0002 ; [SP-68]
 
-; === while loop starts here (counter: X 'i') [nest:24] ===
+; === while loop starts here (counter: $00 '', range: 0..22046, step: 22051, iters: 94850057786938) [nest:23] [inner] ===
 
-; FUNC $00439E: unknown -> A:X []
+; FUNC $00439E (InitGameVarsC): unknown -> A:X []
 ; Liveness: returns(A,X,Y) [3 dead stores]
-00439E  A9 01             InitGameVarsC    lda  #$01            ; A=$0001 X=$0020 Y=$0002 ; [SP-68]
+00439E  A9 01                         lda  #$01            ; A=$0001 X=$0020 Y=$0002 ; [SP-68]
 0043A0  85 02                         sta  $02             ; A=$0001 X=$0020 Y=$0002 ; [SP-68]
 0043A2  A9 74                         lda  #$74            ; A=$0074 X=$0020 Y=$0002 ; [SP-68]
 0043A4  85 04                         sta  $04             ; A=$0074 X=$0020 Y=$0002 ; [SP-68]
 0043A6  A5 0F                         lda  $0F             ; A=[$000F] X=$0020 Y=$0002 ; [SP-68]
-0043A8  20 EC 42                      jsr  PrintHexByte        ; Call $0042EC(A)
+0043A8  20 EC 42                      jsr  PrintHexByte    ; A=[$000F] X=$0020 Y=$0002 ; [SP-70]
 ; === End of while loop ===
 
 0043AB  A5 0E                         lda  $0E             ; A=[$000E] X=$0020 Y=$0002 ; [SP-70]
-0043AD  20 EC 42                      jsr  PrintHexByte        ; Call $0042EC(A)
+0043AD  20 EC 42                      jsr  PrintHexByte    ; A=[$000E] X=$0020 Y=$0002 ; [SP-72]
 ; === End of while loop ===
 
 0043B0  A9 00                         lda  #$00            ; A=$0000 X=$0020 Y=$0002 ; [SP-72]
 0043B2  4C 16 04                      jmp  $0416           ; A=$0000 X=$0020 Y=$0002 ; [SP-72]
 
-; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:15] ===
+; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:14] ===
 
-; FUNC $0043B5: register -> A:X [L]
-; Proto: uint32_t func_0043B5(void);
+; FUNC $0043B5 (SetupTitle): register -> A:X [L]
+; Proto: uint32_t SetupTitle(void);
 ; Liveness: returns(A,X,Y)
-0043B5  A0 08             SetupTitle    ldy  #$08            ; A=$0000 X=$0020 Y=$0008 ; [SP-72]
+0043B5  A0 08                         ldy  #$08            ; A=$0000 X=$0020 Y=$0008 ; [SP-72]
 0043B7  A2 00                         ldx  #$00            ; A=$0000 X=$0000 Y=$0008 ; [SP-72]
 
-; === while loop starts here (counter: X 'iter_x', range: 0..192, iters: 192) [nest:28] ===
-0043B9  BD 6C 41          L_0043B9    lda  $416C,X         ; A=$0000 X=$0000 Y=$0008 ; [SP-72]
+; === while loop starts here (counter: X 'iter_x', range: 0..192, iters: 192) [nest:27] ===
+0043B9  BD 6C 41          loc_0043B9  lda  $416C,X         ; A=$0000 X=$0000 Y=$0008 ; [SP-72]
 0043BC  85 06                         sta  $06             ; A=$0000 X=$0000 Y=$0008 ; [SP-72]
 ; LUMA: data_array_x
 0043BE  BD 2C 42                      lda  $422C,X         ; A=$0000 X=$0000 Y=$0008 ; [SP-72]
@@ -1285,95 +3262,82 @@
 0043C5  91 06                         sta  ($06),Y         ; A=$0094 X=$0000 Y=$0008 ; [SP-72]
 0043C7  E8                            inx                  ; A=$0094 X=$0001 Y=$0008 ; [SP-72]
 0043C8  E0 C0                         cpx  #$C0            ; A=$0094 X=$0001 Y=$0008 ; [SP-72]
-0043CA  90 ED                         bcc  L_0043B9        ; A=$0094 X=$0001 Y=$0008 ; [SP-72]
+0043CA  90 ED                         bcc  loc_0043B9      ; A=$0094 X=$0001 Y=$0008 ; [SP-72]
 ; === End of while loop (counter: X) ===
 
 ; LUMA: epilogue_rts
 0043CC  60                            rts                  ; A=$0094 X=$0001 Y=$0008 ; [SP-70]
 
-; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:13] ===
+; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:12] ===
 
-; FUNC $0043CD: register -> A:X [L]
-; Proto: uint32_t func_0043CD(uint16_t param_X, uint16_t param_Y);
+; FUNC $0043CD (PerFrameUpdate): register -> A:X [L]
+; Proto: uint32_t PerFrameUpdate(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [2 dead stores]
-0043CD  A9 03             PerFrameUpdate    lda  #$03            ; A=$0003 X=$0001 Y=$0008 ; [SP-70]
+0043CD  A9 03                         lda  #$03            ; A=$0003 X=$0001 Y=$0008 ; [SP-70]
 0043CF  85 02                         sta  $02             ; A=$0003 X=$0001 Y=$0008 ; [SP-70]
 0043D1  A9 8C                         lda  #$8C            ; A=$008C X=$0001 Y=$0008 ; [SP-70]
 0043D3  85 04                         sta  $04             ; A=$008C X=$0001 Y=$0008 ; [SP-70]
 0043D5  A5 10                         lda  $10             ; A=[$0010] X=$0001 Y=$0008 ; [SP-70]
 0043D7  C9 0A                         cmp  #$0A            ; A=[$0010] X=$0001 Y=$0008 ; [SP-70]
-0043D9  90 02                         bcc  PerFrameUpdate_JmpDraw        ; A=[$0010] X=$0001 Y=$0008 ; [SP-70]
+0043D9  90 02                         bcc  PerFrameUpdate_JmpDraw      ; A=[$0010] X=$0001 Y=$0008 ; [SP-70]
 0043DB  A9 09                         lda  #$09            ; A=$0009 X=$0001 Y=$0008 ; [SP-70]
-0043DD  4C 16 04          PerFrameUpdate_JmpDraw    jmp  $0416           ; A=$0009 X=$0001 Y=$0008 ; [SP-70]
+0043DD  4C 16 04          PerFrameUpdate_JmpDraw  jmp  $0416           ; A=$0009 X=$0001 Y=$0008 ; [SP-70]
 
-; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:11] ===
+; === while loop starts here (counter: $00, range: 0..22622, step: 22625, iters: 97272419342453) [nest:10] [inner] ===
 
-; FUNC $0043E0: register -> A:X [LI]
-; Proto: uint32_t func_0043E0(uint16_t param_X, uint16_t param_Y);
+; FUNC $0043E0 (KeyboardHandler): register -> A:X [LI]
+; Proto: uint32_t KeyboardHandler(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y)
 ; LUMA: hw_keyboard_read
 ; ============================================================================
 ; KEYBOARD HANDLER ($43E0)
 ; ============================================================================
-; HOW: Reads $C000 (keyboard latch). If high bit set (key pressed),
-;      clears strobe at $C010 and dispatches via CMP chain.
-;      Direction keys store 0-3 in $11. Fire key sets $36 flag.
-;      A/F keys jump to 4-direction fire routine (limited uses).
-;
-; WHY these keys: The layout forms a diamond on the keyboard:
-;        Y (up)
-;      G (left)  J (right)
-;       SPACE (down)
-;      This matches the on-screen directional layout of the game.
-;      ESC was the original fire key but players complained about
-;      wearing it out, so A and F were added as the "super shot"
-;      that fires in all 4 directions simultaneously.
-;
-; WHY high-bit ASCII: Apple II keyboard returns ASCII + $80.
-;      Y = $59 + $80 = $D9, J = $4A + $80 = $CA, etc.
-;      Space = $20 + $80 = $A0, ESC = $1B + $80 = $9B.
-;
-; Direction values:  0=UP  1=RIGHT  2=DOWN  3=LEFT
+; Direction keys set $11 (current direction):
+;   Y ($D9) = UP (0)      J ($CA) = RIGHT (1)
+;   SPACE ($A0) = DOWN (2) G ($C7) = LEFT (3)
+; Fire keys:
+;   ESC ($9B) = Fire in current direction (sets $36 flag)
+;   A ($C1) / F ($C6) = 4-direction simultaneous fire (limited ammo)
 ; ============================================================================
-0043E0  AD 00 C0          KeyboardHandler    lda  $C000           ; KBD - Keyboard data / 80STORE off {Keyboard} <keyboard_read>
-0043E3  10 12                         bpl  Key_NoKey        ; A=[$C000] X=$0001 Y=$0008 ; [SP-70]
-0043E5  8D 10 C0                      sta  $C010           ; KBDSTRB - Clear keyboard strobe {Keyboard} <keyboard_strobe>
+0043E0  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off {Keyboard} <keyboard_read>
+0043E3  10 12                         bpl  $43F7           ; A=[$C000] X=$0001 Y=$0008 ; [SP-70]
+0043E5  8D 10 C0                      sta  CLRKBD          ; KBDSTRB - Clear keyboard strobe {Keyboard} <keyboard_strobe>
 0043E8  C9 9B                         cmp  #$9B            ; A=[$C000] X=$0001 Y=$0008 ; [SP-70]  ; key: ESC (fire)
-0043EA  D0 03                         bne  Key_CheckY        ; A=[$C000] X=$0001 Y=$0008 ; [SP-70]
+0043EA  D0 03                         bne  $43EF           ; A=[$C000] X=$0001 Y=$0008 ; [SP-70]
 0043EC  85 36                         sta  $36             ; A=[$C000] X=$0001 Y=$0008 ; [SP-70]
 ; LUMA: epilogue_rts
 0043EE  60                            rts                  ; A=[$C000] X=$0001 Y=$0008 ; [SP-68]
-0043EF  C9 D9             Key_CheckY    cmp  #$D9            ; A=[$C000] X=$0001 Y=$0008 ; [SP-68]  ; key: Y (direction UP)
-0043F1  D0 05                         bne  Key_CheckJ        ; A=[$C000] X=$0001 Y=$0008 ; [SP-68]
+0043EF  C9 D9                         cmp  #$D9            ; A=[$C000] X=$0001 Y=$0008 ; [SP-68]  ; key: Y (direction UP)
+0043F1  D0 05                         bne  Key_CheckJ      ; A=[$C000] X=$0001 Y=$0008 ; [SP-68]
 0043F3  A9 00                         lda  #$00            ; A=$0000 X=$0001 Y=$0008 ; [SP-68]
 0043F5  85 11                         sta  $11             ; A=$0000 X=$0001 Y=$0008 ; [SP-68]
 ; LUMA: epilogue_rts
-0043F7  60                Key_NoKey    rts                  ; A=$0000 X=$0001 Y=$0008 ; [SP-66]
-0043F8  C9 CA             Key_CheckJ    cmp  #$CA            ; A=$0000 X=$0001 Y=$0008 ; [SP-66]  ; key: J (direction RIGHT)
-0043FA  D0 05                         bne  Key_CheckSpace        ; A=$0000 X=$0001 Y=$0008 ; [SP-66]
+0043F7  60                            rts                  ; A=$0000 X=$0001 Y=$0008 ; [SP-66]
+0043F8  C9 CA             Key_CheckJ  cmp  #$CA            ; A=$0000 X=$0001 Y=$0008 ; [SP-66]  ; key: J (direction RIGHT)
+0043FA  D0 05                         bne  Key_CheckSpace      ; A=$0000 X=$0001 Y=$0008 ; [SP-66]
 0043FC  A9 01                         lda  #$01            ; A=$0001 X=$0001 Y=$0008 ; [SP-66]
 0043FE  85 11                         sta  $11             ; A=$0001 X=$0001 Y=$0008 ; [SP-66]
 ; LUMA: epilogue_rts
 004400  60                            rts                  ; A=$0001 X=$0001 Y=$0008 ; [SP-64]
-004401  C9 A0             Key_CheckSpace    cmp  #$A0            ; A=$0001 X=$0001 Y=$0008 ; [SP-64]  ; key: SPACE (direction DOWN)
-004403  D0 05                         bne  Key_CheckG        ; A=$0001 X=$0001 Y=$0008 ; [SP-64]
+004401  C9 A0             Key_CheckSpace  cmp  #$A0            ; A=$0001 X=$0001 Y=$0008 ; [SP-64]  ; key: SPACE (direction DOWN)
+004403  D0 05                         bne  Key_CheckG      ; A=$0001 X=$0001 Y=$0008 ; [SP-64]
 004405  A9 02                         lda  #$02            ; A=$0002 X=$0001 Y=$0008 ; [SP-64]
 004407  85 11                         sta  $11             ; A=$0002 X=$0001 Y=$0008 ; [SP-64]
 ; LUMA: epilogue_rts
 004409  60                            rts                  ; A=$0002 X=$0001 Y=$0008 ; [SP-62]
-00440A  C9 C7             Key_CheckG    cmp  #$C7            ; A=$0002 X=$0001 Y=$0008 ; [SP-62]  ; key: G (direction LEFT)
-00440C  D0 05                         bne  Key_CheckAF        ; A=$0002 X=$0001 Y=$0008 ; [SP-62]
+00440A  C9 C7             Key_CheckG  cmp  #$C7            ; A=$0002 X=$0001 Y=$0008 ; [SP-62]  ; key: G (direction LEFT)
+00440C  D0 05                         bne  Key_CheckAF      ; A=$0002 X=$0001 Y=$0008 ; [SP-62]
 00440E  A9 03                         lda  #$03            ; A=$0003 X=$0001 Y=$0008 ; [SP-62]
 004410  85 11                         sta  $11             ; A=$0003 X=$0001 Y=$0008 ; [SP-62]
 ; LUMA: epilogue_rts
 004412  60                            rts                  ; A=$0003 X=$0001 Y=$0008 ; [SP-60]
-004413  C9 C1             Key_CheckAF    cmp  #$C1            ; A=$0003 X=$0001 Y=$0008 ; [SP-60]  ; key: A (4-dir fire)
-004415  F0 05                         beq  Key_4DirFire        ; A=$0003 X=$0001 Y=$0008 ; [SP-60]
+004413  C9 C1             Key_CheckAF  cmp  #$C1            ; A=$0003 X=$0001 Y=$0008 ; [SP-60]  ; key: A (4-dir fire)
+004415  F0 05                         beq  Key_4DirFire      ; A=$0003 X=$0001 Y=$0008 ; [SP-60]
 004417  C9 C6                         cmp  #$C6            ; A=$0003 X=$0001 Y=$0008 ; [SP-60]  ; key: F (4-dir fire)
-004419  F0 01                         beq  Key_4DirFire        ; A=$0003 X=$0001 Y=$0008 ; [SP-60]
+004419  F0 01                         beq  Key_4DirFire      ; A=$0003 X=$0001 Y=$0008 ; [SP-60]
 ; LUMA: epilogue_rts
 00441B  60                            rts                  ; A=$0003 X=$0001 Y=$0008 ; [SP-58]
-00441C  4C 81 53          Key_4DirFire    jmp  Fire4Dir        ; A=$0003 X=$0001 Y=$0008 ; [SP-58]
+00441C  4C 81 53          Key_4DirFire  jmp  Fire4Dir        ; A=$0003 X=$0001 Y=$0008 ; [SP-58]
 ; LUMA: data_array_x
 
 ; --- Data region ---
@@ -1381,27 +3345,27 @@
 00442F  04BD3C5D                HEX     04BD3C5D 8502BD44 5D85048A 18691A4C
 00443F  C040                    HEX     C040
 
-; === while loop starts here (counter: $00 '', range: 0..21184, step: 16576, iters: 91491393360691) [nest:23] [inner] ===
+; === while loop starts here (counter: Y 'j') [nest:22] ===
 
-; FUNC $004441: register -> A:X []
-; Proto: uint32_t func_004441(void);
+; FUNC $004441 (ClearSpriteArea): register -> A:X []
+; Proto: uint32_t ClearSpriteArea(void);
 ; Liveness: returns(A,X,Y)
 ; --- End data region (34 bytes) ---
 
-004441  E0 03             ClearSpriteArea    cpx  #$03            ; A=$0003 X=$0001 Y=$0008 ; [SP-58]
-004443  F0 31                         beq  ClearSprite_Right        ; A=$0003 X=$0001 Y=$0008 ; [SP-58]
+004441  E0 03                         cpx  #$03            ; A=$0003 X=$0001 Y=$0008 ; [SP-58]
+004443  F0 31                         beq  ClearSprite_Right      ; A=$0003 X=$0001 Y=$0008 ; [SP-58]
 004445  E0 02                         cpx  #$02            ; A=$0003 X=$0001 Y=$0008 ; [SP-58]
-004447  F0 22                         beq  ClearSprite_Down        ; A=$0003 X=$0001 Y=$0008 ; [SP-58]
+004447  F0 22                         beq  $446B           ; A=$0003 X=$0001 Y=$0008 ; [SP-58]
 004449  E0 01                         cpx  #$01            ; A=$0003 X=$0001 Y=$0008 ; [SP-58]
-00444B  F0 45                         beq  ClearSprite_Left        ; A=$0003 X=$0001 Y=$0008 ; [SP-58]
+00444B  F0 45                         beq  ClearSprite_Left      ; A=$0003 X=$0001 Y=$0008 ; [SP-58]
 00444D  A2 00                         ldx  #$00            ; A=$0003 X=$0000 Y=$0008 ; [SP-58]
 00444F  A0 18                         ldy  #$18            ; A=$0003 X=$0000 Y=$0018 ; [SP-58]
 004451  A9 51                         lda  #$51            ; A=$0051 X=$0000 Y=$0018 ; [SP-58]
 004453  85 05                         sta  $05             ; A=$0051 X=$0000 Y=$0018 ; [SP-58]
 
-; === while loop starts here (counter: $00 '', range: 0..23409, step: 23408, iters: 100532299520872) [nest:36] [inner] ===
+; === while loop starts here (counter: X 'iter_x') [nest:35] ===
 ; LUMA: data_array_x
-004455  BD 6C 41          ClearSprite_Loop    lda  $416C,X         ; A=$0051 X=$0000 Y=$0018 ; [SP-58]
+004455  BD 6C 41          ClearSprite_Loop  lda  $416C,X         ; A=$0051 X=$0000 Y=$0018 ; [SP-58]
 004458  85 06                         sta  $06             ; A=$0051 X=$0000 Y=$0018 ; [SP-58]
 ; LUMA: data_array_x
 00445A  BD 2C 42                      lda  $422C,X         ; A=$0051 X=$0000 Y=$0018 ; [SP-58]
@@ -1411,23 +3375,23 @@
 004463  91 06                         sta  ($06),Y         ; A=$0073 X=$0000 Y=$0018 ; [SP-58]
 004465  E8                            inx                  ; A=$0073 X=$0001 Y=$0018 ; [SP-58]
 004466  E4 05                         cpx  $05             ; A=$0073 X=$0001 Y=$0018 ; [SP-58]
-004468  D0 EB                         bne  ClearSprite_Loop        ; A=$0073 X=$0001 Y=$0018 ; [SP-58]
+004468  D0 EB                         bne  ClearSprite_Loop      ; A=$0073 X=$0001 Y=$0018 ; [SP-58]
 ; === End of while loop (counter: $00) ===
 
 ; LUMA: epilogue_rts
 00446A  60                            rts                  ; A=$0073 X=$0001 Y=$0018 ; [SP-56]
-00446B  A2 6E             ClearSprite_Down    ldx  #$6E            ; A=$0073 X=$006E Y=$0018 ; [SP-56]
+00446B  A2 6E                         ldx  #$6E            ; A=$0073 X=$006E Y=$0018 ; [SP-56]
 00446D  A0 18                         ldy  #$18            ; A=$0073 X=$006E Y=$0018 ; [SP-56]
 00446F  A5 09                         lda  $09             ; A=[$0009] X=$006E Y=$0018 ; [SP-56]
 004471  85 05                         sta  $05             ; A=[$0009] X=$006E Y=$0018 ; [SP-56]
-004473  4C 55 44                      jmp  ClearSprite_Loop        ; A=[$0009] X=$006E Y=$0018 ; [SP-56]
-; === End of while loop (counter: $00) ===
+004473  4C 55 44                      jmp  ClearSprite_Loop      ; A=[$0009] X=$006E Y=$0018 ; [SP-56]
+; === End of while loop (counter: X) ===
 
-004476  A0 09             ClearSprite_Right    ldy  #$09            ; A=[$0009] X=$006E Y=$0009 ; [SP-56]
+004476  A0 09             ClearSprite_Right  ldy  #$09            ; A=[$0009] X=$006E Y=$0009 ; [SP-56]
 004478  A9 17                         lda  #$17            ; A=$0017 X=$006E Y=$0009 ; [SP-56]
 
-; === while loop starts here (counter: $00 '', range: 0..20376, step: 20469, iters: 87943750373367) [nest:36] [inner] ===
-00447A  85 05             L_00447A    sta  $05             ; A=$0017 X=$006E Y=$0009 ; [SP-56]
+; === while loop starts here (counter: Y 'iter_y') [nest:35] ===
+00447A  85 05             loc_00447A  sta  $05             ; A=$0017 X=$006E Y=$0009 ; [SP-56]
 00447C  A2 60                         ldx  #$60            ; A=$0017 X=$0060 Y=$0009 ; [SP-56]
 00447E  BD 6C 41                      lda  $416C,X         ; -> $41CC ; A=$0017 X=$0060 Y=$0009 ; [SP-56]
 004481  85 06                         sta  $06             ; A=$0017 X=$0060 Y=$0009 ; [SP-56]
@@ -1436,30 +3400,30 @@
 004486  85 07                         sta  $07             ; A=$0017 X=$0060 Y=$0009 ; [SP-56]
 004488  A9 00                         lda  #$00            ; A=$0000 X=$0060 Y=$0009 ; [SP-56]
 
-; === while loop starts here (counter: $00 '', range: 0..21275, step: 21307, iters: 91676076954430) [nest:37] [inner] ===
-00448A  91 06             L_00448A    sta  ($06),Y         ; A=$0000 X=$0060 Y=$0009 ; [SP-56]
+; === while loop starts here (counter: Y 'iter_y', iters: 84043920067689) [nest:36] ===
+00448A  91 06             irq_00448A  sta  ($06),Y         ; A=$0000 X=$0060 Y=$0009 ; [SP-56]
 00448C  C8                            iny                  ; A=$0000 X=$0060 Y=$000A ; [SP-56]
 00448D  C4 05                         cpy  $05             ; A=$0000 X=$0060 Y=$000A ; [SP-56]
-00448F  D0 F9                         bne  L_00448A        ; A=$0000 X=$0060 Y=$000A ; [SP-56]
-; === End of while loop (counter: $00) ===
+00448F  D0 F9                         bne  irq_00448A      ; A=$0000 X=$0060 Y=$000A ; [SP-56]
+; === End of while loop (counter: Y) ===
 
 ; LUMA: epilogue_rts
 004491  60                            rts                  ; A=$0000 X=$0060 Y=$000A ; [SP-54]
-004492  A0 1A             ClearSprite_Left    ldy  #$1A            ; A=$0000 X=$0060 Y=$001A ; [SP-54]
+004492  A0 1A             ClearSprite_Left  ldy  #$1A            ; A=$0000 X=$0060 Y=$001A ; [SP-54]
 004494  A5 0B                         lda  $0B             ; A=[$000B] X=$0060 Y=$001A ; [SP-54]
-004496  4C 7A 44                      jmp  L_00447A        ; A=[$000B] X=$0060 Y=$001A ; [SP-54]
-; === End of while loop (counter: $00) ===
+004496  4C 7A 44                      jmp  loc_00447A      ; A=[$000B] X=$0060 Y=$001A ; [SP-54]
+; === End of while loop (counter: Y) ===
 
 
-; === while loop starts here (counter: X 'iter_x') [nest:35] ===
+; === while loop starts here (counter: $00, range: 0..20417, step: 20420, iters: 82398947592943) [nest:34] [inner] ===
 
-; FUNC $004499: register -> A:X []
-; Proto: uint32_t func_004499(uint16_t param_Y);
+; FUNC $004499 (DrawProjectile): register -> A:X []
+; Proto: uint32_t DrawProjectile(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y) [13 dead stores]
-004499  20 EF 44          DrawProjectile    jsr  DrawHitFlash_B        ; A=[$000B] X=$0060 Y=$001A ; [SP-56]
+004499  20 EF 44                      jsr  $44EF           ; A=[$000B] X=$0060 Y=$001A ; [SP-56]
 00449C  A6 19                         ldx  $19             ; A=[$000B] X=$0060 Y=$001A ; [SP-56]
 00449E  A5 1A                         lda  $1A             ; A=[$001A] X=$0060 Y=$001A ; [SP-56]
-0044A0  D0 0F                         bne  L_0044B1        ; A=[$001A] X=$0060 Y=$001A ; [SP-56]
+0044A0  D0 0F                         bne  $44B1           ; A=[$001A] X=$0060 Y=$001A ; [SP-56]
 ; LUMA: data_array_x
 0044A2  BD AA 47                      lda  $47AA,X         ; -> $480A ; A=[$001A] X=$0060 Y=$001A ; [SP-56]
 0044A5  85 02                         sta  $02             ; A=[$001A] X=$0060 Y=$001A ; [SP-56]
@@ -1467,26 +3431,26 @@
 0044AA  AA                            tax                  ; A=[$001A] X=[$001A] Y=$001A ; [SP-56]
 ; LUMA: data_array_x
 0044AB  BD D3 48                      lda  $48D3,X         ; A=[$001A] X=[$001A] Y=$001A ; [SP-56]
-0044AE  4C BD 44                      jmp  L_0044BD        ; A=[$001A] X=[$001A] Y=$001A ; [SP-56]
-0044B1  BD AD 48          L_0044B1    lda  $48AD,X         ; A=[$001A] X=[$001A] Y=$001A ; [SP-56]
+0044AE  4C BD 44                      jmp  loc_0044BD      ; A=[$001A] X=[$001A] Y=$001A ; [SP-56]
+0044B1  BD AD 48                      lda  $48AD,X         ; A=[$001A] X=[$001A] Y=$001A ; [SP-56]
 0044B4  85 02                         sta  $02             ; A=[$001A] X=[$001A] Y=$001A ; [SP-56]
 0044B6  BD 8B 47                      lda  $478B,X         ; A=[$001A] X=[$001A] Y=$001A ; [SP-56]
 0044B9  AA                            tax                  ; A=[$001A] X=[$001A] Y=$001A ; [SP-56]
 ; LUMA: data_array_x
 0044BA  BD D3 48                      lda  $48D3,X         ; A=[$001A] X=[$001A] Y=$001A ; [SP-56]
-0044BD  18                L_0044BD    clc                  ; A=[$001A] X=[$001A] Y=$001A ; [SP-56]
+0044BD  18                loc_0044BD  clc                  ; A=[$001A] X=[$001A] Y=$001A ; [SP-56]
 0044BE  6D 09 45                      adc  $4509           ; A=[$001A] X=[$001A] Y=$001A ; [SP-56]
 0044C1  4C 62 04                      jmp  $0462           ; A=[$001A] X=[$001A] Y=$001A ; [SP-56]
 
-; === while loop starts here (counter: $00, range: 0..22210, step: 22212, iters: 95361158895289) [nest:5] [inner] ===
+; === while loop starts here (counter: $00) [nest:4] [inner] ===
 
-; FUNC $0044C4: register -> A:X [I]
-; Proto: uint32_t func_0044C4(uint16_t param_Y);
+; FUNC $0044C4 (DrawHitFlash): register -> A:X [I]
+; Proto: uint32_t DrawHitFlash(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y) [7 dead stores]
-0044C4  20 EF 44          DrawHitFlash    jsr  DrawHitFlash_B        ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
+0044C4  20 EF 44                      jsr  $44EF           ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
 0044C7  A6 19                         ldx  $19             ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
 0044C9  A5 1A                         lda  $1A             ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
-0044CB  D0 0F                         bne  L_0044DC        ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
+0044CB  D0 0F                         bne  $44DC           ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
 ; LUMA: data_array_x
 0044CD  BD AA 47                      lda  $47AA,X         ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
 0044D0  85 02                         sta  $02             ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
@@ -1494,24 +3458,24 @@
 0044D5  AA                            tax                  ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
 ; LUMA: data_array_x
 0044D6  BD D3 48                      lda  $48D3,X         ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
-0044D9  4C E8 44                      jmp  L_0044E8        ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
-0044DC  BD AD 48          L_0044DC    lda  $48AD,X         ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
+0044D9  4C E8 44                      jmp  loc_0044E8      ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
+0044DC  BD AD 48                      lda  $48AD,X         ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
 0044DF  85 02                         sta  $02             ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
 0044E1  BD 8B 47                      lda  $478B,X         ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
 0044E4  AA                            tax                  ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
 ; LUMA: data_array_x
 0044E5  BD D3 48                      lda  $48D3,X         ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
-0044E8  18                L_0044E8    clc                  ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
+0044E8  18                loc_0044E8  clc                  ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
 0044E9  6D 09 45                      adc  $4509           ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
-0044EC  4C C0 40                      jmp  DrawSpriteXY        ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
+0044EC  4C C0 40                      jmp  DrawSpriteXY    ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
 ; === End of while loop (counter: $00) ===
 
 
-; FUNC $0044EF: register -> A:X [L]
-; Proto: uint32_t func_0044EF(uint16_t param_X, uint16_t param_Y);
+; FUNC $0044EF (DrawHitFlash_B): register -> A:X [L]
+; Proto: uint32_t DrawHitFlash_B(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [1 dead stores]
 ; LUMA: data_array_x
-0044EF  BD 48 5D          DrawHitFlash_B    lda  $5D48,X         ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
+0044EF  BD 48 5D                      lda  $5D48,X         ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
 0044F2  85 19                         sta  $19             ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
 ; LUMA: data_array_x
 0044F4  BD 4C 5D                      lda  $5D4C,X         ; A=[$001A] X=[$001A] Y=$001A ; [SP-58]
@@ -1532,64 +3496,64 @@
 ; --- Data region ---
 004509  001E1E82                HEX     001E1E82 89
 
-; === while loop starts here (counter: X 'iter_x') [nest:15] ===
+; === while loop starts here (counter: $00 '', range: 0..20471, step: 20476, iters: 87269440507897) [nest:14] [inner] ===
 
-; FUNC $00450E: register -> A:X []
-; Proto: uint32_t func_00450E(uint16_t param_Y);
+; FUNC $00450E (PeriodicGameLogic): register -> A:X []
+; Proto: uint32_t PeriodicGameLogic(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y) [8 dead stores]
 ; --- End data region (5 bytes) ---
 
-00450E  A2 03             PeriodicGameLogic    ldx  #$03            ; A=[$001A] X=$0003 Y=$001A ; [SP-59]
+00450E  A2 03                         ldx  #$03            ; A=[$001A] X=$0003 Y=$001A ; [SP-59]
 004510  86 12                         stx  $12             ; A=[$001A] X=$0003 Y=$001A ; [SP-59]
 
-; === while loop starts here [nest:43] ===
-004512  A6 12             L_004512    ldx  $12             ; A=[$001A] X=$0003 Y=$001A ; [SP-59]
+; === while loop starts here (counter: $00, range: 0..20468, step: 20469, iters: 87634512727986) [nest:42] [inner] ===
+004512  A6 12             loc_004512  ldx  $12             ; A=[$001A] X=$0003 Y=$001A ; [SP-59]
 ; LUMA: data_array_x
 004514  BD 54 5D                      lda  $5D54,X         ; -> $5D57 ; A=[$001A] X=$0003 Y=$001A ; [SP-59]
-004517  F0 61                         beq  L_00457A        ; A=[$001A] X=$0003 Y=$001A ; [SP-59]
-004519  20 C4 44                      jsr  DrawHitFlash        ; A=[$001A] X=$0003 Y=$001A ; [SP-61]
-; === End of while loop (counter: X) ===
+004517  F0 61                         beq  loc_00457A      ; A=[$001A] X=$0003 Y=$001A ; [SP-59]
+004519  20 C4 44                      jsr  DrawHitFlash    ; A=[$001A] X=$0003 Y=$001A ; [SP-61]
+; === End of while loop (counter: $00) ===
 
 00451C  A6 12                         ldx  $12             ; A=[$001A] X=$0003 Y=$001A ; [SP-61]
 00451E  E0 03                         cpx  #$03            ; A=[$001A] X=$0003 Y=$001A ; [SP-61]
-004520  F0 28                         beq  L_00454A        ; A=[$001A] X=$0003 Y=$001A ; [SP-61]
+004520  F0 28                         beq  $454A           ; A=[$001A] X=$0003 Y=$001A ; [SP-61]
 004522  E0 02                         cpx  #$02            ; A=[$001A] X=$0003 Y=$001A ; [SP-61]
-004524  F0 14                         beq  L_00453A        ; A=[$001A] X=$0003 Y=$001A ; [SP-61]
+004524  F0 14                         beq  $453A           ; A=[$001A] X=$0003 Y=$001A ; [SP-61]
 004526  E0 01                         cpx  #$01            ; A=[$001A] X=$0003 Y=$001A ; [SP-61]
-004528  F0 30                         beq  L_00455A        ; A=[$001A] X=$0003 Y=$001A ; [SP-61]
+004528  F0 30                         beq  $455A           ; A=[$001A] X=$0003 Y=$001A ; [SP-61]
 ; LUMA: data_array_x
 00452A  BD 50 5D                      lda  $5D50,X         ; -> $5D53 ; A=[$001A] X=$0003 Y=$001A ; [SP-61]
 00452D  18                            clc                  ; A=[$001A] X=$0003 Y=$001A ; [SP-61]
 00452E  69 01                         adc  #$01            ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
 004530  C9 60                         cmp  #$60            ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
-004532  B0 46                         bcs  L_00457A        ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
+004532  B0 46                         bcs  loc_00457A      ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
 004534  9D 50 5D                      sta  $5D50,X         ; -> $5D53 ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
-004537  4C 77 45                      jmp  L_004577        ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
+004537  4C 77 45                      jmp  loc_004577      ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
 ; LUMA: data_array_x
-00453A  BD 50 5D          L_00453A    lda  $5D50,X         ; -> $5D53 ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
+00453A  BD 50 5D                      lda  $5D50,X         ; -> $5D53 ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
 00453D  38                            sec                  ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
 00453E  E9 01                         sbc  #$01            ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
 004540  C9 60                         cmp  #$60            ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
-004542  90 36                         bcc  L_00457A        ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
+004542  90 36                         bcc  loc_00457A      ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
 004544  9D 50 5D                      sta  $5D50,X         ; -> $5D53 ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
-004547  4C 77 45                      jmp  L_004577        ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
+004547  4C 77 45                      jmp  loc_004577      ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
 ; LUMA: data_array_x
-00454A  BD 48 5D          L_00454A    lda  $5D48,X         ; -> $5D4B ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
+00454A  BD 48 5D                      lda  $5D48,X         ; -> $5D4B ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
 00454D  18                            clc                  ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
 00454E  69 01                         adc  #$01            ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
 004550  C9 AB                         cmp  #$AB            ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
-004552  B0 26                         bcs  L_00457A        ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
+004552  B0 26                         bcs  loc_00457A      ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
 004554  9D 48 5D                      sta  $5D48,X         ; -> $5D4B ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
-004557  4C 77 45                      jmp  L_004577        ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
+004557  4C 77 45                      jmp  loc_004577      ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
 ; LUMA: data_array_x
-00455A  BD 4C 5D          L_00455A    lda  $5D4C,X         ; -> $5D4F ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
-00455D  D0 07                         bne  L_004566        ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
+00455A  BD 4C 5D                      lda  $5D4C,X         ; -> $5D4F ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
+00455D  D0 07                         bne  $4566           ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
 ; LUMA: data_array_x
 00455F  BD 48 5D                      lda  $5D48,X         ; -> $5D4B ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
 004562  C9 AB                         cmp  #$AB            ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
-004564  90 14                         bcc  L_00457A        ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
+004564  90 14                         bcc  loc_00457A      ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
 ; LUMA: data_array_x
-004566  BD 48 5D          L_004566    lda  $5D48,X         ; -> $5D4B ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
+004566  BD 48 5D                      lda  $5D48,X         ; -> $5D4B ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
 004569  38                            sec                  ; A=A+$01 X=$0003 Y=$001A ; [SP-61]
 00456A  E9 01                         sbc  #$01            ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
 00456C  9D 48 5D                      sta  $5D48,X         ; -> $5D4B ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
@@ -1597,66 +3561,54 @@
 00456F  BD 4C 5D                      lda  $5D4C,X         ; -> $5D4F ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
 004572  E9 00                         sbc  #$00            ; A=A X=$0003 Y=$001A ; [SP-61]
 004574  9D 4C 5D                      sta  $5D4C,X         ; -> $5D4F ; A=A X=$0003 Y=$001A ; [SP-61]
-004577  20 99 44          L_004577    jsr  DrawProjectile        ; A=A X=$0003 Y=$001A ; [SP-63]
-; === End of while loop (counter: X) ===
+004577  20 99 44          loc_004577  jsr  DrawProjectile  ; A=A X=$0003 Y=$001A ; [SP-63]
+; === End of while loop (counter: $00) ===
 
-00457A  C6 12             L_00457A    dec  $12             ; A=A X=$0003 Y=$001A ; [SP-63]
-00457C  10 94                         bpl  L_004512        ; A=A X=$0003 Y=$001A ; [SP-63]
-; === End of while loop ===
+00457A  C6 12             loc_00457A  dec  $12             ; A=A X=$0003 Y=$001A ; [SP-63]
+00457C  10 94                         bpl  loc_004512      ; A=A X=$0003 Y=$001A ; [SP-63]
+; === End of while loop (counter: $00) ===
 
 ; LUMA: epilogue_rts
 00457E  60                            rts                  ; A=A X=$0003 Y=$001A ; [SP-61]
 
-; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:22] ===
+; === while loop starts here (counter: $00) [nest:21] [inner] ===
 
-; FUNC $00457F: register -> A:X []
-; Proto: uint32_t func_00457F(uint16_t param_Y);
+; FUNC $00457F (MoveAllLasers): register -> A:X []
+; Proto: uint32_t MoveAllLasers(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y) [5 dead stores]
 ; ---------------------------------------------------------------------------
-; MOVE ALL LASERS ($457F) - MoveAllLasers
-; HOW: Loops X=3 down to 0, checking if projectile X is active ($5D58,X).
-;      For each active laser, updates position based on direction:
-;        UP (X=0):    $5D64,X (Y) -= 3 via SBC #$03 at $45A2
-;        LEFT (X=1):  $5D5C,X (X pos) -= 3 via SBC #$03 at $45D9
-;        DOWN (X=2):  $5D64,X (Y) += 3 via ADC #$03 at $45C4
-;        RIGHT (X=3): $5D5C,X (X pos) += 3 via ADC #$03 at $4615
-;
-; WHY 3 pixels/tick: At the default frame rate, 3 pixels per tick gives
-;      a visually smooth trajectory without skipping over thin targets.
-;      Collision detection uses simple coordinate comparison (not
-;      bounding box), so the laser "passes through" the alien's line -
-;      3 pixels ensures no alien (7 pixels wide) is ever skipped.
-;
-; WHY separate tables per direction: Each direction needs different
-;      coordinate updates (X vs Y, add vs subtract). Using 4-entry
-;      indexed tables ($5D48-$5D73) with X as the direction index
-;      avoids 4 separate code paths and makes the loop compact.
+; MOVE ALL LASERS ($457F)
+; Moves all 4 laser beams (one per direction):
+;   UP (dir 0):    Y -= 3 pixels
+;   LEFT (dir 1):  X -= 3 pixels
+;   DOWN (dir 2):  Y += 3 pixels
+;   RIGHT (dir 3): X += 3 pixels
 ; ---------------------------------------------------------------------------
-00457F  A2 03             MoveAllLasers    ldx  #$03            ; A=A X=$0003 Y=$001A ; [SP-61]
+00457F  A2 03                         ldx  #$03            ; A=A X=$0003 Y=$001A ; [SP-61]
 004581  86 12                         stx  $12             ; A=A X=$0003 Y=$001A ; [SP-61]
 
-; === while loop starts here [nest:44] ===
-004583  A6 12             L_004583    ldx  $12             ; A=A X=$0003 Y=$001A ; [SP-61]
+; === while loop starts here [nest:43] ===
+004583  A6 12             loc_004583  ldx  $12             ; A=A X=$0003 Y=$001A ; [SP-61]
 ; LUMA: data_array_x
 004585  BD 58 5D                      lda  $5D58,X         ; -> $5D5B ; A=A X=$0003 Y=$001A ; [SP-61]
-004588  F0 6F                         beq  L_0045F9        ; A=A X=$0003 Y=$001A ; [SP-61]
+004588  F0 6F                         beq  loc_0045F9      ; A=A X=$0003 Y=$001A ; [SP-61]
 00458A  E0 03                         cpx  #$03            ; A=A X=$0003 Y=$001A ; [SP-61]
-00458C  F0 41                         beq  L_0045CF        ; A=A X=$0003 Y=$001A ; [SP-61]
+00458C  F0 41                         beq  $45CF           ; A=A X=$0003 Y=$001A ; [SP-61]
 00458E  E0 02                         cpx  #$02            ; A=A X=$0003 Y=$001A ; [SP-61]
-004590  F0 28                         beq  L_0045BA        ; A=A X=$0003 Y=$001A ; [SP-61]
+004590  F0 28                         beq  $45BA           ; A=A X=$0003 Y=$001A ; [SP-61]
 004592  E0 01                         cpx  #$01            ; A=A X=$0003 Y=$001A ; [SP-61]
-004594  F0 68                         beq  L_0045FE        ; A=A X=$0003 Y=$001A ; [SP-61]
+004594  F0 68                         beq  $45FE           ; A=A X=$0003 Y=$001A ; [SP-61]
 ; LUMA: data_array_x
 004596  BD 64 5D                      lda  $5D64,X         ; -> $5D67 ; A=A X=$0003 Y=$001A ; [SP-61]
-004599  F0 5E                         beq  L_0045F9        ; A=A X=$0003 Y=$001A ; [SP-61]
+004599  F0 5E                         beq  loc_0045F9      ; A=A X=$0003 Y=$001A ; [SP-61]
 00459B  85 04                         sta  $04             ; A=A X=$0003 Y=$001A ; [SP-61]
 00459D  38                            sec                  ; A=A X=$0003 Y=$001A ; [SP-61]
 00459E  E9 03                         sbc  #$03            ; A=A-$03 X=$0003 Y=$001A ; [SP-61]
-0045A0  B0 02                         bcs  L_0045A4        ; A=A-$03 X=$0003 Y=$001A ; [SP-61]
+0045A0  B0 02                         bcs  irq_0045A4      ; A=A-$03 X=$0003 Y=$001A ; [SP-61]
 0045A2  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 
-; === while loop starts here (counter: $00 '', range: 0..22377, step: 22332, iters: 96104188237671) [nest:45] [inner] ===
-0045A4  85 1E             L_0045A4    sta  $1E             ; A=$0000 X=$0003 Y=$001A ; [SP-61]
+; === while loop starts here [nest:44] ===
+0045A4  85 1E             irq_0045A4  sta  $1E             ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 0045A6  9D 64 5D                      sta  $5D64,X         ; -> $5D67 ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 ; LUMA: data_array_x
 0045A9  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F ; A=$0000 X=$0003 Y=$001A ; [SP-61]
@@ -1666,61 +3618,61 @@
 0045B0  BD 60 5D                      lda  $5D60,X         ; -> $5D63 ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 0045B3  85 1A                         sta  $1A             ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 0045B5  85 1D                         sta  $1D             ; A=$0000 X=$0003 Y=$001A ; [SP-61]
-0045B7  4C F3 45                      jmp  L_0045F3        ; A=$0000 X=$0003 Y=$001A ; [SP-61]
+0045B7  4C F3 45                      jmp  loc_0045F3      ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 ; LUMA: data_array_x
-0045BA  BD 64 5D          L_0045BA    lda  $5D64,X         ; -> $5D67 ; A=$0000 X=$0003 Y=$001A ; [SP-61]
+0045BA  BD 64 5D                      lda  $5D64,X         ; -> $5D67 ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 0045BD  C9 BF                         cmp  #$BF            ; A=$0000 X=$0003 Y=$001A ; [SP-61]
-0045BF  F0 38                         beq  L_0045F9        ; A=$0000 X=$0003 Y=$001A ; [SP-61]
+0045BF  F0 38                         beq  loc_0045F9      ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 0045C1  85 04                         sta  $04             ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 0045C3  18                            clc                  ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 0045C4  69 03                         adc  #$03            ; A=A+$03 X=$0003 Y=$001A ; [SP-61]
 0045C6  C9 BF                         cmp  #$BF            ; A=A+$03 X=$0003 Y=$001A ; [SP-61]
-0045C8  90 DA                         bcc  L_0045A4        ; A=A+$03 X=$0003 Y=$001A ; [SP-61]
-; === End of while loop (counter: $00) ===
+0045C8  90 DA                         bcc  irq_0045A4      ; A=A+$03 X=$0003 Y=$001A ; [SP-61]
+; === End of while loop ===
 
 0045CA  A9 BF                         lda  #$BF            ; A=$00BF X=$0003 Y=$001A ; [SP-61]
-0045CC  4C A4 45                      jmp  L_0045A4        ; A=$00BF X=$0003 Y=$001A ; [SP-61]
-; === End of while loop (counter: $00) ===
+0045CC  4C A4 45                      jmp  irq_0045A4      ; A=$00BF X=$0003 Y=$001A ; [SP-61]
+; === End of while loop ===
 
 ; LUMA: data_array_x
-0045CF  BD 5C 5D          L_0045CF    lda  $5D5C,X         ; -> $5D5F ; A=$00BF X=$0003 Y=$001A ; [SP-61]
+0045CF  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F ; A=$00BF X=$0003 Y=$001A ; [SP-61]
 0045D2  C9 3E                         cmp  #$3E            ; A=$00BF X=$0003 Y=$001A ; [SP-61]
-0045D4  90 23                         bcc  L_0045F9        ; A=$00BF X=$0003 Y=$001A ; [SP-61]
+0045D4  90 23                         bcc  loc_0045F9      ; A=$00BF X=$0003 Y=$001A ; [SP-61]
 0045D6  85 1C                         sta  $1C             ; A=$00BF X=$0003 Y=$001A ; [SP-61]
 0045D8  38                            sec                  ; A=$00BF X=$0003 Y=$001A ; [SP-61]
 0045D9  E9 03                         sbc  #$03            ; A=A-$03 X=$0003 Y=$001A ; [SP-61]
 0045DB  C9 3E                         cmp  #$3E            ; A=A-$03 X=$0003 Y=$001A ; [SP-61]
-0045DD  B0 02                         bcs  L_0045E1        ; A=A-$03 X=$0003 Y=$001A ; [SP-61]
+0045DD  B0 02                         bcs  $45E1           ; A=A-$03 X=$0003 Y=$001A ; [SP-61]
 0045DF  A9 3E                         lda  #$3E            ; A=$003E X=$0003 Y=$001A ; [SP-61]
-0045E1  85 19             L_0045E1    sta  $19             ; A=$003E X=$0003 Y=$001A ; [SP-61]
+0045E1  85 19                         sta  $19             ; A=$003E X=$0003 Y=$001A ; [SP-61]
 0045E3  9D 5C 5D                      sta  $5D5C,X         ; -> $5D5F ; A=$003E X=$0003 Y=$001A ; [SP-61]
 0045E6  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 0045E8  85 1D                         sta  $1D             ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 0045EA  85 1A                         sta  $1A             ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 
-; === while loop starts here (counter: $00, range: 0..23458, step: 23460, iters: 100777112656806) [nest:44] [inner] ===
+; === while loop starts here (counter: $00) [nest:43] [inner] ===
 ; LUMA: data_array_x
-0045EC  BD 64 5D          L_0045EC    lda  $5D64,X         ; -> $5D67 ; A=$0000 X=$0003 Y=$001A ; [SP-61]
+0045EC  BD 64 5D          loc_0045EC  lda  $5D64,X         ; -> $5D67 ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 0045EF  85 1E                         sta  $1E             ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 0045F1  85 04                         sta  $04             ; A=$0000 X=$0003 Y=$001A ; [SP-61]
-0045F3  20 40 49          L_0045F3    jsr  UpdateAlienAnim        ; A=$0000 X=$0003 Y=$001A ; [SP-63]
-0045F6  8D 30 C0                      sta  $C030           ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
+0045F3  20 40 49          loc_0045F3  jsr  UpdateAlienAnim ; A=$0000 X=$0003 Y=$001A ; [SP-63]
+0045F6  8D 30 C0                      sta  SPKR            ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
 
-; === while loop starts here (counter: $00 '', range: 0..23447, step: 23464, iters: 100575249193905) [nest:46] [inner] ===
-0045F9  C6 12             L_0045F9    dec  $12             ; A=$0000 X=$0003 Y=$001A ; [SP-63]
-0045FB  10 86                         bpl  L_004583        ; A=$0000 X=$0003 Y=$001A ; [SP-63]
+; === while loop starts here [nest:45] ===
+0045F9  C6 12             loc_0045F9  dec  $12             ; A=$0000 X=$0003 Y=$001A ; [SP-63]
+0045FB  10 86                         bpl  loc_004583      ; A=$0000 X=$0003 Y=$001A ; [SP-63]
 ; === End of while loop ===
 
 ; LUMA: epilogue_rts
 0045FD  60                            rts                  ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 ; LUMA: data_array_x
-0045FE  BD 5C 5D          L_0045FE    lda  $5D5C,X         ; -> $5D5F ; A=$0000 X=$0003 Y=$001A ; [SP-61]
+0045FE  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 004601  C9 17                         cmp  #$17            ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 ; LUMA: data_array_x
 004603  BD 60 5D                      lda  $5D60,X         ; -> $5D63 ; A=$0000 X=$0003 Y=$001A ; [SP-61]
 004606  E9 01                         sbc  #$01            ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
-004608  B0 EF                         bcs  L_0045F9        ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
-; === End of while loop (counter: $00) ===
+004608  B0 EF                         bcs  loc_0045F9      ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
+; === End of while loop ===
 
 ; LUMA: data_array_x
 00460A  BD 60 5D                      lda  $5D60,X         ; -> $5D63 ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
@@ -1741,7 +3693,7 @@
 004628  C9 17                         cmp  #$17            ; A=[$001C] X=$0003 Y=$001A ; [SP-61]
 00462A  A5 1D                         lda  $1D             ; A=[$001D] X=$0003 Y=$001A ; [SP-61]
 00462C  E9 01                         sbc  #$01            ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
-00462E  90 BC                         bcc  L_0045EC        ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
+00462E  90 BC                         bcc  loc_0045EC      ; A=A-$01 X=$0003 Y=$001A ; [SP-61]
 ; === End of while loop (counter: $00) ===
 
 004630  A9 17                         lda  #$17            ; A=$0017 X=$0003 Y=$001A ; [SP-61]
@@ -1750,28 +3702,28 @@
 004637  A9 01                         lda  #$01            ; A=$0001 X=$0003 Y=$001A ; [SP-61]
 004639  85 1D                         sta  $1D             ; A=$0001 X=$0003 Y=$001A ; [SP-61]
 00463B  9D 60 5D                      sta  $5D60,X         ; -> $5D63 ; A=$0001 X=$0003 Y=$001A ; [SP-61]
-00463E  4C EC 45                      jmp  L_0045EC        ; A=$0001 X=$0003 Y=$001A ; [SP-61]
-; === End of while loop (counter: $00) ===
+00463E  4C EC 45                      jmp  loc_0045EC      ; A=$0001 X=$0003 Y=$001A ; [SP-61]
+; === End of while loop ===
 
 
-; === while loop starts here (iters: 93630287074595) [nest:44] ===
+; === while loop starts here [nest:43] ===
 
-; FUNC $004641: register -> A:X [L]
-; Proto: uint32_t func_004641(uint16_t param_A, uint16_t param_X, uint16_t param_Y);
+; FUNC $004641 (MoveLaserUp): register -> A:X [L]
+; Proto: uint32_t MoveLaserUp(uint16_t param_A, uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(A,X,Y) returns(A,X,Y)
-004641  8D 55 46          MoveLaserUp    sta  $4655           ; A=$0001 X=$0003 Y=$001A ; [SP-61]
+004641  8D 55 46                      sta  $4655           ; A=$0001 X=$0003 Y=$001A ; [SP-61]
 004644  8E 56 46                      stx  $4656           ; A=$0001 X=$0003 Y=$001A ; [SP-61]
 004647  8C 57 46                      sty  $4657           ; A=$0001 X=$0003 Y=$001A ; [SP-61]
 ; LUMA: epilogue_rts
 00464A  60                            rts                  ; A=$0001 X=$0003 Y=$001A ; [SP-59]
 
-; === while loop starts here (counter: $00 '', range: 0..22560, step: 17287, iters: 95601677064233) [nest:44] [inner] ===
+; === while loop starts here [nest:43] ===
 
-; FUNC $00464B: register -> A:X [L]
-; Proto: uint32_t func_00464B(void);
+; FUNC $00464B (MoveLaserLeft): register -> A:X [L]
+; Proto: uint32_t MoveLaserLeft(void);
 ; Liveness: returns(A,X,Y)
 ; LUMA: hw_keyboard_read
-00464B  AD 55 46          MoveLaserLeft    lda  $4655           ; A=[$4655] X=$0003 Y=$001A ; [SP-59]
+00464B  AD 55 46                      lda  $4655           ; A=[$4655] X=$0003 Y=$001A ; [SP-59]
 00464E  AE 56 46                      ldx  $4656           ; A=[$4655] X=$0003 Y=$001A ; [SP-59]
 004651  AC 57 46                      ldy  $4657           ; A=[$4655] X=$0003 Y=$001A ; [SP-59]
 ; LUMA: epilogue_rts
@@ -1781,14 +3733,14 @@
 ; --- Data region ---
 004655  000000                  HEX     000000
 
-; === while loop starts here (iters: 96610994378715) [nest:46] ===
+; === while loop starts here [nest:45] ===
 
-; FUNC $004658: register -> A:X []
-; Proto: uint32_t func_004658(uint16_t param_A, uint16_t param_X, uint16_t param_Y);
+; FUNC $004658 (MoveLaserDownRight): register -> A:X []
+; Proto: uint32_t MoveLaserDownRight(uint16_t param_A, uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(A,X,Y) returns(A,X,Y) [1 dead stores]
 ; --- End data region (3 bytes) ---
 
-004658  85 13             MoveLaserDownRight    sta  $13             ; A=[$4655] X=$0003 Y=$001A ; [SP-63]
+004658  85 13                         sta  $13             ; A=[$4655] X=$0003 Y=$001A ; [SP-63]
 00465A  86 14                         stx  $14             ; A=[$4655] X=$0003 Y=$001A ; [SP-63]
 00465C  84 15                         sty  $15             ; A=[$4655] X=$0003 Y=$001A ; [SP-63]
 00465E  A6 04                         ldx  $04             ; A=[$4655] X=$0003 Y=$001A ; [SP-63]
@@ -1800,7 +3752,7 @@
 004668  85 07                         sta  $07             ; A=[$4655] X=$0003 Y=$001A ; [SP-63]
 00466A  A6 19                         ldx  $19             ; A=[$4655] X=$0003 Y=$001A ; [SP-63]
 00466C  A5 1A                         lda  $1A             ; A=[$001A] X=$0003 Y=$001A ; [SP-63]
-00466E  D0 11                         bne  L_004681        ; A=[$001A] X=$0003 Y=$001A ; [SP-63]
+00466E  D0 11                         bne  loc_004681      ; A=[$001A] X=$0003 Y=$001A ; [SP-63]
 ; LUMA: data_array_x
 004670  BD 92 46                      lda  $4692,X         ; -> $4695 ; A=[$001A] X=$0003 Y=$001A ; [SP-63]
 004673  85 16                         sta  $16             ; A=[$001A] X=$0003 Y=$001A ; [SP-63]
@@ -1813,7 +3765,7 @@
 ; LUMA: epilogue_rts
 004680  60                            rts                  ; A=[$0013] X=$0003 Y=$001A ; [SP-61]
 ; LUMA: data_array_x
-004681  BD 8B 47          L_004681    lda  $478B,X         ; -> $478E ; A=[$0013] X=$0003 Y=$001A ; [SP-61]
+004681  BD 8B 47          loc_004681  lda  $478B,X         ; -> $478E ; A=[$0013] X=$0003 Y=$001A ; [SP-61]
 004684  85 16                         sta  $16             ; A=[$0013] X=$0003 Y=$001A ; [SP-61]
 ; LUMA: data_array_x
 004686  BD AD 48                      lda  $48AD,X         ; -> $48B0 ; A=[$0013] X=$0003 Y=$001A ; [SP-61]
@@ -1872,28 +3824,28 @@
 004902  00000000                HEX     00000000 00000000 00000000 00000000
 004912  0006                    HEX     0006
 
-; === while loop starts here [nest:43] ===
+; === while loop starts here (iters: 80577881459008) [nest:42] ===
 
-; FUNC $004914: register -> A:X []
-; Proto: uint32_t func_004914(uint16_t param_A, uint16_t param_X);
+; FUNC $004914 (DrawAlienRow): register -> A:X []
+; Proto: uint32_t DrawAlienRow(uint16_t param_A, uint16_t param_X);
 ; Frame: push_only [saves: A]
 ; Liveness: params(A,X) returns(A,X,Y) [3 dead stores]
 ; --- End data region (642 bytes) ---
 
-004914  48                DrawAlienRow    pha                  ; A=[$0013] X=$0003 Y=$001A ; [SP-77]
+004914  48                            pha                  ; A=[$0013] X=$0003 Y=$001A ; [SP-77]
 004915  98                            tya                  ; A=$001A X=$0003 Y=$001A ; [SP-77]
 004916  48                            pha                  ; A=$001A X=$0003 Y=$001A ; [SP-78]
 004917  A5 19                         lda  $19             ; A=[$0019] X=$0003 Y=$001A ; [SP-78]
 004919  29 01                         and  #$01            ; A=A&$01 X=$0003 Y=$001A ; [SP-78]
-00491B  F0 0B                         beq  L_004928        ; A=A&$01 X=$0003 Y=$001A ; [SP-78]
-00491D  20 58 46                      jsr  MoveLaserDownRight        ; A=A&$01 X=$0003 Y=$001A ; [SP-80]
+00491B  F0 0B                         beq  $4928           ; A=A&$01 X=$0003 Y=$001A ; [SP-78]
+00491D  20 58 46                      jsr  MoveLaserDownRight ; Call $004658(2 stack)
 ; === End of while loop ===
 
 004920  A4 17                         ldy  $17             ; A=A&$01 X=$0003 Y=$001A ; [SP-80]
 004922  A5 16                         lda  $16             ; A=[$0016] X=$0003 Y=$001A ; [SP-80]
 004924  11 06                         ora  ($06),Y         ; A=[$0016] X=$0003 Y=$001A ; [SP-80]
 004926  91 06                         sta  ($06),Y         ; A=[$0016] X=$0003 Y=$001A ; [SP-80]
-004928  68                L_004928    pla                  ; A=[stk] X=$0003 Y=$001A ; [SP-79]
+004928  68                            pla                  ; A=[stk] X=$0003 Y=$001A ; [SP-79]
 004929  A8                            tay                  ; A=[stk] X=$0003 Y=[stk] ; [SP-79]
 00492A  68                            pla                  ; A=[stk] X=$0003 Y=[stk] ; [SP-78]
 00492B  60                            rts                  ; A=[stk] X=$0003 Y=[stk] ; [SP-76]
@@ -1902,23 +3854,23 @@
 00492C  48984820                HEX     48984820 5846A417 A51649FF 31069106
 00493C  68A86860                HEX     68A86860
 
-; FUNC $004940: register -> A:X []
-; Proto: uint32_t func_004940(uint16_t param_X, uint16_t param_Y);
+; FUNC $004940 (UpdateAlienAnim): register -> A:X []
+; Proto: uint32_t UpdateAlienAnim(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [12 dead stores]
 ; --- End data region (20 bytes) ---
 
-004940  20 41 46          UpdateAlienAnim    jsr  MoveLaserUp        ; A=[stk] X=$0003 Y=[stk] ; [SP-78]
+004940  20 41 46                      jsr  MoveLaserUp     ; Call $004641(A, Y, 1 stack)
 ; === End of while loop ===
 
 004943  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=[stk] ; [SP-78]
 004945  85 1B                         sta  $1B             ; A=$0000 X=$0003 Y=[stk] ; [SP-78]
-004947  4C 51 49                      jmp  L_004951        ; A=$0000 X=$0003 Y=[stk] ; [SP-78]
+004947  4C 51 49                      jmp  loc_004951      ; A=$0000 X=$0003 Y=[stk] ; [SP-78]
 
 ; --- Data region ---
 00494A  204146A9                HEX     204146A9 FF851B
 ; --- End data region (7 bytes) ---
 
-004951  38                L_004951    sec                  ; A=$0000 X=$0003 Y=[stk] ; [SP-80]
+004951  38                loc_004951  sec                  ; A=$0000 X=$0003 Y=[stk] ; [SP-80]
 004952  A5 1C                         lda  $1C             ; A=[$001C] X=$0003 Y=[stk] ; [SP-80]
 004954  E5 19                         sbc  $19             ; A=[$001C] X=$0003 Y=[stk] ; [SP-80]
 004956  85 23                         sta  $23             ; A=[$001C] X=$0003 Y=[stk] ; [SP-80]
@@ -1933,7 +3885,7 @@
 004967  E9 00                         sbc  #$00            ; A=A X=$0003 Y=[stk] ; [SP-80]
 004969  85 26                         sta  $26             ; A=A X=$0003 Y=[stk] ; [SP-80]
 00496B  A5 24                         lda  $24             ; A=[$0024] X=$0003 Y=[stk] ; [SP-80]
-00496D  10 16                         bpl  L_004985        ; A=[$0024] X=$0003 Y=[stk] ; [SP-80]
+00496D  10 16                         bpl  loc_004985      ; A=[$0024] X=$0003 Y=[stk] ; [SP-80]
 00496F  A9 FF                         lda  #$FF            ; A=$00FF X=$0003 Y=[stk] ; [SP-80]
 004971  85 1F                         sta  $1F             ; A=$00FF X=$0003 Y=[stk] ; [SP-80]
 004973  85 20                         sta  $20             ; A=$00FF X=$0003 Y=[stk] ; [SP-80]
@@ -1944,13 +3896,13 @@
 00497C  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=[stk] ; [OPT] REDUNDANT_LOAD: Redundant LDA: same value loaded at $004976 ; [SP-80]
 00497E  E5 24                         sbc  $24             ; A=$0000 X=$0003 Y=[stk] ; [SP-80]
 004980  85 24                         sta  $24             ; A=$0000 X=$0003 Y=[stk] ; [SP-80]
-004982  4C 8D 49                      jmp  L_00498D        ; A=$0000 X=$0003 Y=[stk] ; [SP-80]
-004985  A9 01             L_004985    lda  #$01            ; A=$0001 X=$0003 Y=[stk] ; [SP-80]
+004982  4C 8D 49                      jmp  loc_00498D      ; A=$0000 X=$0003 Y=[stk] ; [SP-80]
+004985  A9 01             loc_004985  lda  #$01            ; A=$0001 X=$0003 Y=[stk] ; [SP-80]
 004987  85 1F                         sta  $1F             ; A=$0001 X=$0003 Y=[stk] ; [SP-80]
 004989  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=[stk] ; [SP-80]
 00498B  85 20                         sta  $20             ; A=$0000 X=$0003 Y=[stk] ; [SP-80]
-00498D  A5 26             L_00498D    lda  $26             ; A=[$0026] X=$0003 Y=[stk] ; [SP-80]
-00498F  10 16                         bpl  L_0049A7        ; A=[$0026] X=$0003 Y=[stk] ; [SP-80]
+00498D  A5 26             loc_00498D  lda  $26             ; A=[$0026] X=$0003 Y=[stk] ; [SP-80]
+00498F  10 16                         bpl  $49A7           ; A=[$0026] X=$0003 Y=[stk] ; [SP-80]
 004991  A9 FF                         lda  #$FF            ; A=$00FF X=$0003 Y=[stk] ; [SP-80]
 004993  85 21                         sta  $21             ; A=$00FF X=$0003 Y=[stk] ; [SP-80]
 004995  85 22                         sta  $22             ; A=$00FF X=$0003 Y=[stk] ; [SP-80]
@@ -1961,32 +3913,32 @@
 00499E  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=[stk] ; [OPT] REDUNDANT_LOAD: Redundant LDA: same value loaded at $004998 ; [SP-80]
 0049A0  E5 26                         sbc  $26             ; A=$0000 X=$0003 Y=[stk] ; [SP-80]
 0049A2  85 26                         sta  $26             ; A=$0000 X=$0003 Y=[stk] ; [SP-80]
-0049A4  4C AF 49                      jmp  L_0049AF        ; A=$0000 X=$0003 Y=[stk] ; [SP-80]
-0049A7  A9 01             L_0049A7    lda  #$01            ; A=$0001 X=$0003 Y=[stk] ; [SP-80]
+0049A4  4C AF 49                      jmp  $49AF           ; A=$0000 X=$0003 Y=[stk] ; [SP-80]
+0049A7  A9 01                         lda  #$01            ; A=$0001 X=$0003 Y=[stk] ; [SP-80]
 0049A9  85 21                         sta  $21             ; A=$0001 X=$0003 Y=[stk] ; [SP-80]
 0049AB  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=[stk] ; [SP-80]
 0049AD  85 22                         sta  $22             ; A=$0000 X=$0003 Y=[stk] ; [SP-80]
-0049AF  A5 23             L_0049AF    lda  $23             ; A=[$0023] X=$0003 Y=[stk] ; [SP-80]
+0049AF  A5 23                         lda  $23             ; A=[$0023] X=$0003 Y=[stk] ; [SP-80]
 0049B1  C5 25                         cmp  $25             ; A=[$0023] X=$0003 Y=[stk] ; [SP-80]
 0049B3  A5 24                         lda  $24             ; A=[$0024] X=$0003 Y=[stk] ; [SP-80]
 0049B5  E5 26                         sbc  $26             ; A=[$0024] X=$0003 Y=[stk] ; [SP-80]
-0049B7  B0 06                         bcs  L_0049BF        ; A=[$0024] X=$0003 Y=[stk] ; [SP-80]
-0049B9  20 2F 4A                      jsr  DrawAlienSideB        ; A=[$0024] X=$0003 Y=[stk] ; [SP-82]
-0049BC  4C C2 49                      jmp  L_0049C2        ; A=[$0024] X=$0003 Y=[stk] ; [SP-82]
-0049BF  20 C6 49          L_0049BF    jsr  DrawAlienSide        ; A=[$0024] X=$0003 Y=[stk] ; [SP-84]
-0049C2  20 4B 46          L_0049C2    jsr  MoveLaserLeft        ; A=[$0024] X=$0003 Y=[stk] ; [OPT] TAIL_CALL: Tail call: JSR/JSL at $0049C2 followed by RTS ; [SP-86]
-; === End of while loop (counter: $00) ===
+0049B7  B0 06                         bcs  $49BF           ; A=[$0024] X=$0003 Y=[stk] ; [SP-80]
+0049B9  20 2F 4A                      jsr  DrawAlienSideB  ; A=[$0024] X=$0003 Y=[stk] ; [SP-82]
+0049BC  4C C2 49                      jmp  $49C2           ; A=[$0024] X=$0003 Y=[stk] ; [SP-82]
+0049BF  20 C6 49                      jsr  DrawAlienSide   ; A=[$0024] X=$0003 Y=[stk] ; [SP-84]
+0049C2  20 4B 46                      jsr  MoveLaserLeft   ; A=[$0024] X=$0003 Y=[stk] ; [OPT] TAIL_CALL: Tail call: JSR/JSL at $0049C2 followed by RTS ; [SP-86]
+; === End of while loop ===
 
 0049C5  60                            rts                  ; A=[$0024] X=$0003 Y=[stk] ; [SP-84]
 
-; FUNC $0049C6: register -> A:X []
-; Proto: uint32_t func_0049C6(uint16_t param_X, uint16_t param_Y);
+; FUNC $0049C6 (DrawAlienSide): register -> A:X []
+; Proto: uint32_t DrawAlienSide(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [14 dead stores]
-0049C6  A5 23             DrawAlienSide    lda  $23             ; A=[$0023] X=$0003 Y=[stk] ; [SP-84]
-0049C8  D0 04                         bne  L_0049CE        ; A=[$0023] X=$0003 Y=[stk] ; [SP-84]
+0049C6  A5 23                         lda  $23             ; A=[$0023] X=$0003 Y=[stk] ; [SP-84]
+0049C8  D0 04                         bne  $49CE           ; A=[$0023] X=$0003 Y=[stk] ; [SP-84]
 0049CA  A5 24                         lda  $24             ; A=[$0024] X=$0003 Y=[stk] ; [SP-84]
-0049CC  F0 60                         beq  L_004A2E        ; A=[$0024] X=$0003 Y=[stk] ; [SP-84]
-0049CE  A5 24             L_0049CE    lda  $24             ; A=[$0024] X=$0003 Y=[stk] ; [OPT] REDUNDANT_LOAD: Redundant LDA: same value loaded at $0049CA ; [SP-84]
+0049CC  F0 60                         beq  $4A2E           ; A=[$0024] X=$0003 Y=[stk] ; [SP-84]
+0049CE  A5 24                         lda  $24             ; A=[$0024] X=$0003 Y=[stk] ; [OPT] REDUNDANT_LOAD: Redundant LDA: same value loaded at $0049CA ; [SP-84]
 0049D0  85 2A                         sta  $2A             ; A=[$0024] X=$0003 Y=[stk] ; [SP-84]
 0049D2  4A                            lsr  a               ; A=[$0024] X=$0003 Y=[stk] ; [SP-84]
 0049D3  85 28                         sta  $28             ; A=[$0024] X=$0003 Y=[stk] ; [SP-84]
@@ -1995,8 +3947,8 @@
 0049D9  6A                            ror  a               ; A=[$0023] X=$0003 Y=[stk] ; [SP-84]
 0049DA  85 27                         sta  $27             ; A=[$0023] X=$0003 Y=[stk] ; [SP-84]
 
-; === while loop starts here (counter: $00 '', range: 0..22494, step: 17333, iters: 74461848028106) [nest:44] [inner] ===
-0049DC  18                L_0049DC    clc                  ; A=[$0023] X=$0003 Y=[stk] ; [SP-84]
+; === while loop starts here (counter: $00) [nest:43] [inner] ===
+0049DC  18                loc_0049DC  clc                  ; A=[$0023] X=$0003 Y=[stk] ; [SP-84]
 0049DD  A5 27                         lda  $27             ; A=[$0027] X=$0003 Y=[stk] ; [SP-84]
 0049DF  65 25                         adc  $25             ; A=[$0027] X=$0003 Y=[stk] ; [SP-84]
 0049E1  85 27                         sta  $27             ; A=[$0027] X=$0003 Y=[stk] ; [SP-84]
@@ -2007,7 +3959,7 @@
 0049EB  C5 23                         cmp  $23             ; A=[$0027] X=$0003 Y=[stk] ; [SP-84]
 0049ED  A5 28                         lda  $28             ; A=[$0028] X=$0003 Y=[stk] ; [SP-84]
 0049EF  E5 24                         sbc  $24             ; A=[$0028] X=$0003 Y=[stk] ; [SP-84]
-0049F1  90 13                         bcc  L_004A06        ; A=[$0028] X=$0003 Y=[stk] ; [SP-84]
+0049F1  90 13                         bcc  loc_004A06      ; A=[$0028] X=$0003 Y=[stk] ; [SP-84]
 0049F3  A5 27                         lda  $27             ; A=[$0027] X=$0003 Y=[stk] ; [SP-84]
 0049F5  E5 23                         sbc  $23             ; A=[$0027] X=$0003 Y=[stk] ; [SP-84]
 0049F7  85 27                         sta  $27             ; A=[$0027] X=$0003 Y=[stk] ; [SP-84]
@@ -2018,7 +3970,7 @@
 004A00  A5 04                         lda  $04             ; A=[$0004] X=$0003 Y=[stk] ; [SP-84]
 004A02  65 21                         adc  $21             ; A=[$0004] X=$0003 Y=[stk] ; [SP-84]
 004A04  85 04                         sta  $04             ; A=[$0004] X=$0003 Y=[stk] ; [SP-84]
-004A06  18                L_004A06    clc                  ; A=[$0004] X=$0003 Y=[stk] ; [SP-84]
+004A06  18                loc_004A06  clc                  ; A=[$0004] X=$0003 Y=[stk] ; [SP-84]
 004A07  A5 19                         lda  $19             ; A=[$0019] X=$0003 Y=[stk] ; [SP-84]
 004A09  65 1F                         adc  $1F             ; A=[$0019] X=$0003 Y=[stk] ; [SP-84]
 004A0B  85 19                         sta  $19             ; A=[$0019] X=$0003 Y=[stk] ; [SP-84]
@@ -2026,29 +3978,29 @@
 004A0F  65 20                         adc  $20             ; A=[$001A] X=$0003 Y=[stk] ; [SP-84]
 004A11  85 1A                         sta  $1A             ; A=[$001A] X=$0003 Y=[stk] ; [SP-84]
 004A13  24 1B                         bit  $1B             ; A=[$001A] X=$0003 Y=[stk] ; [SP-84]
-004A15  10 06                         bpl  L_004A1D        ; A=[$001A] X=$0003 Y=[stk] ; [SP-84]
-004A17  20 C0 40                      jsr  DrawSpriteXY        ; A=[$001A] X=$0003 Y=[stk] ; [SP-86]
-; === End of while loop (counter: $00) ===
+004A15  10 06                         bpl  $4A1D           ; A=[$001A] X=$0003 Y=[stk] ; [SP-84]
+004A17  20 C0 40                      jsr  DrawSpriteXY    ; A=[$001A] X=$0003 Y=[stk] ; [SP-86]
+; === End of while loop (counter: X) ===
 
-004A1A  4C 20 4A                      jmp  L_004A20        ; A=[$001A] X=$0003 Y=[stk] ; [SP-86]
-004A1D  20 14 49          L_004A1D    jsr  DrawAlienRow        ; A=[$001A] X=$0003 Y=[stk] ; [SP-88]
+004A1A  4C 20 4A                      jmp  loc_004A20      ; A=[$001A] X=$0003 Y=[stk] ; [SP-86]
+004A1D  20 14 49                      jsr  DrawAlienRow    ; A=[$001A] X=$0003 Y=[stk] ; [SP-88]
 ; === End of while loop ===
 
-004A20  A5 29             L_004A20    lda  $29             ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
-004A22  D0 02                         bne  L_004A26        ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
+004A20  A5 29             loc_004A20  lda  $29             ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
+004A22  D0 02                         bne  $4A26           ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
 004A24  C6 2A                         dec  $2A             ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
-004A26  C6 29             L_004A26    dec  $29             ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
+004A26  C6 29                         dec  $29             ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
 004A28  A5 29                         lda  $29             ; A=[$0029] X=$0003 Y=[stk] ; [OPT] REDUNDANT_LOAD: Redundant LDA: same value loaded at $004A20 ; [SP-88]
 004A2A  05 2A                         ora  $2A             ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
-004A2C  D0 AE                         bne  L_0049DC        ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
+004A2C  D0 AE                         bne  loc_0049DC      ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
 ; === End of while loop (counter: $00) ===
 
-004A2E  60                L_004A2E    rts                  ; A=[$0029] X=$0003 Y=[stk] ; [SP-86]
+004A2E  60                            rts                  ; A=[$0029] X=$0003 Y=[stk] ; [SP-86]
 
-; FUNC $004A2F: register -> A:X []
-; Proto: uint32_t func_004A2F(uint16_t param_X, uint16_t param_Y);
+; FUNC $004A2F (DrawAlienSideB): register -> A:X []
+; Proto: uint32_t DrawAlienSideB(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [12 dead stores]
-004A2F  A5 26             DrawAlienSideB    lda  $26             ; A=[$0026] X=$0003 Y=[stk] ; [SP-86]
+004A2F  A5 26                         lda  $26             ; A=[$0026] X=$0003 Y=[stk] ; [SP-86]
 004A31  85 2A                         sta  $2A             ; A=[$0026] X=$0003 Y=[stk] ; [SP-86]
 004A33  4A                            lsr  a               ; A=[$0026] X=$0003 Y=[stk] ; [SP-86]
 004A34  85 28                         sta  $28             ; A=[$0026] X=$0003 Y=[stk] ; [SP-86]
@@ -2057,8 +4009,8 @@
 004A3A  6A                            ror  a               ; A=[$0025] X=$0003 Y=[stk] ; [SP-86]
 004A3B  85 27                         sta  $27             ; A=[$0025] X=$0003 Y=[stk] ; [SP-86]
 
-; === while loop starts here (counter: $00, range: 0..22335, step: 22337, iters: 95983929153354) [nest:43] [inner] ===
-004A3D  18                L_004A3D    clc                  ; A=[$0025] X=$0003 Y=[stk] ; [SP-86]
+; === while loop starts here [nest:42] ===
+004A3D  18                loc_004A3D  clc                  ; A=[$0025] X=$0003 Y=[stk] ; [SP-86]
 004A3E  A5 27                         lda  $27             ; A=[$0027] X=$0003 Y=[stk] ; [SP-86]
 004A40  65 23                         adc  $23             ; A=[$0027] X=$0003 Y=[stk] ; [SP-86]
 004A42  85 27                         sta  $27             ; A=[$0027] X=$0003 Y=[stk] ; [SP-86]
@@ -2069,7 +4021,7 @@
 004A4C  C5 25                         cmp  $25             ; A=[$0027] X=$0003 Y=[stk] ; [SP-86]
 004A4E  A5 28                         lda  $28             ; A=[$0028] X=$0003 Y=[stk] ; [SP-86]
 004A50  E5 26                         sbc  $26             ; A=[$0028] X=$0003 Y=[stk] ; [SP-86]
-004A52  90 19                         bcc  L_004A6D        ; A=[$0028] X=$0003 Y=[stk] ; [SP-86]
+004A52  90 19                         bcc  loc_004A6D      ; A=[$0028] X=$0003 Y=[stk] ; [SP-86]
 004A54  A5 27                         lda  $27             ; A=[$0027] X=$0003 Y=[stk] ; [SP-86]
 004A56  E5 25                         sbc  $25             ; A=[$0027] X=$0003 Y=[stk] ; [SP-86]
 004A58  85 27                         sta  $27             ; A=[$0027] X=$0003 Y=[stk] ; [SP-86]
@@ -2083,107 +4035,94 @@
 004A67  A5 1A                         lda  $1A             ; A=[$001A] X=$0003 Y=[stk] ; [SP-86]
 004A69  65 20                         adc  $20             ; A=[$001A] X=$0003 Y=[stk] ; [SP-86]
 004A6B  85 1A                         sta  $1A             ; A=[$001A] X=$0003 Y=[stk] ; [SP-86]
-004A6D  18                L_004A6D    clc                  ; A=[$001A] X=$0003 Y=[stk] ; [SP-86]
+004A6D  18                loc_004A6D  clc                  ; A=[$001A] X=$0003 Y=[stk] ; [SP-86]
 004A6E  A5 04                         lda  $04             ; A=[$0004] X=$0003 Y=[stk] ; [SP-86]
 004A70  65 21                         adc  $21             ; A=[$0004] X=$0003 Y=[stk] ; [SP-86]
 004A72  85 04                         sta  $04             ; A=[$0004] X=$0003 Y=[stk] ; [SP-86]
-004A74  20 14 49                      jsr  DrawAlienRow        ; A=[$0004] X=$0003 Y=[stk] ; [SP-88]
+004A74  20 14 49                      jsr  DrawAlienRow    ; Call $004914(A)
 ; === End of while loop (counter: $00) ===
 
 004A77  A5 29                         lda  $29             ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
-004A79  D0 02                         bne  L_004A7D        ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
+004A79  D0 02                         bne  $4A7D           ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
 004A7B  C6 2A                         dec  $2A             ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
-004A7D  C6 29             L_004A7D    dec  $29             ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
+004A7D  C6 29                         dec  $29             ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
 004A7F  A5 29                         lda  $29             ; A=[$0029] X=$0003 Y=[stk] ; [OPT] REDUNDANT_LOAD: Redundant LDA: same value loaded at $004A77 ; [SP-88]
 004A81  05 2A                         ora  $2A             ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
-004A83  D0 B8                         bne  L_004A3D        ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
-; === End of while loop (counter: $00) ===
+004A83  D0 B8                         bne  loc_004A3D      ; A=[$0029] X=$0003 Y=[stk] ; [SP-88]
+; === End of while loop ===
 
 004A85  60                            rts                  ; A=[$0029] X=$0003 Y=[stk] ; [SP-86]
 
-; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:26] ===
+; === while loop starts here (counter: $00, range: 0..22676, step: 22678, iters: 97439923067037) [nest:25] [inner] ===
 
-; FUNC $004A86: register -> A:X [I]
-; Proto: uint32_t func_004A86(uint16_t param_X, uint16_t param_Y);
+; FUNC $004A86 (GameOver): register -> A:X [I]
+; Proto: uint32_t GameOver(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [8 dead stores]
 ; ---------------------------------------------------------------------------
-; GAME OVER ($4A86) - GameOver
-; HOW: Compares current score ($0C-$0D) with high score ($0E-$0F).
-;      If current > high, copies current to high score.
-;      Displays game over text on the HGR screen, waits for keypress,
-;      then returns (caller at $5843 JMPs to StartNewGame).
-;
-; WHY high score persists: $0E-$0F are only zeroed at MainEntry ($57D7),
-;      not at StartNewGame ($5809). So the high score survives across
-;      multiple games in the same session (but not across reboots).
+; GAME OVER ($4A86)
+; Checks high score, displays game over screen, then restarts.
 ; ---------------------------------------------------------------------------
-004A86  A5 0D             GameOver    lda  $0D             ; A=[$000D] X=$0003 Y=[stk] ; [SP-86]
+004A86  A5 0D                         lda  $0D             ; A=[$000D] X=$0003 Y=[stk] ; [SP-86]
 004A88  C5 0F                         cmp  $0F             ; A=[$000D] X=$0003 Y=[stk] ; [SP-86]
-004A8A  90 13                         bcc  L_004A9F        ; A=[$000D] X=$0003 Y=[stk] ; [SP-86]
-004A8C  D0 06                         bne  L_004A94        ; A=[$000D] X=$0003 Y=[stk] ; [SP-86]
+004A8A  90 13                         bcc  loc_004A9F      ; A=[$000D] X=$0003 Y=[stk] ; [SP-86]
+004A8C  D0 06                         bne  loc_004A94      ; A=[$000D] X=$0003 Y=[stk] ; [SP-86]
 004A8E  A5 0C                         lda  $0C             ; A=[$000C] X=$0003 Y=[stk] ; [SP-86]
 004A90  C5 0E                         cmp  $0E             ; A=[$000C] X=$0003 Y=[stk] ; [SP-86]
-004A92  90 0B                         bcc  L_004A9F        ; A=[$000C] X=$0003 Y=[stk] ; [SP-86]
-004A94  A5 0C             L_004A94    lda  $0C             ; A=[$000C] X=$0003 Y=[stk] ; [OPT] REDUNDANT_LOAD: Redundant LDA: same value loaded at $004A8E ; [SP-86]
+004A92  90 0B                         bcc  loc_004A9F      ; A=[$000C] X=$0003 Y=[stk] ; [SP-86]
+004A94  A5 0C             loc_004A94  lda  $0C             ; A=[$000C] X=$0003 Y=[stk] ; [OPT] REDUNDANT_LOAD: Redundant LDA: same value loaded at $004A8E ; [SP-86]
 004A96  85 0E                         sta  $0E             ; A=[$000C] X=$0003 Y=[stk] ; [SP-86]
 004A98  A5 0D                         lda  $0D             ; A=[$000D] X=$0003 Y=[stk] ; [SP-86]
 004A9A  85 0F                         sta  $0F             ; A=[$000D] X=$0003 Y=[stk] ; [SP-86]
-004A9C  20 9E 43                      jsr  InitGameVarsC        ; Call $00439E(A)
-; === End of while loop (counter: X) ===
+004A9C  20 9E 43                      jsr  InitGameVarsC   ; Call $00439E(A)
+; === End of while loop (counter: $00) ===
 
-004A9F  A9 00             L_004A9F    lda  #$00            ; A=$0000 X=$0003 Y=[stk] ; [SP-88]
+004A9F  A9 00             loc_004A9F  lda  #$00            ; A=$0000 X=$0003 Y=[stk] ; [SP-88]
 004AA1  85 12                         sta  $12             ; A=$0000 X=$0003 Y=[stk] ; [SP-88]
 004AA3  85 11                         sta  $11             ; A=$0000 X=$0003 Y=[stk] ; [SP-88]
 
-; === while loop starts here [nest:42] ===
-004AA5  E6 12             L_004AA5    inc  $12             ; A=$0000 X=$0003 Y=[stk] ; [SP-88]
+; === while loop starts here (counter: $00 '', range: 0..19896, step: 19852, iters: 85426899537302) [nest:41] [inner] ===
+004AA5  E6 12             loc_004AA5  inc  $12             ; A=$0000 X=$0003 Y=[stk] ; [SP-88]
 004AA7  A5 12                         lda  $12             ; A=[$0012] X=$0003 Y=[stk] ; [SP-88]
 004AA9  C9 50                         cmp  #$50            ; A=[$0012] X=$0003 Y=[stk] ; [SP-88]
-004AAB  D0 0A                         bne  L_004AB7        ; A=[$0012] X=$0003 Y=[stk] ; [SP-88]
+004AAB  D0 0A                         bne  loc_004AB7      ; A=[$0012] X=$0003 Y=[stk] ; [SP-88]
 004AAD  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=[stk] ; [SP-88]
 004AAF  85 12                         sta  $12             ; A=$0000 X=$0003 Y=[stk] ; [SP-88]
 004AB1  A5 11                         lda  $11             ; A=[$0011] X=$0003 Y=[stk] ; [SP-88]
 004AB3  49 FF                         eor  #$FF            ; A=A^$FF X=$0003 Y=[stk] ; [SP-88]
 004AB5  85 11                         sta  $11             ; A=A^$FF X=$0003 Y=[stk] ; [SP-88]
-004AB7  A9 14             L_004AB7    lda  #$14            ; A=$0014 X=$0003 Y=[stk] ; [SP-88]
+004AB7  A9 14             loc_004AB7  lda  #$14            ; A=$0014 X=$0003 Y=[stk] ; [SP-88]
 004AB9  85 02                         sta  $02             ; A=$0014 X=$0003 Y=[stk] ; [SP-88]
 004ABB  A9 42                         lda  #$42            ; A=$0042 X=$0003 Y=[stk] ; [SP-88]
 004ABD  85 04                         sta  $04             ; A=$0042 X=$0003 Y=[stk] ; [SP-88]
 004ABF  A5 11                         lda  $11             ; A=[$0011] X=$0003 Y=[stk] ; [SP-88]
-004AC1  F0 08                         beq  L_004ACB        ; A=[$0011] X=$0003 Y=[stk] ; [SP-88]
+004AC1  F0 08                         beq  $4ACB           ; A=[$0011] X=$0003 Y=[stk] ; [SP-88]
 004AC3  A9 25                         lda  #$25            ; A=$0025 X=$0003 Y=[stk] ; [SP-88]
-004AC5  20 C0 40                      jsr  DrawSpriteXY        ; A=$0025 X=$0003 Y=[stk] ; [SP-90]
-; === End of while loop (counter: X) ===
+004AC5  20 C0 40                      jsr  DrawSpriteXY    ; A=$0025 X=$0003 Y=[stk] ; [SP-90]
+; === End of while loop (counter: $00) ===
 
-004AC8  4C D0 4A                      jmp  L_004AD0        ; A=$0025 X=$0003 Y=[stk] ; [SP-90]
-004ACB  A9 25             L_004ACB    lda  #$25            ; A=$0025 X=$0003 Y=[stk] ; [SP-90]
+004AC8  4C D0 4A                      jmp  $4AD0           ; A=$0025 X=$0003 Y=[stk] ; [SP-90]
+004ACB  A9 25                         lda  #$25            ; A=$0025 X=$0003 Y=[stk] ; [SP-90]
 004ACD  20 62 04                      jsr  $0462           ; A=$0025 X=$0003 Y=[stk] ; [SP-92]
-004AD0  20 28 5C          L_004AD0    jsr  UpdateStarTwinkleB        ; A=$0025 X=$0003 Y=[stk] ; [SP-94]
+004AD0  20 28 5C                      jsr  UpdateStarTwinkleB      ; A=$0025 X=$0003 Y=[stk] ; [SP-94]
 004AD3  A9 40                         lda  #$40            ; A=$0040 X=$0003 Y=[stk] ; [SP-94]
-004AD5  20 6C 5C                      jsr  StarTwinkleC        ; A=$0040 X=$0003 Y=[stk] ; [SP-96]
-004AD8  AD 00 C0                      lda  $C000           ; KBD - Keyboard data / 80STORE off {Keyboard} <keyboard_read>
+004AD5  20 6C 5C                      jsr  StarTwinkleC      ; A=$0040 X=$0003 Y=[stk] ; [SP-96]
+004AD8  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off {Keyboard} <keyboard_read>
 004ADB  C9 8D                         cmp  #$8D            ; A=[$C000] X=$0003 Y=[stk] ; [SP-96]  ; key: RETURN
-004ADD  D0 C6                         bne  L_004AA5        ; A=[$C000] X=$0003 Y=[stk] ; [SP-96]
-; === End of while loop ===
+004ADD  D0 C6                         bne  loc_004AA5      ; A=[$C000] X=$0003 Y=[stk] ; [SP-96]
+; === End of while loop (counter: $00) ===
 
 004ADF  60                            rts                  ; A=[$C000] X=$0003 Y=[stk] ; [SP-94]
 
-; === while loop starts here (counter: $00, range: 0..17817, step: 17819, iters: 76562087036320) [nest:37] [inner] ===
+; === while loop starts here (counter: Y 'j') [nest:36] ===
 
-; FUNC $004AE0: register -> A:X []
-; Proto: uint32_t func_004AE0(uint16_t param_X);
+; FUNC $004AE0 (AddScore): register -> A:X []
+; Proto: uint32_t AddScore(uint16_t param_X);
 ; Liveness: params(X) returns(A,X,Y) [21 dead stores]
 ; ---------------------------------------------------------------------------
 ; ADD SCORE ($4AE0)
-; HOW: SED (decimal mode), then ADC A into $0C (low), carry into $0D (high).
-;      CLD restores binary mode. Score is 4-digit BCD: $0D:$0C = HHLL.
-; WHY BCD: On the 6502, BCD addition is a single ADC instruction -
-;      the CPU handles carry between decimal digits automatically.
-;      Displaying BCD is trivial: split each byte into nibbles and
-;      add '0' ($B0 in Apple II high-ASCII). No expensive division
-;      by 10 needed. Most Apple II games use BCD for scores.
+; Adds A to BCD score at $0C-$0D. Updates high score at $0E-$0F.
 ; ---------------------------------------------------------------------------
-004AE0  F8                AddScore    sed                  ; A=[$C000] X=$0003 Y=[stk] ; [SP-94]  ; Set decimal mode (BCD arithmetic)
+004AE0  F8                            sed                  ; A=[$C000] X=$0003 Y=[stk] ; [SP-94]  ; Set decimal mode (BCD arithmetic)
 004AE1  18                            clc                  ; A=[$C000] X=$0003 Y=[stk] ; [SP-94]
 004AE2  65 0C                         adc  $0C             ; A=[$C000] X=$0003 Y=[stk] ; [SP-94]
 004AE4  85 0C                         sta  $0C             ; A=[$C000] X=$0003 Y=[stk] ; [SP-94]
@@ -2192,10 +4131,10 @@
 004AEA  85 0D                         sta  $0D             ; A=A X=$0003 Y=[stk] ; [SP-94]
 004AEC  D8                            cld                  ; A=A X=$0003 Y=[stk] ; [SP-94]
 004AED  C5 35                         cmp  $35             ; A=A X=$0003 Y=[stk] ; [SP-94]
-004AEF  D0 18                         bne  L_004B09        ; A=A X=$0003 Y=[stk] ; [SP-94]
+004AEF  D0 18                         bne  $4B09           ; A=A X=$0003 Y=[stk] ; [SP-94]
 004AF1  E6 10                         inc  $10             ; A=A X=$0003 Y=[stk] ; [SP-94]
-004AF3  20 CD 43                      jsr  PerFrameUpdate        ; A=A X=$0003 Y=[stk] ; [SP-96]
-; === End of while loop (counter: $00) ===
+004AF3  20 CD 43                      jsr  PerFrameUpdate  ; A=A X=$0003 Y=[stk] ; [SP-96]
+; === End of while loop (counter: X) ===
 
 004AF6  F8                            sed                  ; A=A X=$0003 Y=[stk] ; [SP-96]  ; Set decimal mode (BCD arithmetic)
 004AF7  A9 10                         lda  #$10            ; A=$0010 X=$0003 Y=[stk] ; [SP-96]
@@ -2206,17 +4145,17 @@
 004AFF  A0 00                         ldy  #$00            ; A=$0010 X=$0003 Y=$0000 ; [SP-96]
 004B01  A9 3C                         lda  #$3C            ; A=$003C X=$0003 Y=$0000 ; [SP-96]
 004B03  8D 67 5B                      sta  $5B67           ; A=$003C X=$0003 Y=$0000 ; [SP-96]
-004B06  20 62 5B                      jsr  InputProcessB        ; A=$003C X=$0003 Y=$0000 ; [SP-98]
-004B09  4C 87 43          L_004B09    jmp  InitGameVarsB        ; A=$003C X=$0003 Y=$0000 ; [SP-98]
+004B06  20 62 5B                      jsr  InputProcessB      ; A=$003C X=$0003 Y=$0000 ; [SP-98]
+004B09  4C 87 43                      jmp  InitGameVarsB   ; A=$003C X=$0003 Y=$0000 ; [SP-98]
 ; === End of while loop (counter: $00) ===
 
 
-; === while loop starts here (counter: Y 'j') [nest:36] ===
+; === while loop starts here (counter: $00 '', range: 3205..18929, step: 18950, iters: 81488414525973) [nest:35] [inner] ===
 
-; FUNC $004B0C: register -> A:X []
-; Proto: uint32_t func_004B0C(uint16_t param_X);
+; FUNC $004B0C (SelectProjectileType): register -> A:X []
+; Proto: uint32_t SelectProjectileType(uint16_t param_X);
 ; Liveness: params(X) returns(A,X,Y) [18 dead stores]
-004B0C  8A                SelectProjectileType    txa                  ; A=$0003 X=$0003 Y=$0000 ; [SP-98]
+004B0C  8A                            txa                  ; A=$0003 X=$0003 Y=$0000 ; [SP-98]
 004B0D  8E 64 4B                      stx  $4B64           ; A=$0003 X=$0003 Y=$0000 ; [SP-98]
 004B10  0A                            asl  a               ; A=$0003 X=$0003 Y=$0000 ; [OPT] STRENGTH_RED: Multiple ASL A: consider using lookup table for multiply ; [SP-98]
 004B11  0A                            asl  a               ; A=$0003 X=$0003 Y=$0000 ; [SP-98]
@@ -2225,24 +4164,24 @@
 004B15  AA                            tax                  ; A=A+$03 X=A Y=$0000 ; [SP-98]
 004B16  A0 03                         ldy  #$03            ; A=A+$03 X=A Y=$0003 ; [SP-98]
 
-; === while loop starts here [nest:46] ===
-004B18  BD B8 53          L_004B18    lda  $53B8,X         ; A=A+$03 X=A Y=$0003 ; [SP-98]
+; === while loop starts here (counter: $00, range: 0..18715, step: 18717, iters: 80401787799837) [nest:45] [inner] ===
+004B18  BD B8 53                      lda  $53B8,X         ; A=A+$03 X=A Y=$0003 ; [SP-98]
 004B1B  C9 04                         cmp  #$04            ; A=A+$03 X=A Y=$0003 ; [SP-98]
-004B1D  D0 15                         bne  L_004B34        ; A=A+$03 X=A Y=$0003 ; [SP-98]
+004B1D  D0 15                         bne  loc_004B34      ; A=A+$03 X=A Y=$0003 ; [SP-98]
 004B1F  CA                            dex                  ; A=A+$03 X=X-$01 Y=$0003 ; [SP-98]
 004B20  88                            dey                  ; A=A+$03 X=X-$01 Y=$0002 ; [SP-98]
-004B21  10 F5                         bpl  L_004B18        ; A=A+$03 X=X-$01 Y=$0002 ; [SP-98]
-; === End of while loop ===
+004B21  10 F5                         bpl  $4B18           ; A=A+$03 X=X-$01 Y=$0002 ; [SP-98]
+; === End of while loop (counter: $00) ===
 
 004B23  20 03 04                      jsr  $0403           ; A=A+$03 X=X-$01 Y=$0002 ; [SP-100]
 004B26  C9 10                         cmp  #$10            ; A=A+$03 X=X-$01 Y=$0002 ; [SP-100]
-004B28  B0 05                         bcs  L_004B2F        ; A=A+$03 X=X-$01 Y=$0002 ; [SP-100]
+004B28  B0 05                         bcs  loc_004B2F      ; A=A+$03 X=X-$01 Y=$0002 ; [SP-100]
 004B2A  A9 03                         lda  #$03            ; A=$0003 X=X-$01 Y=$0002 ; [SP-100]
-004B2C  4C 36 4B                      jmp  L_004B36        ; A=$0003 X=X-$01 Y=$0002 ; [SP-100]
-004B2F  A9 02             L_004B2F    lda  #$02            ; A=$0002 X=X-$01 Y=$0002 ; [SP-100]
-004B31  4C 36 4B                      jmp  L_004B36        ; A=$0002 X=X-$01 Y=$0002 ; [SP-100]
-004B34  A9 01             L_004B34    lda  #$01            ; A=$0001 X=X-$01 Y=$0002 ; [SP-100]
-004B36  AE 64 4B          L_004B36    ldx  $4B64           ; A=$0001 X=X-$01 Y=$0002 ; [SP-100]
+004B2C  4C 36 4B                      jmp  loc_004B36      ; A=$0003 X=X-$01 Y=$0002 ; [SP-100]
+004B2F  A9 02             loc_004B2F  lda  #$02            ; A=$0002 X=X-$01 Y=$0002 ; [SP-100]
+004B31  4C 36 4B                      jmp  loc_004B36      ; A=$0002 X=X-$01 Y=$0002 ; [SP-100]
+004B34  A9 01             loc_004B34  lda  #$01            ; A=$0001 X=X-$01 Y=$0002 ; [SP-100]
+004B36  AE 64 4B          loc_004B36  ldx  $4B64           ; A=$0001 X=X-$01 Y=$0002 ; [SP-100]
 004B39  9D 54 5D                      sta  $5D54,X         ; A=$0001 X=X-$01 Y=$0002 ; [SP-100]
 004B3C  BD 58 4B                      lda  $4B58,X         ; A=$0001 X=X-$01 Y=$0002 ; [SP-100]
 004B3F  9D 48 5D                      sta  $5D48,X         ; A=$0001 X=X-$01 Y=$0002 ; [SP-100]
@@ -2253,41 +4192,27 @@
 004B4E  A0 10                         ldy  #$10            ; A=$0001 X=X-$01 Y=$0010 ; [SP-100]
 004B50  A9 45                         lda  #$45            ; A=$0045 X=X-$01 Y=$0010 ; [SP-100]
 004B52  8D 67 5B                      sta  $5B67           ; A=$0045 X=X-$01 Y=$0010 ; [SP-100]
-004B55  4C 62 5B                      jmp  InputProcessB        ; A=$0045 X=X-$01 Y=$0010 ; [SP-100]
+004B55  4C 62 5B                      jmp  InputProcessB      ; A=$0045 X=X-$01 Y=$0010 ; [SP-100]
 
 ; --- Data region ---
 004B58  A900A950                HEX     A900A950 00010000 105EAC5E 00
 
-; === while loop starts here (counter: X 'iter_x') [nest:12] ===
+; === while loop starts here (counter: $00, range: 0..19715, step: 19716, iters: 84512071503067) [nest:11] [inner] ===
 
-; FUNC $004B65: register -> A:X []
+; FUNC $004B65 (PunishmentRoutine): register -> A:X []
 ; Liveness: returns(A,X,Y) [7 dead stores]
 ; --- End data region (13 bytes) ---
 
 ; ============================================================================
 ; PUNISHMENT ROUTINE ($4B65)
 ; ============================================================================
-; HOW: Reads direction from $57D6, computes table offset (dir * 4 + 3),
-;      then stores type 5 (Diamond) into all 4 alien slots for that side.
-;      Plays punishment sound, then jumps to direction-specific redraw.
-;
-; WHY "direction * 4 + 3": The alien type table at $53B8 has 16 entries,
-;      4 per direction: $53B8-$53BB = UP, $53BC-$53BF = LEFT,
-;      $53C0-$53C3 = DOWN, $53C4-$53C7 = RIGHT.
-;      Starting at +3 and decrementing with DEX/DEY fills all 4 slots.
-;
-; WHY this is devastating: Diamond is type 5. TV is type 4.
-;      To get from Diamond back to TV: Diamond(5) -> Bowtie(6) -> wrap
-;      to UFO(1) -> Eye1(2) -> Eye2(3) -> TV(4) = 5 more hits!
-;      And this happens to ALL 4 aliens on that side simultaneously.
-;
-; WHEN called:
-;   - Player shoots a heart projectile (type 2) - DON'T HIT!
-;   - Player misses an upside-down heart (type 3) - MUST HIT!
-;   Both mistakes result in the same devastating penalty.
+; Called when: hitting a heart OR missing an upside-down heart.
+; Transforms ALL 4 aliens on the affected side to DIAMONDS (type 5).
+; This is devastating - you need 5 more hits per alien to cycle back to TV!
+; Input: $57D6 = direction (0=UP, 1=LEFT, 2=DOWN, 3=RIGHT)
 ; ============================================================================
-004B65  AD D6 57          PunishmentRoutine    lda  $57D6           ; A=[$57D6] X=X-$01 Y=$0010 ; [SP-106]
-004B68  20 3C 4C                      jsr  PlayPunishSound        ; A=[$57D6] X=X-$01 Y=$0010 ; [SP-108]
+004B65  AD D6 57                      lda  $57D6           ; A=[$57D6] X=X-$01 Y=$0010 ; [SP-106]
+004B68  20 3C 4C                      jsr  PlayPunishSound ; Call $004C3C(A)
 004B6B  AD D6 57                      lda  $57D6           ; A=[$57D6] X=X-$01 Y=$0010 ; [SP-108]
 004B6E  0A                            asl  a               ; A=[$57D6] X=X-$01 Y=$0010 ; [OPT] STRENGTH_RED: Multiple ASL A: consider using lookup table for multiply ; [SP-108]
 004B6F  0A                            asl  a               ; A=[$57D6] X=X-$01 Y=$0010 ; [SP-108]
@@ -2297,32 +4222,32 @@
 004B74  A0 03                         ldy  #$03            ; A=A+$03 X=A Y=$0003 ; [SP-108]
 004B76  A9 05                         lda  #$05            ; A=$0005 X=A Y=$0003 ; [SP-108]
 
-; === while loop starts here [nest:48] ===
-004B78  9D B8 53          L_004B78    sta  $53B8,X         ; A=$0005 X=A Y=$0003 ; [SP-108]
+; === while loop starts here (counter: $00, range: 0..19666, step: 19667, iters: 100476464946380) [nest:47] [inner] ===
+004B78  9D B8 53          loc_004B78  sta  $53B8,X         ; A=$0005 X=A Y=$0003 ; [SP-108]
 004B7B  CA                            dex                  ; A=$0005 X=X-$01 Y=$0003 ; [SP-108]
 004B7C  88                            dey                  ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
-004B7D  10 F9                         bpl  L_004B78        ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
-; === End of while loop ===
+004B7D  10 F9                         bpl  loc_004B78      ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
+; === End of while loop (counter: $00) ===
 
 004B7F  AE D6 57                      ldx  $57D6           ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
-004B82  D0 03                         bne  L_004B87        ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
-004B84  4C C5 54                      jmp  L_0054C5        ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
-004B87  E0 01             L_004B87    cpx  #$01            ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
-004B89  D0 03                         bne  L_004B8E        ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
-004B8B  4C 61 54                      jmp  L_005461        ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
-004B8E  E0 02             L_004B8E    cpx  #$02            ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
-004B90  D0 03                         bne  L_004B95        ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
-004B92  4C 29 55                      jmp  L_005529        ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
-004B95  4C FD 53          L_004B95    jmp  L_0053FD        ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
+004B82  D0 03                         bne  loc_004B87      ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
+004B84  4C C5 54                      jmp  $54C5           ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
+004B87  E0 01             loc_004B87  cpx  #$01            ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
+004B89  D0 03                         bne  loc_004B8E      ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
+004B8B  4C 61 54                      jmp  $5461           ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
+004B8E  E0 02             loc_004B8E  cpx  #$02            ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
+004B90  D0 03                         bne  $4B95           ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
+004B92  4C 29 55                      jmp  $5529           ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
+004B95  4C FD 53                      jmp  $53FD           ; A=$0005 X=X-$01 Y=$0002 ; [SP-108]
 
-; === while loop starts here (counter: $00, range: 0..23767, step: 23770, iters: 83837761637438) [nest:46] [inner] ===
-004B98  A9 03             L_004B98    lda  #$03            ; A=$0003 X=X-$01 Y=$0002 ; [SP-108]
+; === while loop starts here (counter: Y 'iter_y') [nest:45] ===
+004B98  A9 03                         lda  #$03            ; A=$0003 X=X-$01 Y=$0002 ; [SP-108]
 004B9A  8D F8 53                      sta  $53F8           ; A=$0003 X=X-$01 Y=$0002 ; [SP-108]
 
-; === while loop starts here (counter: $00 '', range: 0..19537, step: 19475, iters: 83700322683934) [nest:48] [inner] ===
-004B9D  AE F8 53          L_004B9D    ldx  $53F8           ; A=$0003 X=X-$01 Y=$0002 ; [SP-108]
+; === while loop starts here (counter: $00) [nest:47] [inner] ===
+004B9D  AE F8 53                      ldx  $53F8           ; A=$0003 X=X-$01 Y=$0002 ; [SP-108]
 004BA0  BD C4 53                      lda  $53C4,X         ; A=$0003 X=X-$01 Y=$0002 ; [SP-108]
-004BA3  F0 16                         beq  L_004BBB        ; A=$0003 X=X-$01 Y=$0002 ; [SP-108]
+004BA3  F0 16                         beq  $4BBB           ; A=$0003 X=X-$01 Y=$0002 ; [SP-108]
 004BA5  48                            pha                  ; A=$0003 X=X-$01 Y=$0002 ; [SP-109]
 004BA6  AD F3 53                      lda  $53F3           ; A=[$53F3] X=X-$01 Y=$0002 ; [SP-109]
 004BA9  18                            clc                  ; A=[$53F3] X=X-$01 Y=$0002 ; [SP-109]
@@ -2333,23 +4258,23 @@
 004BB3  68                            pla                  ; A=[stk] X=X-$01 Y=$0002 ; [SP-108]
 004BB4  AA                            tax                  ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
 004BB5  BD D6 53                      lda  $53D6,X         ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
-004BB8  20 C0 40                      jsr  DrawSpriteXY        ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
-; === End of while loop (counter: $00) ===
+004BB8  20 C0 40                      jsr  DrawSpriteXY    ; Call $0040C0(A)
+; === End of while loop (counter: X) ===
 
-004BBB  CE F8 53          L_004BBB    dec  $53F8           ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
-004BBE  10 DD                         bpl  L_004B9D        ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
+004BBB  CE F8 53                      dec  $53F8           ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
+004BBE  10 DD                         bpl  $4B9D           ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
 ; === End of while loop (counter: $00) ===
 
 004BC0  60                            rts                  ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
 
-; === while loop starts here (counter: $00 '', range: 0..23669, step: 23661, iters: 84348862745887) [nest:46] [inner] ===
-004BC1  A9 03             L_004BC1    lda  #$03            ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
+; === while loop starts here (counter: Y 'iter_y') [nest:45] ===
+004BC1  A9 03             loc_004BC1  lda  #$03            ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
 004BC3  8D F8 53                      sta  $53F8           ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
 
-; === while loop starts here (counter: $00, range: 0..19756, step: 19758, iters: 84679575227651) [nest:48] [inner] ===
-004BC6  AE F8 53          L_004BC6    ldx  $53F8           ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
+; === while loop starts here (counter: X 'iter_x') [nest:47] ===
+004BC6  AE F8 53                      ldx  $53F8           ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
 004BC9  BD BC 53                      lda  $53BC,X         ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
-004BCC  F0 16                         beq  L_004BE4        ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
+004BCC  F0 16                         beq  $4BE4           ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
 004BCE  48                            pha                  ; A=$0003 X=[stk] Y=$0002 ; [SP-109]
 004BCF  AD F1 53                      lda  $53F1           ; A=[$53F1] X=[stk] Y=$0002 ; [SP-109]
 004BD2  18                            clc                  ; A=[$53F1] X=[stk] Y=$0002 ; [SP-109]
@@ -2360,23 +4285,23 @@
 004BDC  68                            pla                  ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
 004BDD  AA                            tax                  ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
 004BDE  BD DD 53                      lda  $53DD,X         ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
-004BE1  20 C0 40                      jsr  DrawSpriteXY        ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
-; === End of while loop (counter: $00) ===
+004BE1  20 C0 40                      jsr  DrawSpriteXY    ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
+; === End of while loop (counter: X) ===
 
-004BE4  CE F8 53          L_004BE4    dec  $53F8           ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
-004BE7  10 DD                         bpl  L_004BC6        ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
-; === End of while loop (counter: $00) ===
+004BE4  CE F8 53                      dec  $53F8           ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
+004BE7  10 DD                         bpl  $4BC6           ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
+; === End of while loop (counter: X) ===
 
 004BE9  60                            rts                  ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
 
-; === while loop starts here (counter: $00, range: 0..19425, step: 19428, iters: 83116207131719) [nest:48] [inner] ===
-004BEA  A9 03             L_004BEA    lda  #$03            ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
+; === while loop starts here (counter: Y 'iter_y') [nest:47] ===
+004BEA  A9 03             loc_004BEA  lda  #$03            ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
 004BEC  8D F8 53                      sta  $53F8           ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
 
-; === while loop starts here (counter: $00 '', range: 0..19384, step: 16576, iters: 83266530986938) [nest:49] [inner] ===
-004BEF  AE F8 53          L_004BEF    ldx  $53F8           ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
+; === while loop starts here (counter: Y 'iter_y', iters: 85422604570028) [nest:48] ===
+004BEF  AE F8 53                      ldx  $53F8           ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
 004BF2  BD B8 53                      lda  $53B8,X         ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
-004BF5  F0 16                         beq  L_004C0D        ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
+004BF5  F0 16                         beq  $4C0D           ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
 004BF7  48                            pha                  ; A=$0003 X=[stk] Y=$0002 ; [SP-109]
 004BF8  AD EC 53                      lda  $53EC           ; A=[$53EC] X=[stk] Y=$0002 ; [SP-109]
 004BFB  18                            clc                  ; A=[$53EC] X=[stk] Y=$0002 ; [SP-109]
@@ -2388,21 +4313,21 @@
 004C05  68                            pla                  ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
 004C06  AA                            tax                  ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
 004C07  BD C8 53                      lda  $53C8,X         ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
-004C0A  20 A1 52                      jsr  DrawSatelliteB        ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
-004C0D  CE F8 53          L_004C0D    dec  $53F8           ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
-004C10  10 DD                         bpl  L_004BEF        ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
-; === End of while loop (counter: $00) ===
+004C0A  20 A1 52                      jsr  DrawSatelliteB      ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
+004C0D  CE F8 53                      dec  $53F8           ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
+004C10  10 DD                         bpl  $4BEF           ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
+; === End of while loop (counter: Y) ===
 
 004C12  60                            rts                  ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
 
-; === while loop starts here (counter: $00 '', range: 0..19554, step: 19561, iters: 90705414343790) [nest:46] [inner] ===
-004C13  A9 03             L_004C13    lda  #$03            ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
+; === while loop starts here [nest:45] ===
+004C13  A9 03             loc_004C13  lda  #$03            ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
 004C15  8D F8 53                      sta  $53F8           ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
 
-; === while loop starts here (counter: $00, range: 0..19721, step: 19724, iters: 84748294704402) [nest:50] [inner] ===
-004C18  AE F8 53          L_004C18    ldx  $53F8           ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
+; === while loop starts here (counter: $00) [nest:49] [inner] ===
+004C18  AE F8 53                      ldx  $53F8           ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
 004C1B  BD C0 53                      lda  $53C0,X         ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
-004C1E  F0 16                         beq  L_004C36        ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
+004C1E  F0 16                         beq  $4C36           ; A=$0003 X=[stk] Y=$0002 ; [SP-108]
 004C20  48                            pha                  ; A=$0003 X=[stk] Y=$0002 ; [SP-109]
 004C21  AD EE 53                      lda  $53EE           ; A=[$53EE] X=[stk] Y=$0002 ; [SP-109]
 004C24  18                            clc                  ; A=[$53EE] X=[stk] Y=$0002 ; [SP-109]
@@ -2413,208 +4338,184 @@
 004C2E  68                            pla                  ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
 004C2F  AA                            tax                  ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
 004C30  BD CF 53                      lda  $53CF,X         ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
-004C33  20 A1 52                      jsr  DrawSatelliteB        ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
-004C36  CE F8 53          L_004C36    dec  $53F8           ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
-004C39  10 DD                         bpl  L_004C18        ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
+004C33  20 A1 52                      jsr  DrawSatelliteB      ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
+004C36  CE F8 53                      dec  $53F8           ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
+004C39  10 DD                         bpl  $4C18           ; A=[stk] X=[stk] Y=$0002 ; [SP-110]
 ; === End of while loop (counter: $00) ===
 
 004C3B  60                            rts                  ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
 
-; === while loop starts here (counter: $00 '', range: 0..19585, step: 19590, iters: 84396107386048) [nest:5] [inner] ===
+; === while loop starts here (counter: A 'counter_a', iters: 94845762819619) [nest:4] ===
 
-; FUNC $004C3C: register -> A:X [L]
-; Proto: uint32_t func_004C3C(uint16_t param_X, uint16_t param_Y);
+; FUNC $004C3C (PlayPunishSound): register -> A:X [L]
+; Proto: uint32_t PlayPunishSound(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [5 dead stores]
-004C3C  C9 00             PlayPunishSound    cmp  #$00            ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
-004C3E  D0 03                         bne  L_004C43        ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
-004C40  4C EA 4B                      jmp  L_004BEA        ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
-; === End of while loop (counter: $00) ===
+004C3C  C9 00                         cmp  #$00            ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
+004C3E  D0 03                         bne  loc_004C43      ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
+004C40  4C EA 4B                      jmp  loc_004BEA      ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
+; === End of while loop (counter: Y) ===
 
-004C43  C9 03             L_004C43    cmp  #$03            ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
-004C45  D0 03                         bne  L_004C4A        ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
-004C47  4C 98 4B                      jmp  L_004B98        ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
-; === End of while loop (counter: $00) ===
+004C43  C9 03             loc_004C43  cmp  #$03            ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
+004C45  D0 03                         bne  loc_004C4A      ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
+004C47  4C 98 4B                      jmp  $4B98           ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
+; === End of while loop (counter: Y) ===
 
-004C4A  C9 01             L_004C4A    cmp  #$01            ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
-004C4C  D0 03                         bne  L_004C51        ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
-004C4E  4C C1 4B                      jmp  L_004BC1        ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
-; === End of while loop (counter: $00) ===
+004C4A  C9 01             loc_004C4A  cmp  #$01            ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
+004C4C  D0 03                         bne  loc_004C51      ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
+004C4E  4C C1 4B                      jmp  loc_004BC1      ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
+; === End of while loop (counter: Y) ===
 
-004C51  4C 13 4C          L_004C51    jmp  L_004C13        ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
-; === End of while loop (counter: $00) ===
+004C51  4C 13 4C          loc_004C51  jmp  loc_004C13      ; A=[stk] X=[stk] Y=$0002 ; [SP-108]
+; === End of while loop ===
 
 
 ; --- Data region ---
 004C54  0000                    HEX     0000
 
-; === while loop starts here (counter: $00, range: 0..20461, step: 20464, iters: 87449829134191) [nest:47] [inner] ===
+; === while loop starts here (counter: $00) [nest:46] [inner] ===
 
-; FUNC $004C56: register -> A:X [LJ]
-; Proto: uint32_t func_004C56(uint16_t param_X, uint16_t param_Y);
+; FUNC $004C56 (PlayTone): register -> A:X [LJ]
+; Proto: uint32_t PlayTone(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [5 dead stores]
 ; --- End data region (2 bytes) ---
 
-004C56  AD 54 4C          PlayTone    lda  $4C54           ; A=[$4C54] X=[stk] Y=$0002 ; [SP-111]
+004C56  AD 54 4C                      lda  $4C54           ; A=[$4C54] X=[stk] Y=$0002 ; [SP-111]
 004C59  85 19                         sta  $19             ; A=[$4C54] X=[stk] Y=$0002 ; [SP-111]
 004C5B  AD 55 4C                      lda  $4C55           ; A=[$4C55] X=[stk] Y=$0002 ; [SP-111]
 004C5E  85 04                         sta  $04             ; A=[$4C55] X=[stk] Y=$0002 ; [SP-111]
 004C60  A5 3A                         lda  $3A             ; A=[$003A] X=[stk] Y=$0002 ; [SP-111]
-004C62  D0 05                         bne  L_004C69        ; A=[$003A] X=[stk] Y=$0002 ; [SP-111]
+004C62  D0 05                         bne  loc_004C69      ; A=[$003A] X=[stk] Y=$0002 ; [SP-111]
 004C64  A9 9A                         lda  #$9A            ; A=$009A X=[stk] Y=$0002 ; [SP-111]
-004C66  4C 6B 4C                      jmp  L_004C6B        ; A=$009A X=[stk] Y=$0002 ; [SP-111]
-004C69  A9 90             L_004C69    lda  #$90            ; A=$0090 X=[stk] Y=$0002 ; [SP-111]
-004C6B  2C 30 C0          L_004C6B    bit  $C030           ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
-004C6E  4C 7F 52                      jmp  DrawSatellite        ; A=$0090 X=[stk] Y=$0002 ; [SP-111]
+004C66  4C 6B 4C                      jmp  loc_004C6B      ; A=$009A X=[stk] Y=$0002 ; [SP-111]
+004C69  A9 90             loc_004C69  lda  #$90            ; A=$0090 X=[stk] Y=$0002 ; [SP-111]
+004C6B  2C 30 C0          loc_004C6B  bit  SPKR            ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
+004C6E  4C 7F 52                      jmp  DrawSatellite   ; A=$0090 X=[stk] Y=$0002 ; [SP-111]
 
-; === while loop starts here (counter: $00 '', range: 0..20442, step: 20464, iters: 91023241924572) [nest:48] [inner] ===
+; === while loop starts here [nest:47] ===
 
-; FUNC $004C71: register -> A:X [L]
-; Proto: uint32_t func_004C71(uint16_t param_X, uint16_t param_Y);
+; FUNC $004C71 (PlayToneB): register -> A:X [L]
+; Proto: uint32_t PlayToneB(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [2 dead stores]
-004C71  AD 54 4C          PlayToneB    lda  $4C54           ; A=[$4C54] X=[stk] Y=$0002 ; [SP-111]
+004C71  AD 54 4C                      lda  $4C54           ; A=[$4C54] X=[stk] Y=$0002 ; [SP-111]
 004C74  85 19                         sta  $19             ; A=[$4C54] X=[stk] Y=$0002 ; [SP-111]
 004C76  AD 55 4C                      lda  $4C55           ; A=[$4C55] X=[stk] Y=$0002 ; [SP-111]
 004C79  85 04                         sta  $04             ; A=[$4C55] X=[stk] Y=$0002 ; [SP-111]
 004C7B  A5 3A                         lda  $3A             ; A=[$003A] X=[stk] Y=$0002 ; [SP-111]
-004C7D  D0 05                         bne  L_004C84        ; A=[$003A] X=[stk] Y=$0002 ; [SP-111]
+004C7D  D0 05                         bne  loc_004C84      ; A=[$003A] X=[stk] Y=$0002 ; [SP-111]
 004C7F  A9 9A                         lda  #$9A            ; A=$009A X=[stk] Y=$0002 ; [SP-111]
-004C81  4C 86 4C                      jmp  L_004C86        ; A=$009A X=[stk] Y=$0002 ; [SP-111]
-004C84  A9 90             L_004C84    lda  #$90            ; A=$0090 X=[stk] Y=$0002 ; [SP-111]
-004C86  2C 30 C0          L_004C86    bit  $C030           ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
-004C89  4C A1 52                      jmp  DrawSatelliteB        ; A=$0090 X=[stk] Y=$0002 ; [SP-111]
+004C81  4C 86 4C                      jmp  $4C86           ; A=$009A X=[stk] Y=$0002 ; [SP-111]
+004C84  A9 90             loc_004C84  lda  #$90            ; A=$0090 X=[stk] Y=$0002 ; [SP-111]
+004C86  2C 30 C0                      bit  SPKR            ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
+004C89  4C A1 52                      jmp  DrawSatelliteB      ; A=$0090 X=[stk] Y=$0002 ; [SP-111]
 
 ; --- Data region ---
-004C8C  000060                  HEX     000060
-; --- End data region (3 bytes) ---
+004C8C  000060C0                HEX     000060C0 C0000051 01A5A501 00
 
-004C8F  C0 C0             L_004C8F    cpy  #$C0            ; A=$0090 X=[stk] Y=$0002 ; [SP-112]
-004C91  00 00                         brk  #$00            ; A=$0090 X=[stk] Y=$0002 ; [SP-115]
+; === while loop starts here (counter: A 'counter_a', iters: 83640193141773) [nest:5] ===
 
-; --- Data region ---
-004C93  5101A5A5                HEX     5101A5A5 0100
-
-; === while loop starts here (counter: $00, range: 0..17512, step: 17514, iters: 75097503188043) [nest:6] [inner] ===
-
-; FUNC $004C99: register -> A:X []
-; Proto: uint32_t func_004C99(uint16_t param_Y);
+; FUNC $004C99 (LevelCompleteAnim): register -> A:X []
+; Proto: uint32_t LevelCompleteAnim(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y) [7 dead stores]
-; --- End data region (6 bytes) ---
+; --- End data region (13 bytes) ---
 
 ; ---------------------------------------------------------------------------
-; LEVEL COMPLETE ANIMATION ($4C99) - LevelCompleteAnim
-; HOW: Animates a large TV sprite sweeping around the screen, "collecting"
-;      all the aliens. During this multi-frame animation, the keyboard
-;      is polled at $4CEF.
-;
-; HIDDEN CHEAT CODE at $4CEF:
-;      Press Shift-N during the animation. On the Apple II/II+ keyboard,
-;      Shift-N produces the caret character (^), which is ASCII $1E,
-;      plus the Apple II high-bit = $9E.
-;      Effect 1: Adds 3 to lives counter ($10)
-;      Effect 2: Resets difficulty $30 to $0B (easiest), undoing ALL
-;                accumulated speed increases. This is the real power -
-;                the game slows back down to starting speed.
-;      Can be activated multiple times during one animation!
-;
-; WHY Shift-N: On modern keyboards, caret is Shift-6. But on the
-;      original 1981 Apple II keyboard layout, caret is Shift-N.
-;      This made it nearly impossible to discover by accident (players
-;      would never think to press Shift-N during gameplay), yet easy
-;      for the developer to use during testing.
+; LEVEL COMPLETE ANIMATION ($4C99)
+; The big TV sweeps around collecting aliens.
+; CHEAT CODE CHECK at $4CEF: Shift-N ($9E) = +3 lives + reset difficulty
 ; ---------------------------------------------------------------------------
-004C99  A9 C0             LevelCompleteAnim    lda  #$C0            ; A=$00C0 X=[stk] Y=$0002 ; [SP-115]
+004C99  A9 C0                         lda  #$C0            ; A=$00C0 X=[stk] Y=$0002 ; [SP-115]
 004C9B  8D 54 4C                      sta  $4C54           ; A=$00C0 X=[stk] Y=$0002 ; [SP-115]
 004C9E  A9 01                         lda  #$01            ; A=$0001 X=[stk] Y=$0002 ; [SP-115]
 004CA0  8D 55 4C                      sta  $4C55           ; A=$0001 X=[stk] Y=$0002 ; [SP-115]
 004CA3  A9 04                         lda  #$04            ; A=$0004 X=[stk] Y=$0002 ; [SP-115]
 004CA5  8D 98 4C                      sta  $4C98           ; A=$0004 X=[stk] Y=$0002 ; [SP-115]
 
-; === while loop starts here (counter: $00, range: 0..23738, step: 23741, iters: 101988293434559) [nest:48] [inner] ===
-004CA8  AE 98 4C          L_004CA8    ldx  $4C98           ; A=$0004 X=[stk] Y=$0002 ; [SP-115]
+; === while loop starts here [nest:47] ===
+004CA8  AE 98 4C          loc_004CA8  ldx  $4C98           ; A=$0004 X=[stk] Y=$0002 ; [SP-115]
 004CAB  BD 8E 4C                      lda  $4C8E,X         ; A=$0004 X=[stk] Y=$0002 ; [SP-115]
 004CAE  8D 8C 4C                      sta  $4C8C           ; A=$0004 X=[stk] Y=$0002 ; [SP-115]
 004CB1  BD 93 4C                      lda  $4C93,X         ; A=$0004 X=[stk] Y=$0002 ; [SP-115]
 004CB4  8D 8D 4C                      sta  $4C8D           ; A=$0004 X=[stk] Y=$0002 ; [SP-115]
 
-; === while loop starts here (counter: $00, range: 0..23683, step: 23685, iters: 101739185331333) [nest:49] [inner] ===
-004CB7  20 71 4C          L_004CB7    jsr  PlayToneB        ; A=$0004 X=[stk] Y=$0002 ; [SP-117]
-; === End of while loop (counter: $00) ===
+; === while loop starts here [nest:48] ===
+004CB7  20 71 4C                      jsr  PlayToneB       ; A=$0004 X=[stk] Y=$0002 ; [SP-117]
+; === End of while loop ===
 
 004CBA  AD 54 4C                      lda  $4C54           ; A=[$4C54] X=[stk] Y=$0002 ; [SP-117]
 004CBD  CD 8C 4C                      cmp  $4C8C           ; A=[$4C54] X=[stk] Y=$0002 ; [SP-117]
-004CC0  F0 11                         beq  L_004CD3        ; A=[$4C54] X=[stk] Y=$0002 ; [SP-117]
-004CC2  B0 09                         bcs  L_004CCD        ; A=[$4C54] X=[stk] Y=$0002 ; [SP-117]
+004CC0  F0 11                         beq  $4CD3           ; A=[$4C54] X=[stk] Y=$0002 ; [SP-117]
+004CC2  B0 09                         bcs  $4CCD           ; A=[$4C54] X=[stk] Y=$0002 ; [SP-117]
 004CC4  18                            clc                  ; A=[$4C54] X=[stk] Y=$0002 ; [SP-117]
 004CC5  69 04                         adc  #$04            ; A=A+$04 X=[stk] Y=$0002 ; [SP-117]
 004CC7  8D 54 4C                      sta  $4C54           ; A=A+$04 X=[stk] Y=$0002 ; [SP-117]
-004CCA  4C D3 4C                      jmp  L_004CD3        ; A=A+$04 X=[stk] Y=$0002 ; [SP-117]
-004CCD  38                L_004CCD    sec                  ; A=A+$04 X=[stk] Y=$0002 ; [SP-117]
+004CCA  4C D3 4C                      jmp  $4CD3           ; A=A+$04 X=[stk] Y=$0002 ; [SP-117]
+004CCD  38                            sec                  ; A=A+$04 X=[stk] Y=$0002 ; [SP-117]
 004CCE  E9 04                         sbc  #$04            ; A=A-$04 X=[stk] Y=$0002 ; [SP-117]
 004CD0  8D 54 4C                      sta  $4C54           ; A=A-$04 X=[stk] Y=$0002 ; [OPT] PEEPHOLE: Load after store: 2 byte pattern at $004CD0 ; [SP-117]
-004CD3  AD 55 4C          L_004CD3    lda  $4C55           ; A=[$4C55] X=[stk] Y=$0002 ; [SP-117]
+004CD3  AD 55 4C                      lda  $4C55           ; A=[$4C55] X=[stk] Y=$0002 ; [SP-117]
 004CD6  CD 8D 4C                      cmp  $4C8D           ; A=[$4C55] X=[stk] Y=$0002 ; [SP-117]
-004CD9  F0 11                         beq  L_004CEC        ; A=[$4C55] X=[stk] Y=$0002 ; [SP-117]
-004CDB  B0 09                         bcs  L_004CE6        ; A=[$4C55] X=[stk] Y=$0002 ; [SP-117]
+004CD9  F0 11                         beq  $4CEC           ; A=[$4C55] X=[stk] Y=$0002 ; [SP-117]
+004CDB  B0 09                         bcs  $4CE6           ; A=[$4C55] X=[stk] Y=$0002 ; [SP-117]
 004CDD  18                            clc                  ; A=[$4C55] X=[stk] Y=$0002 ; [SP-117]
 004CDE  69 04                         adc  #$04            ; A=A+$04 X=[stk] Y=$0002 ; [SP-117]
 004CE0  8D 55 4C                      sta  $4C55           ; A=A+$04 X=[stk] Y=$0002 ; [SP-117]
-004CE3  4C EC 4C                      jmp  L_004CEC        ; A=A+$04 X=[stk] Y=$0002 ; [SP-117]
-004CE6  38                L_004CE6    sec                  ; A=A+$04 X=[stk] Y=$0002 ; [SP-117]
+004CE3  4C EC 4C                      jmp  $4CEC           ; A=A+$04 X=[stk] Y=$0002 ; [SP-117]
+004CE6  38                            sec                  ; A=A+$04 X=[stk] Y=$0002 ; [SP-117]
 004CE7  E9 04                         sbc  #$04            ; A=A-$04 X=[stk] Y=$0002 ; [SP-117]
 004CE9  8D 55 4C                      sta  $4C55           ; A=A-$04 X=[stk] Y=$0002 ; [SP-117]
-004CEC  20 56 4C          L_004CEC    jsr  PlayTone        ; A=A-$04 X=[stk] Y=$0002 ; [SP-119]
+004CEC  20 56 4C                      jsr  PlayTone        ; A=A-$04 X=[stk] Y=$0002 ; [SP-119]
 ; === End of while loop (counter: $00) ===
 
-004CEF  AD 00 C0                      lda  $C000           ; KBD - Keyboard data / 80STORE off {Keyboard} <keyboard_read>  ; <<< CHEAT CODE CHECK: Read keyboard during level animation
+004CEF  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off {Keyboard} <keyboard_read>  ; <<< CHEAT CODE CHECK: Read keyboard during level animation
 004CF2  C9 9E                         cmp  #$9E            ; A=[$C000] X=[stk] Y=$0002 ; [SP-119]  ; <<< Shift-N = $9E on Apple II/II+ keyboard (caret key)
-004CF4  D0 0E                         bne  L_004D04        ; A=[$C000] X=[stk] Y=$0002 ; [SP-119]
-004CF6  AD 10 C0                      lda  $C010           ; KBDSTRB - Clear keyboard strobe {Keyboard} <keyboard_strobe>
+004CF4  D0 0E                         bne  loc_004D04      ; A=[$C000] X=[stk] Y=$0002 ; [SP-119]
+004CF6  AD 10 C0                      lda  KBDSTRB         ; KBDSTRB - Clear keyboard strobe {Keyboard} <keyboard_strobe>
 004CF9  A9 0B                         lda  #$0B            ; A=$000B X=[stk] Y=$0002 ; [SP-119]  ; <<< Reset difficulty to easiest ($0B)
 004CFB  85 30                         sta  $30             ; A=$000B X=[stk] Y=$0002 ; [SP-119]
 004CFD  A9 03                         lda  #$03            ; A=$0003 X=[stk] Y=$0002 ; [SP-119]  ; <<< +3 extra lives!
 004CFF  18                            clc                  ; A=$0003 X=[stk] Y=$0002 ; [SP-119]
 004D00  65 10                         adc  $10             ; A=$0003 X=[stk] Y=$0002 ; [SP-119]  ; <<< Add to current lives
 004D02  85 10                         sta  $10             ; A=$0003 X=[stk] Y=$0002 ; [SP-119]  ; <<< Store new lives total
-004D04  A9 20             L_004D04    lda  #$20            ; A=$0020 X=[stk] Y=$0002 ; [SP-119]
+004D04  A9 20             loc_004D04  lda  #$20            ; A=$0020 X=[stk] Y=$0002 ; [SP-119]
 004D06  8D 32 4D                      sta  $4D32           ; A=$0020 X=[stk] Y=$0002 ; [SP-119]
 
-; === while loop starts here (counter: $00 '', range: 0..20339, step: 20351, iters: 87522843578244) [nest:51] [inner] ===
-004D09  20 1C 5C          L_004D09    jsr  UpdateStarTwinkle        ; A=$0020 X=[stk] Y=$0002 ; [SP-121]
-004D0C  2C 30 C0                      bit  $C030           ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
+; === while loop starts here [nest:50] ===
+004D09  20 1C 5C          loc_004D09  jsr  UpdateStarTwinkle ; A=$0020 X=[stk] Y=$0002 ; [SP-121]
+004D0C  2C 30 C0                      bit  SPKR            ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
 004D0F  CE 32 4D                      dec  $4D32           ; A=$0020 X=[stk] Y=$0002 ; [SP-121]
-004D12  10 F5                         bpl  L_004D09        ; A=$0020 X=[stk] Y=$0002 ; [SP-121]
-; === End of while loop (counter: $00) ===
+004D12  10 F5                         bpl  loc_004D09      ; A=$0020 X=[stk] Y=$0002 ; [SP-121]
+; === End of while loop ===
 
 004D14  A9 FF                         lda  #$FF            ; A=$00FF X=[stk] Y=$0002 ; [SP-121]
-004D16  20 6C 5C                      jsr  StarTwinkleC        ; A=$00FF X=[stk] Y=$0002 ; [SP-123]
+004D16  20 6C 5C                      jsr  StarTwinkleC      ; A=$00FF X=[stk] Y=$0002 ; [SP-123]
 004D19  AD 54 4C                      lda  $4C54           ; A=[$4C54] X=[stk] Y=$0002 ; [SP-123]
 004D1C  CD 8C 4C                      cmp  $4C8C           ; A=[$4C54] X=[stk] Y=$0002 ; [SP-123]
-004D1F  D0 96                         bne  L_004CB7        ; A=[$4C54] X=[stk] Y=$0002 ; [SP-123]
-; === End of while loop (counter: $00) ===
+004D1F  D0 96                         bne  $4CB7           ; A=[$4C54] X=[stk] Y=$0002 ; [SP-123]
+; === End of while loop ===
 
 004D21  AD 55 4C                      lda  $4C55           ; A=[$4C55] X=[stk] Y=$0002 ; [SP-123]
 004D24  CD 8D 4C                      cmp  $4C8D           ; A=[$4C55] X=[stk] Y=$0002 ; [SP-123]
-004D27  D0 8E                         bne  L_004CB7        ; A=[$4C55] X=[stk] Y=$0002 ; [SP-123]
+004D27  D0 8E                         bne  $4CB7           ; A=[$4C55] X=[stk] Y=$0002 ; [SP-123]
 ; === End of while loop (counter: $00) ===
 
 004D29  CE 98 4C                      dec  $4C98           ; A=[$4C55] X=[stk] Y=$0002 ; [SP-123]
-004D2C  30 03                         bmi  L_004D31        ; A=[$4C55] X=[stk] Y=$0002 ; [SP-123]
-004D2E  4C A8 4C                      jmp  L_004CA8        ; A=[$4C55] X=[stk] Y=$0002 ; [SP-123]
-; === End of while loop (counter: $00) ===
+004D2C  30 03                         bmi  $4D31           ; A=[$4C55] X=[stk] Y=$0002 ; [SP-123]
+004D2E  4C A8 4C                      jmp  loc_004CA8      ; A=[$4C55] X=[stk] Y=$0002 ; [SP-123]
+; === End of while loop ===
 
-004D31  60                L_004D31    rts                  ; A=[$4C55] X=[stk] Y=$0002 ; [SP-121]
+004D31  60                            rts                  ; A=[$4C55] X=[stk] Y=$0002 ; [SP-121]
 
 ; --- Data region ---
 004D32  00                      HEX     00
 
-; === while loop starts here (counter: $00, range: 0..17475, step: 17477, iters: 75389560964239) [nest:7] [inner] ===
+; === while loop starts here (counter: A 'counter_a') [nest:6] ===
 
-; FUNC $004D33: register -> A:X []
-; Proto: uint32_t func_004D33(uint16_t param_Y);
+; FUNC $004D33 (DisplayLevelNum): register -> A:X []
+; Proto: uint32_t DisplayLevelNum(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y) [1 dead stores]
 ; --- End data region (1 bytes) ---
 
-004D33  A9 14             DisplayLevelNum    lda  #$14            ; A=$0014 X=[stk] Y=$0002 ; [SP-124]
+004D33  A9 14                         lda  #$14            ; A=$0014 X=[stk] Y=$0002 ; [SP-124]
 004D35  85 02                         sta  $02             ; A=$0014 X=[stk] Y=$0002 ; [SP-124]
 004D37  A9 75                         lda  #$75            ; A=$0075 X=[stk] Y=$0002 ; [SP-127]
 004D39  85 04                         sta  $04             ; A=$0075 X=[stk] Y=$0002 ; [SP-127]
@@ -2625,11 +4526,11 @@
 004D44  A9 75                         lda  #$75            ; A=$0075 X=[stk] Y=$0002 ; [SP-127]
 004D46  85 04                         sta  $04             ; A=$0075 X=[stk] Y=$0002 ; [SP-127]
 004D48  A6 3A                         ldx  $3A             ; A=$0075 X=[stk] Y=$0002 ; [SP-127]
-004D4A  F0 07                         beq  L_004D53        ; A=$0075 X=[stk] Y=$0002 ; [SP-127]
+004D4A  F0 07                         beq  loc_004D53      ; A=$0075 X=[stk] Y=$0002 ; [SP-127]
 004D4C  BD 6E 4D                      lda  $4D6E,X         ; A=$0075 X=[stk] Y=$0002 ; [SP-127]
-004D4F  20 7F 52                      jsr  DrawSatellite        ; A=$0075 X=[stk] Y=$0002 ; [OPT] TAIL_CALL: Tail call: JSR/JSL at $004D4F followed by RTS ; [SP-129]
+004D4F  20 7F 52                      jsr  DrawSatellite   ; A=$0075 X=[stk] Y=$0002 ; [OPT] TAIL_CALL: Tail call: JSR/JSL at $004D4F followed by RTS ; [SP-129]
 004D52  60                            rts                  ; A=$0075 X=[stk] Y=$0002 ; [SP-127]
-004D53  A9 14             L_004D53    lda  #$14            ; A=$0014 X=[stk] Y=$0002 ; [SP-127]
+004D53  A9 14             loc_004D53  lda  #$14            ; A=$0014 X=[stk] Y=$0002 ; [SP-127]
 004D55  85 02                         sta  $02             ; A=$0014 X=[stk] Y=$0002 ; [SP-127]
 004D57  A9 82                         lda  #$82            ; A=$0082 X=[stk] Y=$0002 ; [SP-127]
 004D59  85 04                         sta  $04             ; A=$0082 X=[stk] Y=$0002 ; [SP-127]
@@ -2646,78 +4547,62 @@
 ; --- Data region ---
 004D6E  00665F35                HEX     00665F35 74
 
-; === while loop starts here (counter: A 'counter_a') [nest:36] ===
+; === while loop starts here (counter: A 'counter_a') [nest:35] ===
 
-; FUNC $004D73: register -> A:X [L]
-; Proto: uint32_t func_004D73(uint16_t param_Y);
+; FUNC $004D73 (LevelSetup): register -> A:X [L]
+; Proto: uint32_t LevelSetup(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y)
 ; --- End data region (5 bytes) ---
 
 ; ---------------------------------------------------------------------------
-; LEVEL SETUP ($4D73) - LevelSetup
-; HOW: Resets all 16 alien type entries in $53B8 table to starting values.
-;      Sets up position tables for the 4 directions. Initializes alien
-;      movement counters and firing timers.
-;
-; WHY separate from StartNewGame: LevelSetup is called both at game
-;      start AND after each level completion. It only resets alien state,
-;      not player state (lives, score, difficulty). This lets the game
-;      preserve the player's progress while refreshing the aliens.
+; LEVEL SETUP ($4D73)
+; Initializes alien positions and states for the current level.
 ; ---------------------------------------------------------------------------
-004D73  A2 03             LevelSetup    ldx  #$03            ; A=$0099 X=$0003 Y=$0002 ; [SP-132]
+004D73  A2 03                         ldx  #$03            ; A=$0099 X=$0003 Y=$0002 ; [SP-132]
 004D75  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=$0002 ; [SP-132]
 
-; === while loop starts here [nest:50] ===
-004D77  9D B8 53          L_004D77    sta  $53B8,X         ; -> $53BB ; A=$0000 X=$0003 Y=$0002 ; [SP-135]
+; === while loop starts here [nest:49] ===
+004D77  9D B8 53                      sta  $53B8,X         ; -> $53BB ; A=$0000 X=$0003 Y=$0002 ; [SP-135]
 004D7A  9D C0 53                      sta  $53C0,X         ; -> $53C3 ; A=$0000 X=$0003 Y=$0002 ; [SP-135]
 004D7D  9D BC 53                      sta  $53BC,X         ; -> $53BF ; A=$0000 X=$0003 Y=$0002 ; [SP-135]
 004D80  9D C4 53                      sta  $53C4,X         ; -> $53C7 ; A=$0000 X=$0003 Y=$0002 ; [SP-135]
 004D83  CA                            dex                  ; A=$0000 X=$0002 Y=$0002 ; [SP-135]
-004D84  10 F1                         bpl  L_004D77        ; A=$0000 X=$0002 Y=$0002 ; [SP-135]
+004D84  10 F1                         bpl  $4D77           ; A=$0000 X=$0002 Y=$0002 ; [SP-135]
 ; === End of while loop ===
 
 004D86  60                            rts                  ; A=$0000 X=$0002 Y=$0002 ; [SP-133]
 
-; === while loop starts here (counter: $00, range: 0..19933, step: 19936, iters: 90851443232524) [nest:30] [inner] ===
+; === while loop starts here (counter: $00 '', range: 0..17354, step: 17337, iters: 73650099214331) [nest:29] [inner] ===
 
-; FUNC $004D87: register -> A:X []
-; Proto: uint32_t func_004D87(uint16_t param_Y);
+; FUNC $004D87 (UpdateAlienPositions): register -> A:X []
+; Proto: uint32_t UpdateAlienPositions(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y)
 ; ---------------------------------------------------------------------------
-; UPDATE ALIEN POSITIONS ($4D87) - UpdateAlienPositions
-; HOW: Called once per game tick. Uses the frame counter and difficulty
-;      parameters to decide when aliens should move. When triggered,
-;      updates alien track positions ($5D3C-$5D47) and may fire
-;      a projectile toward the player.
-;
-; WHY timing-gated: Aliens don't move every frame - that would be
-;      impossibly fast. The difficulty tables control how often aliens
-;      move and fire. At easiest settings, aliens are slow and rarely
-;      shoot. At hardest, they move and fire almost every frame.
-;      This is the mechanism that makes the game get harder over time.
+; UPDATE ALIEN POSITIONS ($4D87)
+; Moves aliens each tick based on current difficulty timing.
 ; ---------------------------------------------------------------------------
-004D87  A2 03             UpdateAlienPositions    ldx  #$03            ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
+004D87  A2 03                         ldx  #$03            ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
 004D89  8E BB 4D                      stx  $4DBB           ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
 
-; === while loop starts here (counter: $00, range: 0..20273, step: 20276, iters: 87003152535328) [nest:51] [inner] ===
-004D8C  AE BB 4D          L_004D8C    ldx  $4DBB           ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
+; === while loop starts here (counter: $00, range: 0..17297, step: 17300, iters: 74324409074582) [nest:50] [inner] ===
+004D8C  AE BB 4D                      ldx  $4DBB           ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
 004D8F  BD 58 5D                      lda  $5D58,X         ; -> $5D5B ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
-004D92  F0 21                         beq  L_004DB5        ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
+004D92  F0 21                         beq  $4DB5           ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
 004D94  E0 03                         cpx  #$03            ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
-004D96  F0 1A                         beq  L_004DB2        ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
+004D96  F0 1A                         beq  $4DB2           ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
 004D98  E0 02                         cpx  #$02            ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
-004D9A  F0 0A                         beq  L_004DA6        ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
+004D9A  F0 0A                         beq  $4DA6           ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
 004D9C  E0 01                         cpx  #$01            ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
-004D9E  F0 0C                         beq  L_004DAC        ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
-004DA0  20 E3 4D                      jsr  AlienEvolve        ; A=$0000 X=$0003 Y=$0002 ; [SP-135]
-004DA3  4C B5 4D                      jmp  L_004DB5        ; A=$0000 X=$0003 Y=$0002 ; [SP-135]
-004DA6  20 8B 4E          L_004DA6    jsr  AlienHitHandlerB        ; A=$0000 X=$0003 Y=$0002 ; [SP-137]
-004DA9  4C B5 4D                      jmp  L_004DB5        ; A=$0000 X=$0003 Y=$0002 ; [SP-137]
-004DAC  20 38 4E          L_004DAC    jsr  AlienHitHandler        ; A=$0000 X=$0003 Y=$0002 ; [SP-139]
-004DAF  4C B5 4D                      jmp  L_004DB5        ; A=$0000 X=$0003 Y=$0002 ; [SP-139]
-004DB2  20 E0 4E          L_004DB2    jsr  AlienHitHandlerC        ; A=$0000 X=$0003 Y=$0002 ; [SP-141]
-004DB5  CE BB 4D          L_004DB5    dec  $4DBB           ; A=$0000 X=$0003 Y=$0002 ; [SP-141]
-004DB8  10 D2                         bpl  L_004D8C        ; A=$0000 X=$0003 Y=$0002 ; [SP-141]
+004D9E  F0 0C                         beq  $4DAC           ; A=$0000 X=$0003 Y=$0002 ; [SP-133]
+004DA0  20 E3 4D                      jsr  AlienEvolve     ; Call $004DE3(A)
+004DA3  4C B5 4D                      jmp  $4DB5           ; A=$0000 X=$0003 Y=$0002 ; [SP-135]
+004DA6  20 8B 4E                      jsr  AlienHitHandlerB ; A=$0000 X=$0003 Y=$0002 ; [SP-137]
+004DA9  4C B5 4D                      jmp  $4DB5           ; A=$0000 X=$0003 Y=$0002 ; [SP-137]
+004DAC  20 38 4E                      jsr  AlienHitHandler ; A=$0000 X=$0003 Y=$0002 ; [SP-139]
+004DAF  4C B5 4D                      jmp  $4DB5           ; A=$0000 X=$0003 Y=$0002 ; [SP-139]
+004DB2  20 E0 4E                      jsr  AlienHitHandlerC ; A=$0000 X=$0003 Y=$0002 ; [SP-141]
+004DB5  CE BB 4D                      dec  $4DBB           ; A=$0000 X=$0003 Y=$0002 ; [SP-141]
+004DB8  10 D2                         bpl  $4D8C           ; A=$0000 X=$0003 Y=$0002 ; [SP-141]
 ; === End of while loop (counter: $00) ===
 
 004DBA  60                            rts                  ; A=$0000 X=$0003 Y=$0002 ; [SP-139]
@@ -2725,72 +4610,56 @@
 ; --- Data region ---
 004DBB  00000003                HEX     00000003 06090001 02
 
-; === while loop starts here (counter: $00 '', range: 0..20037, step: 19908, iters: 90851443232354) [nest:49] [inner] ===
+; === while loop starts here (counter: $00, range: 0..22346, step: 22348, iters: 96031173793621) [nest:48] [inner] ===
 
-; FUNC $004DC4: register -> A:X []
+; FUNC $004DC4 (UpdateAlienPosB): register -> A:X []
 ; Liveness: returns(A,X,Y) [8 dead stores]
 ; --- End data region (9 bytes) ---
 
-004DC4  AA                UpdateAlienPosB    tax                  ; A=$0000 X=$0000 Y=$0002 ; [SP-151]
+004DC4  AA                            tax                  ; A=$0000 X=$0000 Y=$0002 ; [SP-151]
 004DC5  BD BD 4D                      lda  $4DBD,X         ; A=$0000 X=$0000 Y=$0002 ; [SP-151]
 004DC8  20 E0 4A                      jsr  AddScore        ; Call $004AE0(A)
 ; === End of while loop (counter: $00) ===
 
 004DCB  A9 14                         lda  #$14            ; A=$0014 X=$0000 Y=$0002 ; [SP-153]
 004DCD  A0 0A                         ldy  #$0A            ; A=$0014 X=$0000 Y=$000A ; [SP-153]
-004DCF  20 35 4F                      jsr  PlaySound        ; A=$0014 X=$0000 Y=$000A ; [SP-155]
+004DCF  20 35 4F                      jsr  PlaySound       ; A=$0014 X=$0000 Y=$000A ; [SP-155]
 004DD2  AE BB 4D                      ldx  $4DBB           ; A=$0014 X=$0000 Y=$000A ; [SP-155]
 004DD5  A9 00                         lda  #$00            ; A=$0000 X=$0000 Y=$000A ; [SP-155]
 004DD7  9D 58 5D                      sta  $5D58,X         ; A=$0000 X=$0000 Y=$000A ; [SP-155]
-004DDA  20 41 44                      jsr  ClearSpriteArea        ; A=$0000 X=$0000 Y=$000A ; [SP-157]
-; === End of while loop (counter: Y) ===
+004DDA  20 41 44                      jsr  ClearSpriteArea ; A=$0000 X=$0000 Y=$000A ; [SP-157]
+; === End of while loop (counter: $00) ===
 
-004DDD  20 E4 56                      jsr  IncreaseDifficulty        ; A=$0000 X=$0000 Y=$000A ; [SP-159]
-004DE0  4C 4F 5B                      jmp  InputProcessA        ; A=$0000 X=$0000 Y=$000A ; [SP-159]
+004DDD  20 E4 56                      jsr  IncreaseDifficulty ; A=$0000 X=$0000 Y=$000A ; [SP-159]  ; Set decimal mode (BCD arithmetic)
+004DE0  4C 4F 5B                      jmp  InputProcessA   ; A=$0000 X=$0000 Y=$000A ; [SP-159]
 
 ; ---------------------------------------------------------------------------
-; ALIEN EVOLUTION ("Genetic Drift") - THE CORE MECHANIC
+; ALIEN EVOLUTION ("Genetic Drift")
 ; ---------------------------------------------------------------------------
-; HOW: Each alien's type is stored in the $53B8 table (16 entries,
-;      indexed by direction*4 + position). When hit, INC $53B8,X
-;      advances the type. If type reaches 7, wrap to 1.
-;      The type maps to a sprite via lookup table at $53C8.
+; Aliens cycle through 6 forms when hit:
+;   Type 1: UFO (flying saucer) - starting form
+;   Type 2: Eye Alien (blue)
+;   Type 3: Eye Alien (green)
+;   Type 4: TV - THE GOAL! All 16 must be TVs to complete the level
+;   Type 5: Diamond - PENALTY STATE (set by punishment routine)
+;   Type 6: Bowtie
+;   Type 7: Wraps back to Type 1 (UFO)
 ;
-; THE CYCLE (this is the game's namesake):
-;   Type 1: UFO         ($74 sprite) - starting form, 3 hits to TV
-;   Type 2: Eye (blue)  ($35 sprite) - 2 hits to TV
-;   Type 3: Eye (green) ($5F sprite) - 1 hit to TV!
-;   Type 4: TV          ($66 sprite) - THE GOAL! DON'T HIT!
-;   Type 5: Diamond     ($6D sprite) - PENALTY STATE, 5 hits back to TV
-;   Type 6: Bowtie      ($7B sprite) - one more hit wraps to UFO
-;   [Type 7: wraps to Type 1 via CMP #$07 / LDA #$01]
-;
-; WHY "Genetic Drift": The aliens "mutate" through forms as you hit
-;      them, cycling through a fixed sequence. The name is a playful
-;      reference to biological genetic drift - random evolutionary
-;      change in a population. Your goal is to "evolve" all 16 aliens
-;      to the TV form simultaneously.
-;
-; STRATEGY:
-;   - Hit UFOs 3× to reach TV. Hit Eyes 1-2× to reach TV.
-;   - STOP shooting once an alien becomes a TV!
-;   - Hitting a TV advances it to Diamond - you need 5 MORE hits
-;     (Diamond->Bowtie->UFO->Eye1->Eye2->TV) to get back.
-;   - One heart mistake = ENTIRE SIDE becomes Diamonds (PunishmentRoutine)
-;   - This creates intense risk/reward - knowing WHEN to stop shooting
-;     is the skill, not just hitting things.
+; Strategy: Hit aliens 3 times to reach TV (UFO->Eye1->Eye2->TV)
+;           STOP shooting once they're TVs!
+;           Hitting a TV cycles it to Diamond (need 5 more hits!)
 ; ---------------------------------------------------------------------------
-; FUNC $004DE3: register -> A:X []
-; Proto: uint32_t func_004DE3(uint16_t param_X, uint16_t param_Y);
+; FUNC $004DE3 (AlienEvolve): register -> A:X []
+; Proto: uint32_t AlienEvolve(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [6 dead stores]
-004DE3  AD 64 5D          AlienEvolve    lda  $5D64           ; A=[$5D64] X=$0000 Y=$000A ; [SP-159]
+004DE3  AD 64 5D                      lda  $5D64           ; A=[$5D64] X=$0000 Y=$000A ; [SP-159]
 004DE6  C9 0A                         cmp  #$0A            ; A=[$5D64] X=$0000 Y=$000A ; [SP-159]
-004DE8  B0 4D                         bcs  L_004E37        ; A=[$5D64] X=$0000 Y=$000A ; [SP-159]
-004DEA  20 0E 56                      jsr  DrawAlienRowDirC        ; A=[$5D64] X=$0000 Y=$000A ; [SP-161]
-004DED  F0 48                         beq  L_004E37        ; A=[$5D64] X=$0000 Y=$000A ; [SP-161]
+004DE8  B0 4D                         bcs  $4E37           ; A=[$5D64] X=$0000 Y=$000A ; [SP-159]
+004DEA  20 0E 56                      jsr  $560E           ; A=[$5D64] X=$0000 Y=$000A ; [SP-161]
+004DED  F0 48                         beq  $4E37           ; A=[$5D64] X=$0000 Y=$000A ; [SP-161]
 004DEF  8E BC 4D                      stx  $4DBC           ; A=[$5D64] X=$0000 Y=$000A ; [SP-161]
-004DF2  20 C4 4D                      jsr  UpdateAlienPosB        ; A=[$5D64] X=$0000 Y=$000A ; [SP-163]
-; === End of while loop ===
+004DF2  20 C4 4D                      jsr  UpdateAlienPosB ; A=[$5D64] X=$0000 Y=$000A ; [SP-163]
+; === End of while loop (counter: $00) ===
 
 004DF5  AE BC 4D                      ldx  $4DBC           ; A=[$5D64] X=$0000 Y=$000A ; [SP-163]
 004DF8  AD EC 53                      lda  $53EC           ; A=[$53EC] X=$0000 Y=$000A ; [SP-163]
@@ -2803,34 +4672,34 @@
 004E08  BD B8 53                      lda  $53B8,X         ; A=$0001 X=$0000 Y=$000A ; [SP-163]
 004E0B  AA                            tax                  ; A=$0001 X=$0001 Y=$000A ; [SP-163]
 004E0C  BD C8 53                      lda  $53C8,X         ; -> $53C9 ; A=$0001 X=$0001 Y=$000A ; [SP-163]
-004E0F  20 A1 52                      jsr  DrawSatelliteB        ; A=$0001 X=$0001 Y=$000A ; [SP-165]
+004E0F  20 A1 52                      jsr  DrawSatelliteB      ; A=$0001 X=$0001 Y=$000A ; [SP-165]
 004E12  AE BC 4D                      ldx  $4DBC           ; A=$0001 X=$0001 Y=$000A ; [SP-165]
 004E15  FE B8 53                      inc  $53B8,X         ; -> $53B9 ; A=$0001 X=$0001 Y=$000A ; [SP-165]  ; <<< ALIEN EVOLUTION: INC type (UFO->Eye1->Eye2->TV->Diamond->Bowtie->wrap)
 004E18  BD B8 53                      lda  $53B8,X         ; -> $53B9 ; A=$0001 X=$0001 Y=$000A ; [SP-165]
 004E1B  C9 07                         cmp  #$07            ; A=$0001 X=$0001 Y=$000A ; [SP-165]  ; <<< Type 7? Wrap back to 1 (UFO)
-004E1D  90 05                         bcc  L_004E24        ; A=$0001 X=$0001 Y=$000A ; [SP-165]
+004E1D  90 05                         bcc  $4E24           ; A=$0001 X=$0001 Y=$000A ; [SP-165]
 004E1F  A9 01                         lda  #$01            ; A=$0001 X=$0001 Y=$000A ; [SP-165]
 004E21  9D B8 53                      sta  $53B8,X         ; -> $53B9 ; A=$0001 X=$0001 Y=$000A ; [SP-165]
-004E24  AD FC 53          L_004E24    lda  $53FC           ; A=[$53FC] X=$0001 Y=$000A ; [SP-165]
+004E24  AD FC 53                      lda  $53FC           ; A=[$53FC] X=$0001 Y=$000A ; [SP-165]
 004E27  85 19                         sta  $19             ; A=[$53FC] X=$0001 Y=$000A ; [SP-165]
 004E29  A9 01                         lda  #$01            ; A=$0001 X=$0001 Y=$000A ; [SP-165]
 004E2B  85 04                         sta  $04             ; A=$0001 X=$0001 Y=$000A ; [SP-165]
 004E2D  BD B8 53                      lda  $53B8,X         ; -> $53B9 ; A=$0001 X=$0001 Y=$000A ; [SP-165]
 004E30  AA                            tax                  ; A=$0001 X=$0001 Y=$000A ; [SP-165]
 004E31  BD C8 53                      lda  $53C8,X         ; -> $53C9 ; A=$0001 X=$0001 Y=$000A ; [SP-165]
-004E34  20 7F 52                      jsr  DrawSatellite        ; A=$0001 X=$0001 Y=$000A ; [OPT] TAIL_CALL: Tail call: JSR/JSL at $004E34 followed by RTS ; [SP-167]
-004E37  60                L_004E37    rts                  ; A=$0001 X=$0001 Y=$000A ; [SP-165]
+004E34  20 7F 52                      jsr  DrawSatellite   ; Call $00527F(A)
+004E37  60                            rts                  ; A=$0001 X=$0001 Y=$000A ; [SP-165]
 
-; FUNC $004E38: register -> A:X []
-; Proto: uint32_t func_004E38(uint16_t param_X, uint16_t param_Y);
+; FUNC $004E38 (AlienHitHandler): register -> A:X []
+; Proto: uint32_t AlienHitHandler(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [6 dead stores]
-004E38  AD 61 5D          AlienHitHandler    lda  $5D61           ; A=[$5D61] X=$0001 Y=$000A ; [SP-165]
-004E3B  F0 4D                         beq  L_004E8A        ; A=[$5D61] X=$0001 Y=$000A ; [SP-165]
-004E3D  20 0E 56                      jsr  DrawAlienRowDirC        ; A=[$5D61] X=$0001 Y=$000A ; [SP-167]
+004E38  AD 61 5D                      lda  $5D61           ; A=[$5D61] X=$0001 Y=$000A ; [SP-165]
+004E3B  F0 4D                         beq  $4E8A           ; A=[$5D61] X=$0001 Y=$000A ; [SP-165]
+004E3D  20 0E 56                      jsr  $560E           ; A=[$5D61] X=$0001 Y=$000A ; [SP-167]
 004E40  8E BC 4D                      stx  $4DBC           ; A=[$5D61] X=$0001 Y=$000A ; [SP-167]
-004E43  F0 45                         beq  L_004E8A        ; A=[$5D61] X=$0001 Y=$000A ; [SP-167]
-004E45  20 C4 4D                      jsr  UpdateAlienPosB        ; A=[$5D61] X=$0001 Y=$000A ; [SP-169]
-; === End of while loop (counter: Y) ===
+004E43  F0 45                         beq  $4E8A           ; A=[$5D61] X=$0001 Y=$000A ; [SP-167]
+004E45  20 C4 4D                      jsr  UpdateAlienPosB ; A=[$5D61] X=$0001 Y=$000A ; [SP-169]
+; === End of while loop (counter: $00) ===
 
 004E48  AE BC 4D                      ldx  $4DBC           ; A=[$5D61] X=$0001 Y=$000A ; [SP-169]
 004E4B  AD F1 53                      lda  $53F1           ; A=[$53F1] X=$0001 Y=$000A ; [SP-169]
@@ -2843,35 +4712,35 @@
 004E5B  BD BC 53                      lda  $53BC,X         ; -> $53BD ; A=$00C4 X=$0001 Y=$000A ; [SP-169]
 004E5E  AA                            tax                  ; A=$00C4 X=$00C4 Y=$000A ; [SP-169]
 004E5F  BD DD 53                      lda  $53DD,X         ; -> $54A1 ; A=$00C4 X=$00C4 Y=$000A ; [SP-169]
-004E62  20 A1 52                      jsr  DrawSatelliteB        ; A=$00C4 X=$00C4 Y=$000A ; [SP-171]
+004E62  20 A1 52                      jsr  DrawSatelliteB      ; Call $0052A1(A, X)
 004E65  AE BC 4D                      ldx  $4DBC           ; A=$00C4 X=$00C4 Y=$000A ; [SP-171]
 004E68  FE BC 53                      inc  $53BC,X         ; -> $5480 ; A=$00C4 X=$00C4 Y=$000A ; [SP-171]
 004E6B  BD BC 53                      lda  $53BC,X         ; -> $5480 ; A=$00C4 X=$00C4 Y=$000A ; [SP-171]
 004E6E  C9 07                         cmp  #$07            ; A=$00C4 X=$00C4 Y=$000A ; [SP-171]
-004E70  90 05                         bcc  L_004E77        ; A=$00C4 X=$00C4 Y=$000A ; [SP-171]
+004E70  90 05                         bcc  $4E77           ; A=$00C4 X=$00C4 Y=$000A ; [SP-171]
 004E72  A9 01                         lda  #$01            ; A=$0001 X=$00C4 Y=$000A ; [SP-171]
 004E74  9D BC 53                      sta  $53BC,X         ; -> $5480 ; A=$0001 X=$00C4 Y=$000A ; [SP-171]
-004E77  AD FA 53          L_004E77    lda  $53FA           ; A=[$53FA] X=$00C4 Y=$000A ; [SP-171]
+004E77  AD FA 53                      lda  $53FA           ; A=[$53FA] X=$00C4 Y=$000A ; [SP-171]
 004E7A  85 04                         sta  $04             ; A=[$53FA] X=$00C4 Y=$000A ; [SP-171]
 004E7C  A9 C4                         lda  #$C4            ; A=$00C4 X=$00C4 Y=$000A ; [SP-171]
 004E7E  85 19                         sta  $19             ; A=$00C4 X=$00C4 Y=$000A ; [SP-171]
 004E80  BD BC 53                      lda  $53BC,X         ; -> $5480 ; A=$00C4 X=$00C4 Y=$000A ; [SP-171]
 004E83  AA                            tax                  ; A=$00C4 X=$00C4 Y=$000A ; [SP-171]
 004E84  BD DD 53                      lda  $53DD,X         ; -> $54A1 ; A=$00C4 X=$00C4 Y=$000A ; [SP-171]
-004E87  20 7F 52                      jsr  DrawSatellite        ; A=$00C4 X=$00C4 Y=$000A ; [OPT] TAIL_CALL: Tail call: JSR/JSL at $004E87 followed by RTS ; [SP-173]
-004E8A  60                L_004E8A    rts                  ; A=$00C4 X=$00C4 Y=$000A ; [SP-171]
+004E87  20 7F 52                      jsr  DrawSatellite   ; Call $00527F(A, X)
+004E8A  60                            rts                  ; A=$00C4 X=$00C4 Y=$000A ; [SP-171]
 
-; FUNC $004E8B: register -> A:X []
-; Proto: uint32_t func_004E8B(uint16_t param_X, uint16_t param_Y);
+; FUNC $004E8B (AlienHitHandlerB): register -> A:X []
+; Proto: uint32_t AlienHitHandlerB(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [6 dead stores]
-004E8B  AD 66 5D          AlienHitHandlerB    lda  $5D66           ; A=[$5D66] X=$00C4 Y=$000A ; [SP-171]
+004E8B  AD 66 5D                      lda  $5D66           ; A=[$5D66] X=$00C4 Y=$000A ; [SP-171]
 004E8E  C9 B4                         cmp  #$B4            ; A=[$5D66] X=$00C4 Y=$000A ; [SP-171]
-004E90  90 4D                         bcc  L_004EDF        ; A=[$5D66] X=$00C4 Y=$000A ; [SP-171]
-004E92  20 0E 56                      jsr  DrawAlienRowDirC        ; A=[$5D66] X=$00C4 Y=$000A ; [SP-173]
-004E95  F0 48                         beq  L_004EDF        ; A=[$5D66] X=$00C4 Y=$000A ; [SP-173]
+004E90  90 4D                         bcc  $4EDF           ; A=[$5D66] X=$00C4 Y=$000A ; [SP-171]
+004E92  20 0E 56                      jsr  $560E           ; Call $00560E(A)
+004E95  F0 48                         beq  $4EDF           ; A=[$5D66] X=$00C4 Y=$000A ; [SP-173]
 004E97  8E BC 4D                      stx  $4DBC           ; A=[$5D66] X=$00C4 Y=$000A ; [SP-173]
-004E9A  20 C4 4D                      jsr  UpdateAlienPosB        ; A=[$5D66] X=$00C4 Y=$000A ; [SP-175]
-; === End of while loop (counter: Y) ===
+004E9A  20 C4 4D                      jsr  UpdateAlienPosB ; A=[$5D66] X=$00C4 Y=$000A ; [SP-175]
+; === End of while loop (counter: $00) ===
 
 004E9D  AE BC 4D                      ldx  $4DBC           ; A=[$5D66] X=$00C4 Y=$000A ; [SP-175]
 004EA0  AD EE 53                      lda  $53EE           ; A=[$53EE] X=$00C4 Y=$000A ; [SP-175]
@@ -2884,34 +4753,34 @@
 004EB0  BD C0 53                      lda  $53C0,X         ; -> $5484 ; A=$00B4 X=$00C4 Y=$000A ; [SP-175]
 004EB3  AA                            tax                  ; A=$00B4 X=$00B4 Y=$000A ; [SP-175]
 004EB4  BD CF 53                      lda  $53CF,X         ; -> $5483 ; A=$00B4 X=$00B4 Y=$000A ; [SP-175]
-004EB7  20 A1 52                      jsr  DrawSatelliteB        ; A=$00B4 X=$00B4 Y=$000A ; [SP-177]
+004EB7  20 A1 52                      jsr  DrawSatelliteB      ; Call $0052A1(A, X)
 004EBA  AE BC 4D                      ldx  $4DBC           ; A=$00B4 X=$00B4 Y=$000A ; [SP-177]
 004EBD  FE C0 53                      inc  $53C0,X         ; -> $5474 ; A=$00B4 X=$00B4 Y=$000A ; [SP-177]
 004EC0  BD C0 53                      lda  $53C0,X         ; -> $5474 ; A=$00B4 X=$00B4 Y=$000A ; [SP-177]
 004EC3  C9 07                         cmp  #$07            ; A=$00B4 X=$00B4 Y=$000A ; [SP-177]
-004EC5  90 05                         bcc  L_004ECC        ; A=$00B4 X=$00B4 Y=$000A ; [SP-177]
+004EC5  90 05                         bcc  $4ECC           ; A=$00B4 X=$00B4 Y=$000A ; [SP-177]
 004EC7  A9 01                         lda  #$01            ; A=$0001 X=$00B4 Y=$000A ; [SP-177]
 004EC9  9D C0 53                      sta  $53C0,X         ; -> $5474 ; A=$0001 X=$00B4 Y=$000A ; [SP-177]
-004ECC  AD FC 53          L_004ECC    lda  $53FC           ; A=[$53FC] X=$00B4 Y=$000A ; [SP-177]
+004ECC  AD FC 53                      lda  $53FC           ; A=[$53FC] X=$00B4 Y=$000A ; [SP-177]
 004ECF  85 19                         sta  $19             ; A=[$53FC] X=$00B4 Y=$000A ; [SP-177]
 004ED1  A9 B4                         lda  #$B4            ; A=$00B4 X=$00B4 Y=$000A ; [SP-177]
 004ED3  85 04                         sta  $04             ; A=$00B4 X=$00B4 Y=$000A ; [SP-177]
 004ED5  BD C0 53                      lda  $53C0,X         ; -> $5474 ; A=$00B4 X=$00B4 Y=$000A ; [SP-177]
 004ED8  AA                            tax                  ; A=$00B4 X=$00B4 Y=$000A ; [SP-177]
 004ED9  BD CF 53                      lda  $53CF,X         ; -> $5483 ; A=$00B4 X=$00B4 Y=$000A ; [SP-177]
-004EDC  20 7F 52                      jsr  DrawSatellite        ; A=$00B4 X=$00B4 Y=$000A ; [OPT] TAIL_CALL: Tail call: JSR/JSL at $004EDC followed by RTS ; [SP-179]
-004EDF  60                L_004EDF    rts                  ; A=$00B4 X=$00B4 Y=$000A ; [SP-177]
+004EDC  20 7F 52                      jsr  DrawSatellite   ; Call $00527F(A, X)
+004EDF  60                            rts                  ; A=$00B4 X=$00B4 Y=$000A ; [SP-177]
 
-; FUNC $004EE0: register -> A:X []
-; Proto: uint32_t func_004EE0(uint16_t param_X, uint16_t param_Y);
+; FUNC $004EE0 (AlienHitHandlerC): register -> A:X []
+; Proto: uint32_t AlienHitHandlerC(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [6 dead stores]
-004EE0  AD 5F 5D          AlienHitHandlerC    lda  $5D5F           ; A=[$5D5F] X=$00B4 Y=$000A ; [SP-177]
+004EE0  AD 5F 5D                      lda  $5D5F           ; A=[$5D5F] X=$00B4 Y=$000A ; [SP-177]
 004EE3  C9 46                         cmp  #$46            ; A=[$5D5F] X=$00B4 Y=$000A ; [SP-177]
-004EE5  B0 4D                         bcs  L_004F34        ; A=[$5D5F] X=$00B4 Y=$000A ; [SP-177]
-004EE7  20 0E 56                      jsr  DrawAlienRowDirC        ; A=[$5D5F] X=$00B4 Y=$000A ; [SP-179]
-004EEA  F0 48                         beq  L_004F34        ; A=[$5D5F] X=$00B4 Y=$000A ; [SP-179]
+004EE5  B0 4D                         bcs  $4F34           ; A=[$5D5F] X=$00B4 Y=$000A ; [SP-177]
+004EE7  20 0E 56                      jsr  $560E           ; Call $00560E(A)
+004EEA  F0 48                         beq  $4F34           ; A=[$5D5F] X=$00B4 Y=$000A ; [SP-179]
 004EEC  8E BC 4D                      stx  $4DBC           ; A=[$5D5F] X=$00B4 Y=$000A ; [SP-179]
-004EEF  20 C4 4D                      jsr  UpdateAlienPosB        ; A=[$5D5F] X=$00B4 Y=$000A ; [SP-181]
+004EEF  20 C4 4D                      jsr  UpdateAlienPosB ; A=[$5D5F] X=$00B4 Y=$000A ; [SP-181]
 ; === End of while loop (counter: $00) ===
 
 004EF2  AE BC 4D                      ldx  $4DBC           ; A=[$5D5F] X=$00B4 Y=$000A ; [SP-181]
@@ -2925,170 +4794,160 @@
 004F05  BD C4 53                      lda  $53C4,X         ; -> $5478 ; A=$0000 X=$00B4 Y=$000A ; [SP-181]
 004F08  AA                            tax                  ; A=$0000 X=$0000 Y=$000A ; [SP-181]
 004F09  BD D6 53                      lda  $53D6,X         ; A=$0000 X=$0000 Y=$000A ; [SP-181]
-004F0C  20 A1 52                      jsr  DrawSatelliteB        ; A=$0000 X=$0000 Y=$000A ; [SP-183]
+004F0C  20 A1 52                      jsr  DrawSatelliteB      ; Call $0052A1(A, X)
 004F0F  AE BC 4D                      ldx  $4DBC           ; A=$0000 X=$0000 Y=$000A ; [SP-183]
 004F12  FE C4 53                      inc  $53C4,X         ; A=$0000 X=$0000 Y=$000A ; [SP-183]
 004F15  BD C4 53                      lda  $53C4,X         ; A=$0000 X=$0000 Y=$000A ; [SP-183]
 004F18  C9 07                         cmp  #$07            ; A=$0000 X=$0000 Y=$000A ; [SP-183]
-004F1A  90 05                         bcc  L_004F21        ; A=$0000 X=$0000 Y=$000A ; [SP-183]
+004F1A  90 05                         bcc  $4F21           ; A=$0000 X=$0000 Y=$000A ; [SP-183]
 004F1C  A9 01                         lda  #$01            ; A=$0001 X=$0000 Y=$000A ; [SP-183]
 004F1E  9D C4 53                      sta  $53C4,X         ; A=$0001 X=$0000 Y=$000A ; [SP-183]
-004F21  AD FA 53          L_004F21    lda  $53FA           ; A=[$53FA] X=$0000 Y=$000A ; [SP-183]
+004F21  AD FA 53                      lda  $53FA           ; A=[$53FA] X=$0000 Y=$000A ; [SP-183]
 004F24  85 04                         sta  $04             ; A=[$53FA] X=$0000 Y=$000A ; [SP-183]
 004F26  A9 00                         lda  #$00            ; A=$0000 X=$0000 Y=$000A ; [SP-183]
 004F28  85 19                         sta  $19             ; A=$0000 X=$0000 Y=$000A ; [SP-183]
 004F2A  BD C4 53                      lda  $53C4,X         ; A=$0000 X=$0000 Y=$000A ; [SP-183]
 004F2D  AA                            tax                  ; A=$0000 X=$0000 Y=$000A ; [SP-183]
 004F2E  BD D6 53                      lda  $53D6,X         ; A=$0000 X=$0000 Y=$000A ; [SP-183]
-004F31  20 7F 52                      jsr  DrawSatellite        ; A=$0000 X=$0000 Y=$000A ; [OPT] TAIL_CALL: Tail call: JSR/JSL at $004F31 followed by RTS ; [SP-185]
-004F34  60                L_004F34    rts                  ; A=$0000 X=$0000 Y=$000A ; [SP-183]
+004F31  20 7F 52                      jsr  DrawSatellite   ; Call $00527F(A, X)
+004F34  60                            rts                  ; A=$0000 X=$0000 Y=$000A ; [SP-183]
 
-; === while loop starts here (counter: $00 '', range: 0..18882, step: 17995, iters: 81565723937209) [nest:49] [inner] ===
+; === while loop starts here [nest:48] ===
 
-; FUNC $004F35: register -> A:X [L]
-; Proto: uint32_t func_004F35(uint16_t param_A, uint16_t param_Y);
+; FUNC $004F35 (PlaySound): register -> A:X [L]
+; Proto: uint32_t PlaySound(uint16_t param_A, uint16_t param_Y);
 ; Liveness: params(A,Y) returns(A,X,Y) [2 dead stores]
-004F35  85 38             PlaySound    sta  $38             ; A=$0000 X=$0000 Y=$000A ; [SP-183]
+004F35  85 38                         sta  $38             ; A=$0000 X=$0000 Y=$000A ; [SP-183]
 004F37  84 39                         sty  $39             ; A=$0000 X=$0000 Y=$000A ; [SP-183]
 004F39  A2 30                         ldx  #$30            ; A=$0000 X=$0030 Y=$000A ; [SP-183]
 
-; === loop starts here (counter: X '', range: 48..18876, iters: 48) [nest:50] [inner] ===
-004F3B  A4 38             L_004F3B    ldy  $38             ; A=$0000 X=$0030 Y=$000A ; [SP-183]
+; === loop starts here (counter: X, range: 48..0, iters: 48) [nest:49] ===
+004F3B  A4 38                         ldy  $38             ; A=$0000 X=$0030 Y=$000A ; [SP-183]
 
-; === loop starts here (counter: Y, range: 0..19060, iters: 81892141451897) [nest:51] [inner] ===
-004F3D  EA                L_004F3D    nop                  ; A=$0000 X=$0030 Y=$000A ; [SP-183]
+; === loop starts here (counter: Y) [nest:50] [inner] ===
+004F3D  EA                            nop                  ; A=$0000 X=$0030 Y=$000A ; [SP-183]
 004F3E  EA                            nop                  ; A=$0000 X=$0030 Y=$000A ; [SP-183]
 004F3F  EA                            nop                  ; A=$0000 X=$0030 Y=$000A ; [SP-183]
 004F40  88                            dey                  ; A=$0000 X=$0030 Y=$0009 ; [SP-183]
-004F41  D0 FA                         bne  L_004F3D        ; A=$0000 X=$0030 Y=$0009 ; [SP-183]
+004F41  D0 FA                         bne  $4F3D           ; A=$0000 X=$0030 Y=$0009 ; [SP-183]
 ; === End of loop (counter: Y) ===
 
-004F43  8D 30 C0                      sta  $C030           ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
+004F43  8D 30 C0                      sta  SPKR            ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
 004F46  CA                            dex                  ; A=$0000 X=$002F Y=$0009 ; [SP-183]
-004F47  D0 F2                         bne  L_004F3B        ; A=$0000 X=$002F Y=$0009 ; [SP-183]
+004F47  D0 F2                         bne  $4F3B           ; A=$0000 X=$002F Y=$0009 ; [SP-183]
 ; === End of loop (counter: X) ===
 
 004F49  A2 30                         ldx  #$30            ; A=$0000 X=$0030 Y=$0009 ; [OPT] REDUNDANT_LOAD: Redundant LDX: same value loaded at $004F39 ; [SP-183]
 
-; === loop starts here (counter: X, range: 48..17812, iters: 48) [nest:50] [inner] ===
-004F4B  A4 39             L_004F4B    ldy  $39             ; A=$0000 X=$0030 Y=$0009 ; [SP-183]
+; === loop starts here (counter: X '����', range: 48..0, iters: 48) [nest:49] ===
+004F4B  A4 39                         ldy  $39             ; A=$0000 X=$0030 Y=$0009 ; [SP-183]
 
-; === loop starts here (counter: Y '', range: 0..17855, iters: 76570676970952) [nest:51] [inner] ===
-004F4D  EA                L_004F4D    nop                  ; A=$0000 X=$0030 Y=$0009 ; [SP-183]
+; === loop starts here (counter: Y) [nest:50] ===
+004F4D  EA                            nop                  ; A=$0000 X=$0030 Y=$0009 ; [SP-183]
 004F4E  EA                            nop                  ; A=$0000 X=$0030 Y=$0009 ; [SP-183]
 004F4F  EA                            nop                  ; A=$0000 X=$0030 Y=$0009 ; [SP-183]
 004F50  88                            dey                  ; A=$0000 X=$0030 Y=$0008 ; [SP-183]
-004F51  D0 FA                         bne  L_004F4D        ; A=$0000 X=$0030 Y=$0008 ; [SP-183]
+004F51  D0 FA                         bne  $4F4D           ; A=$0000 X=$0030 Y=$0008 ; [SP-183]
 ; === End of loop (counter: Y) ===
 
-004F53  8D 30 C0                      sta  $C030           ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
+004F53  8D 30 C0                      sta  SPKR            ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
 004F56  EA                            nop                  ; A=$0000 X=$0030 Y=$0008 ; [SP-183]
 004F57  CA                            dex                  ; A=$0000 X=$002F Y=$0008 ; [SP-183]
-004F58  D0 F1                         bne  L_004F4B        ; A=$0000 X=$002F Y=$0008 ; [SP-183]
+004F58  D0 F1                         bne  $4F4B           ; A=$0000 X=$002F Y=$0008 ; [SP-183]
 ; === End of loop (counter: X) ===
 
 004F5A  60                            rts                  ; A=$0000 X=$002F Y=$0008 ; [SP-181]
 
-; === while loop starts here (counter: $00 '', range: 0..16664, step: 16632, iters: 71524090396922) [nest:31] [inner] ===
+; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:30] ===
 
-; FUNC $004F5B: register -> A:X [IJ]
-; Proto: uint32_t func_004F5B(void);
+; FUNC $004F5B (CheckSatelliteHits): register -> A:X [IJ]
+; Proto: uint32_t CheckSatelliteHits(void);
 ; Liveness: returns(A,X,Y) [10 dead stores]
 ; ---------------------------------------------------------------------------
-; CHECK SATELLITE HITS ($4F5B) - CheckSatelliteHits
-; HOW: For each direction, checks if a laser beam is in the satellite
-;      zone (boundary varies by direction). If so, checks all 4 satellite
-;      slots ($5212,Y) for existence and position match within 5 pixels.
-;      On hit: play sound, add satellite's point value to score,
-;      decrement hit counter ($5221,X). When counter reaches 0,
-;      satellite is destroyed and may respawn.
-;
-; WHY satellites exist: They reward skilled players with bonus points
-;      on later levels. They orbit around the edges, creating moving
-;      targets that are harder to hit than stationary aliens.
-;      Their multi-hit requirement means they can't be one-shotted -
-;      you need sustained accuracy to destroy them.
+; CHECK SATELLITE HITS ($4F5B)
+; Checks if laser beams hit satellites (bonus targets).
+; Satellites require multiple hits to destroy. Points awarded per hit.
 ; ---------------------------------------------------------------------------
-004F5B  A2 03             CheckSatelliteHits    ldx  #$03            ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F5B  A2 03                         ldx  #$03            ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
 004F5D  86 12                         stx  $12             ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
 
-; === while loop starts here (counter: $00, range: 0..16642, step: 16644, iters: 71330816868637) [nest:48] ===
-004F5F  A6 12             L_004F5F    ldx  $12             ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+; === while loop starts here [nest:47] ===
+004F5F  A6 12                         ldx  $12             ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
 004F61  BD 58 5D                      lda  $5D58,X         ; -> $5D5B ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F64  D0 03                         bne  L_004F69        ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F66  4C F5 4F                      jmp  L_004FF5        ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F69  E0 03             L_004F69    cpx  #$03            ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F6B  F0 26                         beq  L_004F93        ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F64  D0 03                         bne  loc_004F69      ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F66  4C F5 4F                      jmp  loc_004FF5      ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F69  E0 03             loc_004F69  cpx  #$03            ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F6B  F0 26                         beq  $4F93           ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
 004F6D  E0 02                         cpx  #$02            ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F6F  F0 18                         beq  L_004F89        ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F6F  F0 18                         beq  $4F89           ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
 004F71  E0 01                         cpx  #$01            ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F73  F0 0A                         beq  L_004F7F        ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F73  F0 0A                         beq  $4F7F           ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
 004F75  BD 64 5D                      lda  $5D64,X         ; -> $5D67 ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
 004F78  C9 26                         cmp  #$26            ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F7A  90 1E                         bcc  L_004F9A        ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F7C  4C F5 4F                      jmp  L_004FF5        ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F7F  BD 5C 5D          L_004F7F    lda  $5D5C,X         ; -> $5D5F ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F7A  90 1E                         bcc  $4F9A           ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F7C  4C F5 4F                      jmp  loc_004FF5      ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F7F  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
 004F82  C9 E3                         cmp  #$E3            ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F84  B0 14                         bcs  L_004F9A        ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F86  4C F5 4F                      jmp  L_004FF5        ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F89  BD 64 5D          L_004F89    lda  $5D64,X         ; -> $5D67 ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F84  B0 14                         bcs  $4F9A           ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F86  4C F5 4F                      jmp  loc_004FF5      ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F89  BD 64 5D                      lda  $5D64,X         ; -> $5D67 ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
 004F8C  C9 98                         cmp  #$98            ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F8E  B0 0A                         bcs  L_004F9A        ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F90  4C F5 4F                      jmp  L_004FF5        ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F93  BD 5C 5D          L_004F93    lda  $5D5C,X         ; -> $5D5F ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F8E  B0 0A                         bcs  $4F9A           ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F90  4C F5 4F                      jmp  loc_004FF5      ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F93  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
 004F96  C9 71                         cmp  #$71            ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F98  B0 5B                         bcs  L_004FF5        ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
-004F9A  A0 03             L_004F9A    ldy  #$03            ; A=$0000 X=$0003 Y=$0003 ; [SP-181]
+004F98  B0 5B                         bcs  loc_004FF5      ; A=$0000 X=$0003 Y=$0008 ; [SP-181]
+004F9A  A0 03                         ldy  #$03            ; A=$0000 X=$0003 Y=$0003 ; [SP-181]
 004F9C  8C 01 50                      sty  $5001           ; A=$0000 X=$0003 Y=$0003 ; [SP-181]
 
-; === while loop starts here (counter: $00, range: 0..16618, step: 16620, iters: 81501299427866) [nest:49] [inner] ===
-004F9F  AC 01 50          L_004F9F    ldy  $5001           ; A=$0000 X=$0003 Y=$0003 ; [SP-181]
+; === while loop starts here (iters: 75222057239637) [nest:48] ===
+004F9F  AC 01 50          loc_004F9F  ldy  $5001           ; A=$0000 X=$0003 Y=$0003 ; [SP-181]
 004FA2  B9 12 52                      lda  $5212,Y         ; -> $5215 ; A=$0000 X=$0003 Y=$0003 ; [SP-181]
-004FA5  F0 49                         beq  L_004FF0        ; A=$0000 X=$0003 Y=$0003 ; [SP-181]
+004FA5  F0 49                         beq  loc_004FF0      ; A=$0000 X=$0003 Y=$0003 ; [SP-181]
 004FA7  B9 0E 52                      lda  $520E,Y         ; -> $5211 ; A=$0000 X=$0003 Y=$0003 ; [SP-181]
 004FAA  38                            sec                  ; A=$0000 X=$0003 Y=$0003 ; [SP-181]
 004FAB  A6 12                         ldx  $12             ; A=$0000 X=$0003 Y=$0003 ; [SP-181]
 004FAD  FD FD 4F                      sbc  $4FFD,X         ; -> $5000 ; A=$0000 X=$0003 Y=$0003 ; [SP-181]
 004FB0  C9 05                         cmp  #$05            ; A=$0000 X=$0003 Y=$0003 ; [SP-181]
-004FB2  B0 3C                         bcs  L_004FF0        ; A=$0000 X=$0003 Y=$0003 ; [SP-181]
+004FB2  B0 3C                         bcs  loc_004FF0      ; A=$0000 X=$0003 Y=$0003 ; [SP-181]
 004FB4  A9 08                         lda  #$08            ; A=$0008 X=$0003 Y=$0003 ; [SP-181]
 004FB6  A0 10                         ldy  #$10            ; A=$0008 X=$0003 Y=$0010 ; [SP-181]
-004FB8  20 35 4F                      jsr  PlaySound        ; A=$0008 X=$0003 Y=$0010 ; [SP-183]
-; === End of while loop (counter: $00) ===
+004FB8  20 35 4F                      jsr  PlaySound       ; Call $004F35(A, X, Y)
+; === End of while loop ===
 
 004FBB  AE 01 50                      ldx  $5001           ; A=$0008 X=$0003 Y=$0010 ; [SP-183]
 004FBE  BD 12 52                      lda  $5212,X         ; -> $5215 ; A=$0008 X=$0003 Y=$0010 ; [SP-183]
-004FC1  20 E0 4A                      jsr  AddScore        ; A=$0008 X=$0003 Y=$0010 ; [SP-185]
-; === End of while loop (counter: $00) ===
+004FC1  20 E0 4A                      jsr  AddScore        ; Call $004AE0(A, X)
+; === End of while loop (counter: Y) ===
 
-004FC4  20 E4 56                      jsr  IncreaseDifficulty        ; Call $0056E4(A, X, Y)
+004FC4  20 E4 56                      jsr  IncreaseDifficulty ; A=$0008 X=$0003 Y=$0010 ; [SP-187]  ; Set decimal mode (BCD arithmetic)
 004FC7  A6 12                         ldx  $12             ; A=$0008 X=$0003 Y=$0010 ; [SP-187]
 004FC9  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=$0010 ; [SP-187]
 004FCB  9D 58 5D                      sta  $5D58,X         ; -> $5D5B ; A=$0000 X=$0003 Y=$0010 ; [SP-187]
-004FCE  20 41 44                      jsr  ClearSpriteArea        ; A=$0000 X=$0003 Y=$0010 ; [SP-189]
-; === End of while loop (counter: $00) ===
+004FCE  20 41 44                      jsr  ClearSpriteArea ; Call $004441(A, X)
+; === End of while loop (counter: Y) ===
 
-004FD1  20 4F 5B                      jsr  InputProcessA        ; A=$0000 X=$0003 Y=$0010 ; [SP-191]
+004FD1  20 4F 5B                      jsr  InputProcessA   ; A=$0000 X=$0003 Y=$0010 ; [SP-191]
 004FD4  AE 01 50                      ldx  $5001           ; A=$0000 X=$0003 Y=$0010 ; [SP-191]
 004FD7  DE 21 52                      dec  $5221,X         ; -> $5224 ; A=$0000 X=$0003 Y=$0010 ; [SP-191]
-004FDA  D0 14                         bne  L_004FF0        ; A=$0000 X=$0003 Y=$0010 ; [SP-191]
-004FDC  20 C9 52                      jsr  DrawSatelliteD        ; A=$0000 X=$0003 Y=$0010 ; [SP-193]
+004FDA  D0 14                         bne  loc_004FF0      ; A=$0000 X=$0003 Y=$0010 ; [SP-191]
+004FDC  20 C9 52                      jsr  $52C9           ; Call $0052C9(X)
 004FDF  AE 01 50                      ldx  $5001           ; A=$0000 X=$0003 Y=$0010 ; [SP-193]
 004FE2  DE 12 52                      dec  $5212,X         ; -> $5215 ; A=$0000 X=$0003 Y=$0010 ; [SP-193]
 004FE5  BD 12 52                      lda  $5212,X         ; -> $5215 ; A=$0000 X=$0003 Y=$0010 ; [SP-193]
 004FE8  9D 21 52                      sta  $5221,X         ; -> $5224 ; A=$0000 X=$0003 Y=$0010 ; [SP-193]
-004FEB  F0 03                         beq  L_004FF0        ; A=$0000 X=$0003 Y=$0010 ; [SP-193]
-004FED  20 C3 52                      jsr  DrawSatelliteC        ; A=$0000 X=$0003 Y=$0010 ; [SP-195]
-004FF0  CE 01 50          L_004FF0    dec  $5001           ; A=$0000 X=$0003 Y=$0010 ; [SP-195]
-004FF3  10 AA                         bpl  L_004F9F        ; A=$0000 X=$0003 Y=$0010 ; [SP-195]
-; === End of while loop (counter: $00) ===
+004FEB  F0 03                         beq  loc_004FF0      ; A=$0000 X=$0003 Y=$0010 ; [SP-193]
+004FED  20 C3 52                      jsr  $52C3           ; Call $0052C3(A, X)
+004FF0  CE 01 50          loc_004FF0  dec  $5001           ; A=$0000 X=$0003 Y=$0010 ; [SP-195]
+004FF3  10 AA                         bpl  loc_004F9F      ; A=$0000 X=$0003 Y=$0010 ; [SP-195]
+; === End of while loop ===
 
-004FF5  C6 12             L_004FF5    dec  $12             ; A=$0000 X=$0003 Y=$0010 ; [SP-195]
-004FF7  30 03                         bmi  L_004FFC        ; A=$0000 X=$0003 Y=$0010 ; [SP-195]
-004FF9  4C 5F 4F                      jmp  L_004F5F        ; A=$0000 X=$0003 Y=$0010 ; [SP-195]
-; === End of while loop (counter: $00) ===
+004FF5  C6 12             loc_004FF5  dec  $12             ; A=$0000 X=$0003 Y=$0010 ; [SP-195]
+004FF7  30 03                         bmi  loc_004FFC      ; A=$0000 X=$0003 Y=$0010 ; [SP-195]
+004FF9  4C 5F 4F                      jmp  $4F5F           ; A=$0000 X=$0003 Y=$0010 ; [SP-195]
+; === End of while loop ===
 
-004FFC  60                L_004FFC    rts                  ; A=$0000 X=$0003 Y=$0010 ; [SP-193]
+004FFC  60                loc_004FFC  rts                  ; A=$0000 X=$0003 Y=$0010 ; [SP-193]
 
 ; --- Data region ---
 004FFD  97D71757                HEX     97D71757 00898886 85848281 807E7D7C
@@ -3124,90 +4983,71 @@
 0051DD  62636566                HEX     62636566 68696B6C 6E6F7072 73747677
 0051ED  787A7B7C                HEX     787A7B7C 7E7F8081 82838586 8788898A
 0051FD  8B8C8C8D                HEX     8B8C8C8D 8EAD10C0 AD00C010 FB8D10C0
-00520D  60                      HEX     60
-; --- End data region (529 bytes) ---
+00520D  6081A0A5                HEX     6081A0A5 A0A9A087 CD93A095 D4002E58
+00521D  3C434A51                HEX     3C434A51 CFA0FEAE 0000
 
-00520E  81 A0             L_00520E    sta  ($A0,X)         ; A=$0000 X=$0003 Y=$0010 ; [SP-194]
-005210  A5 A0                         lda  $A0             ; A=[$00A0] X=$0003 Y=$0010 ; [SP-194]
-005212  A9 A0                         lda  #$A0            ; A=$00A0 X=$0003 Y=$0010 ; [OPT] REDUNDANT_LOAD: Redundant LDA: same value loaded at $005210 ; [SP-194]
-005214  87 CD                         sta  [$CD]           ; A=$00A0 X=$0003 Y=$0010 ; [SP-194]
-005216  93 A0                         sta  ($A0,S),Y       ; A=$00A0 X=$0003 Y=$0010 ; [SP-194]
-005218  95 D4                         sta  $D4,X           ; -> $00D7 ; A=$00A0 X=$0003 Y=$0010 ; [SP-194]
-00521A  00 2E                         brk  #$2E            ; A=$00A0 X=$0003 Y=$0010 ; [SP-197]
+; === while loop starts here (counter: $00) [nest:2] [inner] ===
 
-; --- Data region ---
-00521C  583C434A                HEX     583C434A 51CFA0FE
-; --- End data region (8 bytes) ---
-
-005224  AE 00 00          L_005224    ldx  !$0000          ; A=$00A0 X=$0003 Y=$0010 ; [SP-197]
-
-; === while loop starts here (counter: $00, range: 0..21039, step: 21041, iters: 102263171341567) [nest:3] [inner] ===
-
-; FUNC $005227: register -> A:X []
-; Proto: uint32_t func_005227(uint16_t param_Y);
+; FUNC $005227 (SpawnSatellite): register -> A:X []
+; Proto: uint32_t SpawnSatellite(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y)
-; ---------------------------------------------------------------------------
-; SPAWN SATELLITE ($5227) - SpawnSatellite
-; HOW: Initializes a satellite entity for one direction. Sets position,
-;      point value, and hit counter. The satellite then orbits along
-;      the edge of the playfield on subsequent frames.
-;
-; WHY only on levels 3+: The level counter $3A starts at 5 and counts
-;      down. LevelComplete checks $3A < 4, which is true for values
-;      3, 2, 1 (levels 3, 4, 5). This adds complexity gradually -
-;      new players aren't overwhelmed, experienced players get more
-;      to do on later levels.
-; ---------------------------------------------------------------------------
-005227  A2 03             SpawnSatellite    ldx  #$03            ; A=$00A0 X=$0003 Y=$0010 ; [SP-197]
+; --- End data region (554 bytes) ---
 
-; === while loop starts here (counter: $00, range: 0..19890, step: 19893, iters: 86754044432101) [nest:52] [inner] ===
-005229  BD 12 52          L_005229    lda  $5212,X         ; -> $5215 ; A=$00A0 X=$0003 Y=$0010 ; [SP-197]
-00522C  F0 04                         beq  L_005232        ; A=$00A0 X=$0003 Y=$0010 ; [SP-197]
-00522E  CA                            dex                  ; A=$00A0 X=$0002 Y=$0010 ; [SP-197]
-00522F  10 F8                         bpl  L_005229        ; A=$00A0 X=$0002 Y=$0010 ; [SP-197]
+; ---------------------------------------------------------------------------
+; SPAWN SATELLITE ($5227)
+; Spawns a bonus satellite target for one direction.
+; Satellites appear on levels 3+ ($3A <= 3).
+; ---------------------------------------------------------------------------
+005227  A2 03                         ldx  #$03            ; A=$0000 X=$0003 Y=$0010 ; [SP-197]
+
+; === while loop starts here (counter: $00) [nest:51] [inner] ===
+005229  BD 12 52          loc_005229  lda  $5212,X         ; -> $5215 ; A=$0000 X=$0003 Y=$0010 ; [SP-197]
+00522C  F0 04                         beq  loc_005232      ; A=$0000 X=$0003 Y=$0010 ; [SP-197]
+00522E  CA                            dex                  ; A=$0000 X=$0002 Y=$0010 ; [SP-197]
+00522F  10 F8                         bpl  loc_005229      ; A=$0000 X=$0002 Y=$0010 ; [SP-197]
 ; === End of while loop (counter: $00) ===
 
-005231  60                            rts                  ; A=$00A0 X=$0002 Y=$0010 ; [SP-195]
-005232  8E 25 52          L_005232    stx  $5225           ; A=$00A0 X=$0002 Y=$0010 ; [SP-195]
+005231  60                            rts                  ; A=$0000 X=$0002 Y=$0010 ; [SP-195]
+005232  8E 25 52          loc_005232  stx  $5225           ; A=$0000 X=$0002 Y=$0010 ; [SP-195]
 005235  A5 3A                         lda  $3A             ; A=[$003A] X=$0002 Y=$0010 ; [SP-195]
 005237  C9 03                         cmp  #$03            ; A=[$003A] X=$0002 Y=$0010 ; [SP-195]
-005239  F0 09                         beq  L_005244        ; A=[$003A] X=$0002 Y=$0010 ; [SP-195]
+005239  F0 09                         beq  $5244           ; A=[$003A] X=$0002 Y=$0010 ; [SP-195]
 00523B  C9 02                         cmp  #$02            ; A=[$003A] X=$0002 Y=$0010 ; [SP-195]
-00523D  D0 0A                         bne  L_005249        ; A=[$003A] X=$0002 Y=$0010 ; [SP-195]
+00523D  D0 0A                         bne  $5249           ; A=[$003A] X=$0002 Y=$0010 ; [SP-195]
 00523F  A9 04                         lda  #$04            ; A=$0004 X=$0002 Y=$0010 ; [SP-195]
-005241  4C 4B 52                      jmp  L_00524B        ; A=$0004 X=$0002 Y=$0010 ; [SP-195]
-005244  A9 02             L_005244    lda  #$02            ; A=$0002 X=$0002 Y=$0010 ; [SP-195]
-005246  4C 4B 52                      jmp  L_00524B        ; A=$0002 X=$0002 Y=$0010 ; [SP-195]
-005249  A9 06             L_005249    lda  #$06            ; A=$0006 X=$0002 Y=$0010 ; [SP-195]
-00524B  9D 12 52          L_00524B    sta  $5212,X         ; -> $5214 ; A=$0006 X=$0002 Y=$0010 ; [SP-195]
+005241  4C 4B 52                      jmp  $524B           ; A=$0004 X=$0002 Y=$0010 ; [SP-195]
+005244  A9 02                         lda  #$02            ; A=$0002 X=$0002 Y=$0010 ; [SP-195]
+005246  4C 4B 52                      jmp  $524B           ; A=$0002 X=$0002 Y=$0010 ; [SP-195]
+005249  A9 06                         lda  #$06            ; A=$0006 X=$0002 Y=$0010 ; [SP-195]
+00524B  9D 12 52                      sta  $5212,X         ; -> $5214 ; A=$0006 X=$0002 Y=$0010 ; [SP-195]
 00524E  9D 21 52                      sta  $5221,X         ; -> $5223 ; A=$0006 X=$0002 Y=$0010 ; [SP-195]
 
-; === while loop starts here (counter: $00, range: 0..23815, step: 23816, iters: 101889509186728) [nest:52] [inner] ===
-005251  20 03 04          L_005251    jsr  $0403           ; A=$0006 X=$0002 Y=$0010 ; [SP-197]
+; === while loop starts here [nest:51] ===
+005251  20 03 04          loc_005251  jsr  $0403           ; Call $000403(A)
 005254  C9 F0                         cmp  #$F0            ; A=$0006 X=$0002 Y=$0010 ; [SP-197]
-005256  B0 F9                         bcs  L_005251        ; A=$0006 X=$0002 Y=$0010 ; [SP-197]
-; === End of while loop (counter: $00) ===
+005256  B0 F9                         bcs  loc_005251      ; A=$0006 X=$0002 Y=$0010 ; [SP-197]
+; === End of while loop ===
 
 005258  8D 26 52                      sta  $5226           ; A=$0006 X=$0002 Y=$0010 ; [SP-197]
 00525B  A0 03                         ldy  #$03            ; A=$0006 X=$0002 Y=$0003 ; [SP-197]
 
-; === while loop starts here (counter: $00, range: 0..17604, step: 17607, iters: 75647259002059) [nest:52] [inner] ===
-00525D  B9 12 52          L_00525D    lda  $5212,Y         ; -> $5215 ; A=$0006 X=$0002 Y=$0003 ; [SP-197]
-005260  F0 0F                         beq  L_005271        ; A=$0006 X=$0002 Y=$0003 ; [SP-197]
+; === while loop starts here [nest:51] ===
+00525D  B9 12 52          loc_00525D  lda  $5212,Y         ; -> $5215 ; A=$0006 X=$0002 Y=$0003 ; [SP-197]
+005260  F0 0F                         beq  loc_005271      ; A=$0006 X=$0002 Y=$0003 ; [SP-197]
 005262  AD 26 52                      lda  $5226           ; A=[$5226] X=$0002 Y=$0003 ; [SP-197]
 005265  38                            sec                  ; A=[$5226] X=$0002 Y=$0003 ; [SP-197]
 005266  F9 0E 52                      sbc  $520E,Y         ; -> $5211 ; A=[$5226] X=$0002 Y=$0003 ; [SP-197]
 005269  C9 0A                         cmp  #$0A            ; A=[$5226] X=$0002 Y=$0003 ; [SP-197]
-00526B  90 E4                         bcc  L_005251        ; A=[$5226] X=$0002 Y=$0003 ; [SP-197]
-; === End of while loop (counter: $00) ===
+00526B  90 E4                         bcc  loc_005251      ; A=[$5226] X=$0002 Y=$0003 ; [SP-197]
+; === End of while loop ===
 
 00526D  C9 F6                         cmp  #$F6            ; A=[$5226] X=$0002 Y=$0003 ; [SP-197]
-00526F  B0 E0                         bcs  L_005251        ; A=[$5226] X=$0002 Y=$0003 ; [SP-197]
-; === End of while loop (counter: $00) ===
+00526F  B0 E0                         bcs  loc_005251      ; A=[$5226] X=$0002 Y=$0003 ; [SP-197]
+; === End of while loop ===
 
-005271  88                L_005271    dey                  ; A=[$5226] X=$0002 Y=$0002 ; [SP-197]
-005272  10 E9                         bpl  L_00525D        ; A=[$5226] X=$0002 Y=$0002 ; [SP-197]
-; === End of while loop (counter: $00) ===
+005271  88                loc_005271  dey                  ; A=[$5226] X=$0002 Y=$0002 ; [SP-197]
+005272  10 E9                         bpl  loc_00525D      ; A=[$5226] X=$0002 Y=$0002 ; [SP-197]
+; === End of while loop ===
 
 005274  AD 26 52                      lda  $5226           ; A=[$5226] X=$0002 Y=$0002 ; [OPT] REDUNDANT_LOAD: Redundant LDA: same value loaded at $005262 ; [SP-197]
 005277  AE 25 52                      ldx  $5225           ; A=[$5226] X=$0002 Y=$0002 ; [SP-197]
@@ -3217,14 +5057,14 @@
 ; --- Data region ---
 00527E  00                      HEX     00
 
-; === while loop starts here (counter: $00, range: 0..18973, step: 18976, iters: 80388902897947) [nest:51] [inner] ===
+; === while loop starts here (iters: 87939455406069) [nest:50] ===
 
-; FUNC $00527F: register -> A:X [L]
-; Proto: uint32_t func_00527F(uint16_t param_A);
+; FUNC $00527F (DrawSatellite): register -> A:X [L]
+; Proto: uint32_t DrawSatellite(uint16_t param_A);
 ; Liveness: params(A) returns(A,X,Y) [15 dead stores]
 ; --- End data region (1 bytes) ---
 
-00527F  8D 7E 52          DrawSatellite    sta  $527E           ; A=[$5226] X=$0002 Y=$0002 ; [SP-198]
+00527F  8D 7E 52                      sta  $527E           ; A=[$5226] X=$0002 Y=$0002 ; [SP-198]
 005282  A5 19                         lda  $19             ; A=[$0019] X=$0002 Y=$0002 ; [SP-198]
 005284  29 FE                         and  #$FE            ; A=A&$FE X=$0002 Y=$0002 ; [SP-198]
 005286  AA                            tax                  ; A=A&$FE X=A Y=$0002 ; [SP-198]
@@ -3242,12 +5082,12 @@
 00529B  6D 7E 52                      adc  $527E           ; A=[$0019] X=[$0019] Y=$0002 ; [SP-198]
 00529E  4C 16 04                      jmp  $0416           ; A=[$0019] X=[$0019] Y=$0002 ; [SP-198]
 
-; === while loop starts here (counter: $00, range: 0..17885, step: 17887, iters: 76922864289267) [nest:53] [inner] ===
+; === while loop starts here (counter: $00) [nest:52] [inner] ===
 
-; FUNC $0052A1: register -> A:X [LI]
-; Proto: uint32_t func_0052A1(uint16_t param_A);
+; FUNC $0052A1 (DrawSatelliteB): register -> A:X [LI]
+; Proto: uint32_t DrawSatelliteB(uint16_t param_A);
 ; Liveness: params(A) returns(A,X,Y) [9 dead stores]
-0052A1  8D 7E 52          DrawSatelliteB    sta  $527E           ; A=[$0019] X=[$0019] Y=$0002 ; [SP-198]
+0052A1  8D 7E 52          DrawSatelliteB  sta  $527E           ; A=[$0019] X=[$0019] Y=$0002 ; [SP-198]
 0052A4  A5 19                         lda  $19             ; A=[$0019] X=[$0019] Y=$0002 ; [SP-198]
 0052A6  29 FE                         and  #$FE            ; A=A&$FE X=[$0019] Y=$0002 ; [SP-198]
 0052A8  AA                            tax                  ; A=A&$FE X=A Y=$0002 ; [SP-198]
@@ -3263,34 +5103,34 @@
 0052B9  BD D3 48                      lda  $48D3,X         ; A=[$0019] X=[$0019] Y=$0002 ; [SP-198]
 0052BC  18                            clc                  ; A=[$0019] X=[$0019] Y=$0002 ; [SP-198]
 0052BD  6D 7E 52                      adc  $527E           ; A=[$0019] X=[$0019] Y=$0002 ; [SP-198]
-0052C0  4C C0 40                      jmp  DrawSpriteXY        ; A=[$0019] X=[$0019] Y=$0002 ; [SP-198]
+0052C0  4C C0 40                      jmp  DrawSpriteXY    ; A=[$0019] X=[$0019] Y=$0002 ; [SP-198]
+; === End of while loop (counter: Y) ===
+
+
+; === while loop starts here [nest:54] ===
+
+; FUNC $0052C3 (DrawSatelliteC): register -> A:X []
+; Proto: uint32_t DrawSatelliteC(uint16_t param_X);
+; Liveness: params(X) returns(A,X,Y) [2 dead stores]
+0052C3  20 CF 52                      jsr  $52CF           ; A=[$0019] X=[$0019] Y=$0002 ; [SP-200]
+0052C6  4C 7F 52                      jmp  DrawSatellite   ; A=[$0019] X=[$0019] Y=$0002 ; [SP-200]
+; === End of while loop ===
+
+
+; === while loop starts here [nest:55] ===
+
+; FUNC $0052C9 (DrawSatelliteD): register -> A:X []
+; Proto: uint32_t DrawSatelliteD(uint16_t param_X);
+; Liveness: params(X) returns(A,X,Y) [2 dead stores]
+0052C9  20 CF 52                      jsr  $52CF           ; A=[$0019] X=[$0019] Y=$0002 ; [SP-202]
+0052CC  4C A1 52                      jmp  DrawSatelliteB      ; A=[$0019] X=[$0019] Y=$0002 ; [SP-202]
 ; === End of while loop (counter: $00) ===
 
 
-; === while loop starts here (counter: $00 '', range: 0..18888, step: 18894, iters: 81389630278129) [nest:55] [inner] ===
-
-; FUNC $0052C3: register -> A:X []
-; Proto: uint32_t func_0052C3(uint16_t param_X);
+; FUNC $0052CF (DrawSatelliteE): register -> A:X [L]
+; Proto: uint32_t DrawSatelliteE(uint16_t param_X);
 ; Liveness: params(X) returns(A,X,Y) [2 dead stores]
-0052C3  20 CF 52          DrawSatelliteC    jsr  DrawSatelliteE        ; A=[$0019] X=[$0019] Y=$0002 ; [SP-200]
-0052C6  4C 7F 52                      jmp  DrawSatellite        ; A=[$0019] X=[$0019] Y=$0002 ; [SP-200]
-; === End of while loop (counter: $00) ===
-
-
-; === while loop starts here (counter: $00 '', range: 0..17915, step: 17795, iters: 76755360564620) [nest:56] [inner] ===
-
-; FUNC $0052C9: register -> A:X []
-; Proto: uint32_t func_0052C9(uint16_t param_X);
-; Liveness: params(X) returns(A,X,Y) [2 dead stores]
-0052C9  20 CF 52          DrawSatelliteD    jsr  DrawSatelliteE        ; A=[$0019] X=[$0019] Y=$0002 ; [SP-202]
-0052CC  4C A1 52                      jmp  DrawSatelliteB        ; A=[$0019] X=[$0019] Y=$0002 ; [SP-202]
-; === End of while loop (counter: $00) ===
-
-
-; FUNC $0052CF: register -> A:X [L]
-; Proto: uint32_t func_0052CF(uint16_t param_X);
-; Liveness: params(X) returns(A,X,Y) [2 dead stores]
-0052CF  BD 0E 52          DrawSatelliteE    lda  $520E,X         ; A=[$0019] X=[$0019] Y=$0002 ; [SP-202]
+0052CF  BD 0E 52                      lda  $520E,X         ; A=[$0019] X=[$0019] Y=$0002 ; [SP-202]
 0052D2  A8                            tay                  ; A=[$0019] X=[$0019] Y=[$0019] ; [SP-202]
 0052D3  B9 02 51                      lda  $5102,Y         ; A=[$0019] X=[$0019] Y=[$0019] ; [SP-202]
 0052D6  85 04                         sta  $04             ; A=[$0019] X=[$0019] Y=[$0019] ; [SP-202]
@@ -3301,18 +5141,18 @@
 0052E1  B9 1A 52                      lda  $521A,Y         ; A=[$0019] X=[$0019] Y=[$0019] ; [SP-202]
 0052E4  60                            rts                  ; A=[$0019] X=[$0019] Y=[$0019] ; [SP-200]
 
-; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:42] ===
+; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:41] ===
 
-; FUNC $0052E5: register -> A:X [L]
-; Proto: uint32_t func_0052E5(uint16_t param_Y);
+; FUNC $0052E5 (DrawBase): register -> A:X [L]
+; Proto: uint32_t DrawBase(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y)
-0052E5  A2 03             DrawBase    ldx  #$03            ; A=[$0019] X=$0003 Y=[$0019] ; [SP-200]
+0052E5  A2 03                         ldx  #$03            ; A=[$0019] X=$0003 Y=[$0019] ; [SP-200]
 0052E7  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=[$0019] ; [SP-200]
 
-; === while loop starts here [nest:59] ===
-0052E9  9D 12 52          L_0052E9    sta  $5212,X         ; -> $5215 ; A=$0000 X=$0003 Y=[$0019] ; [SP-200]
+; === while loop starts here [nest:58] ===
+0052E9  9D 12 52          loc_0052E9  sta  $5212,X         ; -> $5215 ; A=$0000 X=$0003 Y=[$0019] ; [SP-200]
 0052EC  CA                            dex                  ; A=$0000 X=$0002 Y=[$0019] ; [SP-200]
-0052ED  10 FA                         bpl  L_0052E9        ; A=$0000 X=$0002 Y=[$0019] ; [SP-200]
+0052ED  10 FA                         bpl  loc_0052E9      ; A=$0000 X=$0002 Y=[$0019] ; [SP-200]
 ; === End of while loop ===
 
 0052EF  60                            rts                  ; A=$0000 X=$0002 Y=[$0019] ; [SP-198]
@@ -3320,59 +5160,59 @@
 ; --- Data region ---
 0052F0  00E0E0                  HEX     00E0E0
 
-; === while loop starts here (counter: $00 '', range: 0..16723, step: 16718, iters: 71743133729112) [nest:37] [inner] ===
+; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:36] ===
 
-; FUNC $0052F3: register -> A:X []
-; Proto: uint32_t func_0052F3(uint16_t param_A, uint16_t param_X, uint16_t param_Y);
+; FUNC $0052F3 (RedrawScreen): register -> A:X []
+; Proto: uint32_t RedrawScreen(uint16_t param_A, uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(A,X,Y) returns(A,X,Y)
 ; --- End data region (3 bytes) ---
 
-0052F3  EE F1 52          RedrawScreen    inc  $52F1           ; A=$0000 X=$0002 Y=[$0019] ; [SP-201]
-0052F6  F0 01                         beq  L_0052F9        ; A=$0000 X=$0002 Y=[$0019] ; [SP-201]
+0052F3  EE F1 52                      inc  $52F1           ; A=$0000 X=$0002 Y=[$0019] ; [SP-201]
+0052F6  F0 01                         beq  loc_0052F9      ; A=$0000 X=$0002 Y=[$0019] ; [SP-201]
 0052F8  60                            rts                  ; A=$0000 X=$0002 Y=[$0019] ; [SP-199]
-0052F9  AD F2 52          L_0052F9    lda  $52F2           ; A=[$52F2] X=$0002 Y=[$0019] ; [SP-199]
+0052F9  AD F2 52          loc_0052F9  lda  $52F2           ; A=[$52F2] X=$0002 Y=[$0019] ; [SP-199]
 0052FC  8D F1 52                      sta  $52F1           ; A=[$52F2] X=$0002 Y=[$0019] ; [SP-199]
 0052FF  CE F0 52                      dec  $52F0           ; A=[$52F2] X=$0002 Y=[$0019] ; [SP-199]
-005302  10 05                         bpl  L_005309        ; A=[$52F2] X=$0002 Y=[$0019] ; [SP-199]
+005302  10 05                         bpl  $5309           ; A=[$52F2] X=$0002 Y=[$0019] ; [SP-199]
 005304  A9 03                         lda  #$03            ; A=$0003 X=$0002 Y=[$0019] ; [SP-199]
 005306  8D F0 52                      sta  $52F0           ; A=$0003 X=$0002 Y=[$0019] ; [SP-199]
-005309  AE F0 52          L_005309    ldx  $52F0           ; A=$0003 X=$0002 Y=[$0019] ; [SP-199]
+005309  AE F0 52                      ldx  $52F0           ; A=$0003 X=$0002 Y=[$0019] ; [SP-199]
 00530C  BD 12 52                      lda  $5212,X         ; -> $5214 ; A=$0003 X=$0002 Y=[$0019] ; [SP-199]
-00530F  F0 25                         beq  L_005336        ; A=$0003 X=$0002 Y=[$0019] ; [SP-199]
+00530F  F0 25                         beq  $5336           ; A=$0003 X=$0002 Y=[$0019] ; [SP-199]
 005311  BD 0E 52                      lda  $520E,X         ; -> $5210 ; A=$0003 X=$0002 Y=[$0019] ; [SP-199]
 005314  A2 03                         ldx  #$03            ; A=$0003 X=$0003 Y=[$0019] ; [SP-199]
 
-; === while loop starts here (counter: $00, range: 0..22619, step: 22622, iters: 97173635094622) [nest:60] [inner] ===
-005316  DD 37 53          L_005316    cmp  $5337,X         ; -> $533A ; A=$0003 X=$0003 Y=[$0019] ; [SP-199]
-005319  D0 09                         bne  L_005324        ; A=$0003 X=$0003 Y=[$0019] ; [SP-199]
-00531B  20 3B 53                      jsr  RedrawScreenB        ; A=$0003 X=$0003 Y=[$0019] ; [SP-201]
+; === while loop starts here (iters: 91676076954465) [nest:59] ===
+005316  DD 37 53                      cmp  $5337,X         ; -> $533A ; A=$0003 X=$0003 Y=[$0019] ; [SP-199]
+005319  D0 09                         bne  $5324           ; A=$0003 X=$0003 Y=[$0019] ; [SP-199]
+00531B  20 3B 53                      jsr  $533B           ; Call $00533B(A, X)
 00531E  AE F0 52                      ldx  $52F0           ; A=$0003 X=$0003 Y=[$0019] ; [SP-201]
-005321  4C 2A 53                      jmp  L_00532A        ; A=$0003 X=$0003 Y=[$0019] ; [SP-201]
-005324  CA                L_005324    dex                  ; A=$0003 X=$0002 Y=[$0019] ; [SP-201]
-005325  10 EF                         bpl  L_005316        ; A=$0003 X=$0002 Y=[$0019] ; [SP-201]
-; === End of while loop (counter: $00) ===
+005321  4C 2A 53                      jmp  $532A           ; A=$0003 X=$0003 Y=[$0019] ; [SP-201]
+005324  CA                            dex                  ; A=$0003 X=$0002 Y=[$0019] ; [SP-201]
+005325  10 EF                         bpl  $5316           ; A=$0003 X=$0002 Y=[$0019] ; [SP-201]
+; === End of while loop ===
 
 005327  AE F0 52                      ldx  $52F0           ; A=$0003 X=$0002 Y=[$0019] ; [SP-201]
-00532A  20 C9 52          L_00532A    jsr  DrawSatelliteD        ; A=$0003 X=$0002 Y=[$0019] ; [SP-203]
-; === End of while loop (counter: $00) ===
+00532A  20 C9 52                      jsr  $52C9           ; Call $0052C9(X)
+; === End of while loop ===
 
 00532D  AE F0 52                      ldx  $52F0           ; A=$0003 X=$0002 Y=[$0019] ; [SP-203]
 005330  DE 0E 52                      dec  $520E,X         ; -> $5210 ; A=$0003 X=$0002 Y=[$0019] ; [SP-203]
-005333  20 C3 52                      jsr  DrawSatelliteC        ; A=$0003 X=$0002 Y=[$0019] ; [OPT] TAIL_CALL: Tail call: JSR/JSL at $005333 followed by RTS ; [SP-205]
-; === End of while loop (counter: $00) ===
+005333  20 C3 52                      jsr  $52C3           ; Call $0052C3(X)
+; === End of while loop ===
 
-005336  60                L_005336    rts                  ; A=$0003 X=$0002 Y=[$0019] ; [SP-203]
+005336  60                            rts                  ; A=$0003 X=$0002 Y=[$0019] ; [SP-203]
 
 ; --- Data region ---
 005337  96D61656                HEX     96D61656
 
-; FUNC $00533B: register -> A:X []
-; Proto: uint32_t func_00533B(uint16_t param_X);
+; FUNC $00533B (RedrawScreenB): register -> A:X []
+; Proto: uint32_t RedrawScreenB(uint16_t param_X);
 ; Liveness: params(X) returns(A,X,Y) [1 dead stores]
 ; --- End data region (4 bytes) ---
 
-00533B  BD 54 5D          RedrawScreenB    lda  $5D54,X         ; -> $5D56 ; A=$0003 X=$0002 Y=[$0019] ; [SP-203]
-00533E  D0 21                         bne  L_005361        ; A=$0003 X=$0002 Y=[$0019] ; [SP-203]
+00533B  BD 54 5D                      lda  $5D54,X         ; -> $5D56 ; A=$0003 X=$0002 Y=[$0019] ; [SP-203]
+00533E  D0 21                         bne  $5361           ; A=$0003 X=$0002 Y=[$0019] ; [SP-203]
 005340  A9 01                         lda  #$01            ; A=$0001 X=$0002 Y=[$0019] ; [SP-203]
 005342  9D 54 5D                      sta  $5D54,X         ; -> $5D56 ; A=$0001 X=$0002 Y=[$0019] ; [SP-203]
 005345  BD 62 53                      lda  $5362,X         ; -> $5364 ; A=$0001 X=$0002 Y=[$0019] ; [SP-203]
@@ -3384,43 +5224,43 @@
 005357  A0 10                         ldy  #$10            ; A=$0001 X=$0002 Y=$0010 ; [SP-203]
 005359  A9 45                         lda  #$45            ; A=$0045 X=$0002 Y=$0010 ; [SP-203]
 00535B  8D 67 5B                      sta  $5B67           ; A=$0045 X=$0002 Y=$0010 ; [SP-203]
-00535E  4C 62 5B                      jmp  InputProcessB        ; A=$0045 X=$0002 Y=$0010 ; [SP-203]
-005361  60                L_005361    rts                  ; A=$0045 X=$0002 Y=$0010 ; [SP-201]
+00535E  4C 62 5B                      jmp  InputProcessB      ; A=$0045 X=$0002 Y=$0010 ; [SP-203]
+005361  60                            rts                  ; A=$0045 X=$0002 Y=$0010 ; [SP-201]
 
 ; --- Data region ---
 005362  A9E5A96D                HEX     A9E5A96D 00000000 225E9A5E 0000
 
-; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:44] ===
+; === while loop starts here (counter: Y 'j', range: 0..192, iters: 192) [nest:43] ===
 
-; FUNC $005370: register -> A:X [L]
-; Proto: uint32_t func_005370(uint16_t param_X, uint16_t param_Y);
+; FUNC $005370 (Set4DirAmmo): register -> A:X [L]
+; Proto: uint32_t Set4DirAmmo(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y)
 ; --- End data region (14 bytes) ---
 
-005370  A9 03             Set4DirAmmo    lda  #$03            ; A=$0003 X=$0002 Y=$0010 ; [SP-213]
+005370  A9 03                         lda  #$03            ; A=$0003 X=$0002 Y=$0010 ; [SP-213]
 005372  8D 6F 53                      sta  $536F           ; A=$0003 X=$0002 Y=$0010 ; [SP-213]
 005375  60                            rts                  ; A=$0003 X=$0002 Y=$0010 ; [SP-211]
 
-; === while loop starts here (counter: X 'iter_x') [nest:51] ===
+; === while loop starts here (counter: X 'iter_x') [nest:50] ===
 
-; FUNC $005376: register -> A:X []
-; Proto: uint32_t func_005376(uint16_t param_X, uint16_t param_Y);
+; FUNC $005376 (Set4DirAmmoB): register -> A:X []
+; Proto: uint32_t Set4DirAmmoB(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y)
-005376  EE 6F 53          Set4DirAmmoB    inc  $536F           ; A=$0003 X=$0002 Y=$0010 ; [SP-211]
-005379  D0 05                         bne  L_005380        ; A=$0003 X=$0002 Y=$0010 ; [SP-211]
+005376  EE 6F 53                      inc  $536F           ; A=$0003 X=$0002 Y=$0010 ; [SP-211]
+005379  D0 05                         bne  $5380           ; A=$0003 X=$0002 Y=$0010 ; [SP-211]
 00537B  A9 FF                         lda  #$FF            ; A=$00FF X=$0002 Y=$0010 ; [SP-211]
 00537D  8D 6F 53                      sta  $536F           ; A=$00FF X=$0002 Y=$0010 ; [SP-211]
-005380  60                L_005380    rts                  ; A=$00FF X=$0002 Y=$0010 ; [SP-209]
-005381  AD 6F 53          Fire4Dir    lda  $536F           ; A=[$536F] X=$0002 Y=$0010 ; [SP-209]
-005384  F0 2D                         beq  L_0053B3        ; A=[$536F] X=$0002 Y=$0010 ; [SP-209]
+005380  60                            rts                  ; A=$00FF X=$0002 Y=$0010 ; [SP-209]
+005381  AD 6F 53                      lda  $536F           ; A=[$536F] X=$0002 Y=$0010 ; [SP-209]
+005384  F0 2D                         beq  loc_0053B3      ; A=[$536F] X=$0002 Y=$0010 ; [SP-209]
 005386  CE 6F 53                      dec  $536F           ; A=[$536F] X=$0002 Y=$0010 ; [SP-209]
 005389  A2 03                         ldx  #$03            ; A=[$536F] X=$0003 Y=$0010 ; [SP-209]
 00538B  8E 6E 53                      stx  $536E           ; A=[$536F] X=$0003 Y=$0010 ; [SP-209]
 
-; === while loop starts here [nest:62] ===
-00538E  AE 6E 53          L_00538E    ldx  $536E           ; A=[$536F] X=$0003 Y=$0010 ; [SP-209]
+; === while loop starts here (counter: $00 '', range: 0..17804, step: 17871, iters: 76935749191124) [nest:61] [inner] ===
+00538E  AE 6E 53                      ldx  $536E           ; A=[$536F] X=$0003 Y=$0010 ; [SP-209]
 005391  BD 58 5D                      lda  $5D58,X         ; -> $5D5B ; A=[$536F] X=$0003 Y=$0010 ; [SP-209]
-005394  D0 17                         bne  L_0053AD        ; A=[$536F] X=$0003 Y=$0010 ; [SP-209]
+005394  D0 17                         bne  $53AD           ; A=[$536F] X=$0003 Y=$0010 ; [SP-209]
 005396  A9 01                         lda  #$01            ; A=$0001 X=$0003 Y=$0010 ; [SP-209]
 005398  9D 58 5D                      sta  $5D58,X         ; -> $5D5B ; A=$0001 X=$0003 Y=$0010 ; [SP-209]
 00539B  BD 68 5D                      lda  $5D68,X         ; -> $5D6B ; A=$0001 X=$0003 Y=$0010 ; [SP-209]
@@ -3429,12 +5269,12 @@
 0053A4  9D 60 5D                      sta  $5D60,X         ; -> $5D63 ; A=$0001 X=$0003 Y=$0010 ; [SP-209]
 0053A7  BD 70 5D                      lda  $5D70,X         ; -> $5D73 ; A=$0001 X=$0003 Y=$0010 ; [SP-209]
 0053AA  9D 64 5D                      sta  $5D64,X         ; -> $5D67 ; A=$0001 X=$0003 Y=$0010 ; [SP-209]
-0053AD  CE 6E 53          L_0053AD    dec  $536E           ; A=$0001 X=$0003 Y=$0010 ; [SP-209]
-0053B0  10 DC                         bpl  L_00538E        ; A=$0001 X=$0003 Y=$0010 ; [SP-209]
-; === End of while loop ===
+0053AD  CE 6E 53                      dec  $536E           ; A=$0001 X=$0003 Y=$0010 ; [SP-209]
+0053B0  10 DC                         bpl  $538E           ; A=$0001 X=$0003 Y=$0010 ; [SP-209]
+; === End of while loop (counter: $00) ===
 
 0053B2  60                            rts                  ; A=$0001 X=$0003 Y=$0010 ; [SP-207]
-0053B3  A9 01             L_0053B3    lda  #$01            ; A=$0001 X=$0003 Y=$0010 ; [SP-207]
+0053B3  A9 01             loc_0053B3  lda  #$01            ; A=$0001 X=$0003 Y=$0010 ; [SP-207]
 0053B5  85 36                         sta  $36             ; A=$0001 X=$0003 Y=$0010 ; [SP-207]
 0053B7  60                            rts                  ; A=$0001 X=$0003 Y=$0010 ; [SP-205]
 
@@ -3449,30 +5289,30 @@
 0053E8  00152A3F                HEX     00152A3F 14141414 14141414 FEFE0202
 0053F8  00000000                HEX     00000000 00
 
-; === while loop starts here (counter: Y 'iter_y') [nest:55] ===
+; === while loop starts here (counter: c, range: 0..21299, step: 21302, iters: 91010357023427) [nest:54] [inner] ===
 ; --- End data region (69 bytes) ---
 
-0053FD  AD F3 53          L_0053FD    lda  $53F3           ; A=[$53F3] X=$0003 Y=$0010 ; [SP-231]
+0053FD  AD F3 53                      lda  $53F3           ; A=[$53F3] X=$0003 Y=$0010 ; [SP-231]
 005400  8D F9 53                      sta  $53F9           ; A=[$53F3] X=$0003 Y=$0010 ; [SP-231]
 005403  18                            clc                  ; A=[$53F3] X=$0003 Y=$0010 ; [SP-231]
 005404  6D F7 53                      adc  $53F7           ; A=[$53F3] X=$0003 Y=$0010 ; [SP-231]
 005407  8D FA 53                      sta  $53FA           ; A=[$53F3] X=$0003 Y=$0010 ; [SP-231]
 00540A  8D F3 53                      sta  $53F3           ; A=[$53F3] X=$0003 Y=$0010 ; [SP-231]
 00540D  C9 0A                         cmp  #$0A            ; A=[$53F3] X=$0003 Y=$0010 ; [SP-231]
-00540F  90 04                         bcc  L_005415        ; A=[$53F3] X=$0003 Y=$0010 ; [SP-231]
+00540F  90 04                         bcc  loc_005415      ; A=[$53F3] X=$0003 Y=$0010 ; [SP-231]
 005411  C9 6C                         cmp  #$6C            ; A=[$53F3] X=$0003 Y=$0010 ; [SP-231]
-005413  90 09                         bcc  L_00541E        ; A=[$53F3] X=$0003 Y=$0010 ; [SP-231]
-005415  38                L_005415    sec                  ; A=[$53F3] X=$0003 Y=$0010 ; [SP-231]
+005413  90 09                         bcc  loc_00541E      ; A=[$53F3] X=$0003 Y=$0010 ; [SP-231]
+005415  38                loc_005415  sec                  ; A=[$53F3] X=$0003 Y=$0010 ; [SP-231]
 005416  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=$0010 ; [SP-231]
 005418  ED F7 53                      sbc  $53F7           ; A=$0000 X=$0003 Y=$0010 ; [SP-231]
 00541B  8D F7 53                      sta  $53F7           ; A=$0000 X=$0003 Y=$0010 ; [SP-231]
-00541E  A9 03             L_00541E    lda  #$03            ; A=$0003 X=$0003 Y=$0010 ; [SP-231]
+00541E  A9 03             loc_00541E  lda  #$03            ; A=$0003 X=$0003 Y=$0010 ; [SP-231]
 005420  8D F8 53                      sta  $53F8           ; A=$0003 X=$0003 Y=$0010 ; [SP-231]
 
-; === while loop starts here (counter: X 'iter_x') [nest:62] ===
-005423  AE F8 53          L_005423    ldx  $53F8           ; A=$0003 X=$0003 Y=$0010 ; [SP-231]
+; === while loop starts here (counter: $00 '', range: 0..21310, step: 21345, iters: 100476464943966) [nest:61] [inner] ===
+005423  AE F8 53                      ldx  $53F8           ; A=$0003 X=$0003 Y=$0010 ; [SP-231]
 005426  BD C4 53                      lda  $53C4,X         ; -> $53C7 ; A=$0003 X=$0003 Y=$0010 ; [SP-231]
-005429  F0 30                         beq  L_00545B        ; A=$0003 X=$0003 Y=$0010 ; [SP-231]
+005429  F0 30                         beq  loc_00545B      ; A=$0003 X=$0003 Y=$0010 ; [SP-231]
 00542B  48                            pha                  ; A=$0003 X=$0003 Y=$0010 ; [SP-232]
 00542C  AD F9 53                      lda  $53F9           ; A=[$53F9] X=$0003 Y=$0010 ; [SP-232]
 00542F  18                            clc                  ; A=[$53F9] X=$0003 Y=$0010 ; [SP-232]
@@ -3483,8 +5323,8 @@
 005439  68                            pla                  ; A=[stk] X=$0003 Y=$0010 ; [SP-231]
 00543A  AA                            tax                  ; A=[stk] X=[stk] Y=$0010 ; [SP-231]
 00543B  BD D6 53                      lda  $53D6,X         ; A=[stk] X=[stk] Y=$0010 ; [SP-231]
-00543E  20 C0 40                      jsr  DrawSpriteXY        ; A=[stk] X=[stk] Y=$0010 ; [SP-233]
-; === End of while loop (counter: X) ===
+00543E  20 C0 40                      jsr  DrawSpriteXY    ; Call $0040C0(A, X, Y, 2 stack)
+; === End of while loop (counter: $00) ===
 
 005441  AE F8 53                      ldx  $53F8           ; A=[stk] X=[stk] Y=$0010 ; [SP-233]
 005444  AD FA 53                      lda  $53FA           ; A=[$53FA] X=[stk] Y=$0010 ; [SP-233]
@@ -3496,35 +5336,35 @@
 005451  BD C4 53                      lda  $53C4,X         ; A=$0009 X=[stk] Y=$0010 ; [SP-233]
 005454  AA                            tax                  ; A=$0009 X=$0009 Y=$0010 ; [SP-233]
 005455  BD D6 53                      lda  $53D6,X         ; -> $53DF ; A=$0009 X=$0009 Y=$0010 ; [SP-233]
-005458  20 16 04                      jsr  $0416           ; A=$0009 X=$0009 Y=$0010 ; [SP-235]
-00545B  CE F8 53          L_00545B    dec  $53F8           ; A=$0009 X=$0009 Y=$0010 ; [SP-235]
-00545E  10 C3                         bpl  L_005423        ; A=$0009 X=$0009 Y=$0010 ; [SP-235]
-; === End of while loop (counter: X) ===
+005458  20 16 04                      jsr  $0416           ; Call $000416(A, X)
+00545B  CE F8 53          loc_00545B  dec  $53F8           ; A=$0009 X=$0009 Y=$0010 ; [SP-235]
+00545E  10 C3                         bpl  $5423           ; A=$0009 X=$0009 Y=$0010 ; [SP-235]
+; === End of while loop (counter: $00) ===
 
 005460  60                            rts                  ; A=$0009 X=$0009 Y=$0010 ; [SP-233]
 
-; === while loop starts here (counter: Y 'iter_y') [nest:55] ===
-005461  AD F1 53          L_005461    lda  $53F1           ; A=[$53F1] X=$0009 Y=$0010 ; [SP-233]
+; === while loop starts here (counter: $00, range: 0..19065, step: 19067, iters: 81935091124867) [nest:54] [inner] ===
+005461  AD F1 53                      lda  $53F1           ; A=[$53F1] X=$0009 Y=$0010 ; [SP-233]
 005464  8D F9 53                      sta  $53F9           ; A=[$53F1] X=$0009 Y=$0010 ; [SP-233]
 005467  18                            clc                  ; A=[$53F1] X=$0009 Y=$0010 ; [SP-233]
 005468  6D F5 53                      adc  $53F5           ; A=[$53F1] X=$0009 Y=$0010 ; [SP-233]
 00546B  8D FA 53                      sta  $53FA           ; A=[$53F1] X=$0009 Y=$0010 ; [SP-233]
 00546E  8D F1 53                      sta  $53F1           ; A=[$53F1] X=$0009 Y=$0010 ; [SP-233]
 005471  C9 0A                         cmp  #$0A            ; A=[$53F1] X=$0009 Y=$0010 ; [SP-233]
-005473  90 04                         bcc  L_005479        ; A=[$53F1] X=$0009 Y=$0010 ; [SP-233]
+005473  90 04                         bcc  loc_005479      ; A=[$53F1] X=$0009 Y=$0010 ; [SP-233]
 005475  C9 6C                         cmp  #$6C            ; A=[$53F1] X=$0009 Y=$0010 ; [SP-233]
-005477  90 09                         bcc  L_005482        ; A=[$53F1] X=$0009 Y=$0010 ; [SP-233]
-005479  38                L_005479    sec                  ; A=[$53F1] X=$0009 Y=$0010 ; [SP-233]
+005477  90 09                         bcc  loc_005482      ; A=[$53F1] X=$0009 Y=$0010 ; [SP-233]
+005479  38                loc_005479  sec                  ; A=[$53F1] X=$0009 Y=$0010 ; [SP-233]
 00547A  A9 00                         lda  #$00            ; A=$0000 X=$0009 Y=$0010 ; [SP-233]
 00547C  ED F5 53                      sbc  $53F5           ; A=$0000 X=$0009 Y=$0010 ; [SP-233]
 00547F  8D F5 53                      sta  $53F5           ; A=$0000 X=$0009 Y=$0010 ; [SP-233]
-005482  A9 03             L_005482    lda  #$03            ; A=$0003 X=$0009 Y=$0010 ; [SP-233]
+005482  A9 03             loc_005482  lda  #$03            ; A=$0003 X=$0009 Y=$0010 ; [SP-233]
 005484  8D F8 53                      sta  $53F8           ; A=$0003 X=$0009 Y=$0010 ; [SP-233]
 
-; === while loop starts here (counter: X 'iter_x') [nest:62] ===
-005487  AE F8 53          L_005487    ldx  $53F8           ; A=$0003 X=$0009 Y=$0010 ; [SP-233]
+; === while loop starts here (counter: e '', range: 0..18818, step: 18829, iters: 76832669976032) [nest:61] [inner] ===
+005487  AE F8 53                      ldx  $53F8           ; A=$0003 X=$0009 Y=$0010 ; [SP-233]
 00548A  BD BC 53                      lda  $53BC,X         ; -> $53C5 ; A=$0003 X=$0009 Y=$0010 ; [SP-233]
-00548D  F0 30                         beq  L_0054BF        ; A=$0003 X=$0009 Y=$0010 ; [SP-233]
+00548D  F0 30                         beq  loc_0054BF      ; A=$0003 X=$0009 Y=$0010 ; [SP-233]
 00548F  48                            pha                  ; A=$0003 X=$0009 Y=$0010 ; [SP-234]
 005490  AD F9 53                      lda  $53F9           ; A=[$53F9] X=$0009 Y=$0010 ; [SP-234]
 005493  18                            clc                  ; A=[$53F9] X=$0009 Y=$0010 ; [SP-234]
@@ -3535,8 +5375,8 @@
 00549D  68                            pla                  ; A=[stk] X=$0009 Y=$0010 ; [SP-233]
 00549E  AA                            tax                  ; A=[stk] X=[stk] Y=$0010 ; [SP-233]
 00549F  BD DD 53                      lda  $53DD,X         ; A=[stk] X=[stk] Y=$0010 ; [SP-233]
-0054A2  20 C0 40                      jsr  DrawSpriteXY        ; A=[stk] X=[stk] Y=$0010 ; [SP-235]
-; === End of while loop (counter: X) ===
+0054A2  20 C0 40                      jsr  DrawSpriteXY    ; Call $0040C0(A, X, 1 stack)
+; === End of while loop (counter: $00) ===
 
 0054A5  AE F8 53                      ldx  $53F8           ; A=[stk] X=[stk] Y=$0010 ; [SP-235]
 0054A8  AD FA 53                      lda  $53FA           ; A=[$53FA] X=[stk] Y=$0010 ; [SP-235]
@@ -3548,36 +5388,36 @@
 0054B5  BD BC 53                      lda  $53BC,X         ; A=$0025 X=[stk] Y=$0010 ; [SP-235]
 0054B8  AA                            tax                  ; A=$0025 X=$0025 Y=$0010 ; [SP-235]
 0054B9  BD DD 53                      lda  $53DD,X         ; -> $5402 ; A=$0025 X=$0025 Y=$0010 ; [SP-235]
-0054BC  20 16 04                      jsr  $0416           ; A=$0025 X=$0025 Y=$0010 ; [SP-237]
-0054BF  CE F8 53          L_0054BF    dec  $53F8           ; A=$0025 X=$0025 Y=$0010 ; [SP-237]
-0054C2  10 C3                         bpl  L_005487        ; A=$0025 X=$0025 Y=$0010 ; [SP-237]
-; === End of while loop (counter: X) ===
+0054BC  20 16 04                      jsr  $0416           ; Call $000416(A, X)
+0054BF  CE F8 53          loc_0054BF  dec  $53F8           ; A=$0025 X=$0025 Y=$0010 ; [SP-237]
+0054C2  10 C3                         bpl  $5487           ; A=$0025 X=$0025 Y=$0010 ; [SP-237]
+; === End of while loop (counter: e) ===
 
 0054C4  60                            rts                  ; A=$0025 X=$0025 Y=$0010 ; [SP-235]
 
-; === while loop starts here (counter: Y 'iter_y') [nest:56] ===
+; === while loop starts here (counter: $00, range: 0..17928, step: 17930, iters: 77171972392494) [nest:55] [inner] ===
 ; case 1:
-0054C5  AD EC 53          L_0054C5    lda  $53EC           ; A=[$53EC] X=$0025 Y=$0010 ; [SP-235]
+0054C5  AD EC 53                      lda  $53EC           ; A=[$53EC] X=$0025 Y=$0010 ; [SP-235]
 0054C8  8D FB 53                      sta  $53FB           ; A=[$53EC] X=$0025 Y=$0010 ; [SP-235]
 0054CB  18                            clc                  ; A=[$53EC] X=$0025 Y=$0010 ; [SP-235]
 0054CC  6D F4 53                      adc  $53F4           ; A=[$53EC] X=$0025 Y=$0010 ; [SP-235]
 0054CF  8D FC 53                      sta  $53FC           ; A=[$53EC] X=$0025 Y=$0010 ; [SP-235]
 0054D2  8D EC 53                      sta  $53EC           ; A=[$53EC] X=$0025 Y=$0010 ; [SP-235]
 0054D5  C9 0A                         cmp  #$0A            ; A=[$53EC] X=$0025 Y=$0010 ; [SP-235]
-0054D7  90 04                         bcc  L_0054DD        ; A=[$53EC] X=$0025 Y=$0010 ; [SP-235]
+0054D7  90 04                         bcc  loc_0054DD      ; A=[$53EC] X=$0025 Y=$0010 ; [SP-235]
 0054D9  C9 85                         cmp  #$85            ; A=[$53EC] X=$0025 Y=$0010 ; [SP-235]
-0054DB  90 09                         bcc  L_0054E6        ; A=[$53EC] X=$0025 Y=$0010 ; [SP-235]
-0054DD  38                L_0054DD    sec                  ; A=[$53EC] X=$0025 Y=$0010 ; [SP-235]
+0054DB  90 09                         bcc  loc_0054E6      ; A=[$53EC] X=$0025 Y=$0010 ; [SP-235]
+0054DD  38                loc_0054DD  sec                  ; A=[$53EC] X=$0025 Y=$0010 ; [SP-235]
 0054DE  A9 00                         lda  #$00            ; A=$0000 X=$0025 Y=$0010 ; [SP-235]
 0054E0  ED F4 53                      sbc  $53F4           ; A=$0000 X=$0025 Y=$0010 ; [SP-235]
 0054E3  8D F4 53                      sta  $53F4           ; A=$0000 X=$0025 Y=$0010 ; [SP-235]
-0054E6  A9 03             L_0054E6    lda  #$03            ; A=$0003 X=$0025 Y=$0010 ; [SP-235]
+0054E6  A9 03             loc_0054E6  lda  #$03            ; A=$0003 X=$0025 Y=$0010 ; [SP-235]
 0054E8  8D F8 53                      sta  $53F8           ; A=$0003 X=$0025 Y=$0010 ; [SP-235]
 
-; === while loop starts here (counter: Y 'iter_y') [nest:61] ===
-0054EB  AE F8 53          L_0054EB    ldx  $53F8           ; A=$0003 X=$0025 Y=$0010 ; [SP-235]
+; === while loop starts here (counter: e, range: 0..17824, step: 17826, iters: 91203630553208) [nest:60] [inner] ===
+0054EB  AE F8 53                      ldx  $53F8           ; A=$0003 X=$0025 Y=$0010 ; [SP-235]
 0054EE  BD B8 53                      lda  $53B8,X         ; -> $53DD ; A=$0003 X=$0025 Y=$0010 ; [SP-235]
-0054F1  F0 30                         beq  L_005523        ; A=$0003 X=$0025 Y=$0010 ; [SP-235]
+0054F1  F0 30                         beq  $5523           ; A=$0003 X=$0025 Y=$0010 ; [SP-235]
 0054F3  48                            pha                  ; A=$0003 X=$0025 Y=$0010 ; [SP-236]
 0054F4  AD FB 53                      lda  $53FB           ; A=[$53FB] X=$0025 Y=$0010 ; [SP-236]
 0054F7  18                            clc                  ; A=[$53FB] X=$0025 Y=$0010 ; [SP-236]
@@ -3588,8 +5428,8 @@
 005501  68                            pla                  ; A=[stk] X=$0025 Y=$0010 ; [SP-235]
 005502  AA                            tax                  ; A=[stk] X=[stk] Y=$0010 ; [SP-235]
 005503  BD C8 53                      lda  $53C8,X         ; A=[stk] X=[stk] Y=$0010 ; [SP-235]
-005506  20 A1 52                      jsr  DrawSatelliteB        ; A=[stk] X=[stk] Y=$0010 ; [SP-237]
-; === End of while loop (counter: Y) ===
+005506  20 A1 52                      jsr  DrawSatelliteB      ; Call $0052A1(A, X, 1 stack)
+; === End of while loop (counter: $00) ===
 
 005509  AE F8 53                      ldx  $53F8           ; A=[stk] X=[stk] Y=$0010 ; [SP-237]
 00550C  AD FC 53                      lda  $53FC           ; A=[$53FC] X=[stk] Y=$0010 ; [SP-237]
@@ -3601,37 +5441,37 @@
 005519  BD B8 53                      lda  $53B8,X         ; A=$0001 X=[stk] Y=$0010 ; [SP-237]
 00551C  AA                            tax                  ; A=$0001 X=$0001 Y=$0010 ; [SP-237]
 00551D  BD C8 53                      lda  $53C8,X         ; -> $53C9 ; A=$0001 X=$0001 Y=$0010 ; [SP-237]
-005520  20 7F 52                      jsr  DrawSatellite        ; A=$0001 X=$0001 Y=$0010 ; [SP-239]
-; === End of while loop (counter: Y) ===
+005520  20 7F 52                      jsr  DrawSatellite   ; Call $00527F(A, X)
+; === End of while loop (counter: $00) ===
 
-005523  CE F8 53          L_005523    dec  $53F8           ; A=$0001 X=$0001 Y=$0010 ; [SP-239]
-005526  10 C3                         bpl  L_0054EB        ; A=$0001 X=$0001 Y=$0010 ; [SP-239]
-; === End of while loop (counter: Y) ===
+005523  CE F8 53                      dec  $53F8           ; A=$0001 X=$0001 Y=$0010 ; [SP-239]
+005526  10 C3                         bpl  $54EB           ; A=$0001 X=$0001 Y=$0010 ; [SP-239]
+; === End of while loop (counter: e) ===
 
 005528  60                            rts                  ; A=$0001 X=$0001 Y=$0010 ; [SP-237]
 
-; === while loop starts here [nest:55] ===
-005529  AD EE 53          L_005529    lda  $53EE           ; A=[$53EE] X=$0001 Y=$0010 ; [SP-237]
+; === while loop starts here (counter: $05 '', range: 583..16634, step: 16653, iters: 71524090396926) [nest:54] [inner] ===
+005529  AD EE 53                      lda  $53EE           ; A=[$53EE] X=$0001 Y=$0010 ; [SP-237]
 00552C  8D FB 53                      sta  $53FB           ; A=[$53EE] X=$0001 Y=$0010 ; [SP-237]
 00552F  18                            clc                  ; A=[$53EE] X=$0001 Y=$0010 ; [SP-237]
 005530  6D F6 53                      adc  $53F6           ; A=[$53EE] X=$0001 Y=$0010 ; [SP-237]
 005533  8D FC 53                      sta  $53FC           ; A=[$53EE] X=$0001 Y=$0010 ; [SP-237]
 005536  8D EE 53                      sta  $53EE           ; A=[$53EE] X=$0001 Y=$0010 ; [SP-237]
 005539  C9 0A                         cmp  #$0A            ; A=[$53EE] X=$0001 Y=$0010 ; [SP-237]
-00553B  90 04                         bcc  L_005541        ; A=[$53EE] X=$0001 Y=$0010 ; [SP-237]
+00553B  90 04                         bcc  loc_005541      ; A=[$53EE] X=$0001 Y=$0010 ; [SP-237]
 00553D  C9 85                         cmp  #$85            ; A=[$53EE] X=$0001 Y=$0010 ; [SP-237]
-00553F  90 09                         bcc  L_00554A        ; A=[$53EE] X=$0001 Y=$0010 ; [SP-237]
-005541  38                L_005541    sec                  ; A=[$53EE] X=$0001 Y=$0010 ; [SP-237]
+00553F  90 09                         bcc  loc_00554A      ; A=[$53EE] X=$0001 Y=$0010 ; [SP-237]
+005541  38                loc_005541  sec                  ; A=[$53EE] X=$0001 Y=$0010 ; [SP-237]
 005542  A9 00                         lda  #$00            ; A=$0000 X=$0001 Y=$0010 ; [SP-237]
 005544  ED F6 53                      sbc  $53F6           ; A=$0000 X=$0001 Y=$0010 ; [SP-237]
 005547  8D F6 53                      sta  $53F6           ; A=$0000 X=$0001 Y=$0010 ; [SP-237]
-00554A  A9 03             L_00554A    lda  #$03            ; A=$0003 X=$0001 Y=$0010 ; [SP-237]
+00554A  A9 03             loc_00554A  lda  #$03            ; A=$0003 X=$0001 Y=$0010 ; [SP-237]
 00554C  8D F8 53                      sta  $53F8           ; A=$0003 X=$0001 Y=$0010 ; [SP-237]
 
-; === while loop starts here [nest:60] ===
-00554F  AE F8 53          L_00554F    ldx  $53F8           ; A=$0003 X=$0001 Y=$0010 ; [SP-237]
+; === while loop starts here (counter: $00 '', range: 0..16669, step: 16608, iters: 71601399808286) [nest:59] [inner] ===
+00554F  AE F8 53                      ldx  $53F8           ; A=$0003 X=$0001 Y=$0010 ; [SP-237]
 005552  BD C0 53                      lda  $53C0,X         ; -> $53C1 ; A=$0003 X=$0001 Y=$0010 ; [SP-237]
-005555  F0 30                         beq  L_005587        ; A=$0003 X=$0001 Y=$0010 ; [SP-237]
+005555  F0 30                         beq  $5587           ; A=$0003 X=$0001 Y=$0010 ; [SP-237]
 005557  48                            pha                  ; A=$0003 X=$0001 Y=$0010 ; [SP-238]
 005558  AD FB 53                      lda  $53FB           ; A=[$53FB] X=$0001 Y=$0010 ; [SP-238]
 00555B  18                            clc                  ; A=[$53FB] X=$0001 Y=$0010 ; [SP-238]
@@ -3642,8 +5482,8 @@
 005565  68                            pla                  ; A=[stk] X=$0001 Y=$0010 ; [SP-237]
 005566  AA                            tax                  ; A=[stk] X=[stk] Y=$0010 ; [SP-237]
 005567  BD CF 53                      lda  $53CF,X         ; A=[stk] X=[stk] Y=$0010 ; [SP-237]
-00556A  20 A1 52                      jsr  DrawSatelliteB        ; A=[stk] X=[stk] Y=$0010 ; [SP-239]
-; === End of while loop (counter: Y) ===
+00556A  20 A1 52                      jsr  DrawSatelliteB      ; Call $0052A1(A, X, 1 stack)
+; === End of while loop (counter: t) ===
 
 00556D  AE F8 53                      ldx  $53F8           ; A=[stk] X=[stk] Y=$0010 ; [SP-239]
 005570  AD FC 53                      lda  $53FC           ; A=[$53FC] X=[stk] Y=$0010 ; [SP-239]
@@ -3655,26 +5495,26 @@
 00557D  BD C0 53                      lda  $53C0,X         ; A=$00B4 X=[stk] Y=$0010 ; [SP-239]
 005580  AA                            tax                  ; A=$00B4 X=$00B4 Y=$0010 ; [SP-239]
 005581  BD CF 53                      lda  $53CF,X         ; -> $5483 ; A=$00B4 X=$00B4 Y=$0010 ; [SP-239]
-005584  20 7F 52                      jsr  DrawSatellite        ; A=$00B4 X=$00B4 Y=$0010 ; [SP-241]
-; === End of while loop (counter: Y) ===
+005584  20 7F 52                      jsr  DrawSatellite   ; Call $00527F(A, X)
+; === End of while loop (counter: $00) ===
 
-005587  CE F8 53          L_005587    dec  $53F8           ; A=$00B4 X=$00B4 Y=$0010 ; [SP-241]
-00558A  10 C3                         bpl  L_00554F        ; A=$00B4 X=$00B4 Y=$0010 ; [SP-241]
-; === End of while loop ===
+005587  CE F8 53                      dec  $53F8           ; A=$00B4 X=$00B4 Y=$0010 ; [SP-241]
+00558A  10 C3                         bpl  $554F           ; A=$00B4 X=$00B4 Y=$0010 ; [SP-241]
+; === End of while loop (counter: $00) ===
 
 00558C  60                            rts                  ; A=$00B4 X=$00B4 Y=$0010 ; [SP-239]
 
 ; --- Data region ---
 00558D  F8F80000                HEX     F8F80000
 
-; === while loop starts here (counter: X 'iter_x') [nest:27] ===
+; === while loop starts here (counter: $00, range: 0..18831, step: 18833, iters: 81058917796279) [nest:26] [inner] ===
 
-; FUNC $005591: register -> A:X []
+; FUNC $005591 (DrawAlienRowDir): register -> A:X []
 ; Liveness: returns(A,X,Y) [5 dead stores]
 ; --- End data region (4 bytes) ---
 
-005591  EE 8D 55          DrawAlienRowDir    inc  $558D           ; A=$00B4 X=$00B4 Y=$0010 ; [SP-242]
-005594  D0 49                         bne  L_0055DF        ; A=$00B4 X=$00B4 Y=$0010 ; [SP-242]
+005591  EE 8D 55                      inc  $558D           ; A=$00B4 X=$00B4 Y=$0010 ; [SP-242]
+005594  D0 49                         bne  $55DF           ; A=$00B4 X=$00B4 Y=$0010 ; [SP-242]
 005596  AD 8E 55                      lda  $558E           ; A=[$558E] X=$00B4 Y=$0010 ; [SP-242]
 005599  8D 8D 55                      sta  $558D           ; A=[$558E] X=$00B4 Y=$0010 ; [SP-242]
 00559C  EE 8F 55                      inc  $558F           ; A=[$558E] X=$00B4 Y=$0010 ; [SP-242]
@@ -3683,11 +5523,11 @@
 0055A4  8D 8F 55                      sta  $558F           ; A=A&$03 X=$00B4 Y=$0010 ; [SP-242]
 0055A7  AA                            tax                  ; A=A&$03 X=A Y=$0010 ; [SP-242]
 0055A8  BD 54 5D                      lda  $5D54,X         ; A=A&$03 X=A Y=$0010 ; [SP-242]
-0055AB  D0 32                         bne  L_0055DF        ; A=A&$03 X=A Y=$0010 ; [SP-242]
-0055AD  20 0E 56                      jsr  DrawAlienRowDirC        ; A=A&$03 X=A Y=$0010 ; [SP-244]
-0055B0  F0 2D                         beq  L_0055DF        ; A=A&$03 X=A Y=$0010 ; [SP-244]
+0055AB  D0 32                         bne  $55DF           ; A=A&$03 X=A Y=$0010 ; [SP-242]
+0055AD  20 0E 56                      jsr  $560E           ; Call $00560E(A)
+0055B0  F0 2D                         beq  $55DF           ; A=A&$03 X=A Y=$0010 ; [SP-244]
 0055B2  E6 2C                         inc  $2C             ; A=A&$03 X=A Y=$0010 ; [SP-244]
-0055B4  D0 29                         bne  L_0055DF        ; A=A&$03 X=A Y=$0010 ; [SP-244]
+0055B4  D0 29                         bne  $55DF           ; A=A&$03 X=A Y=$0010 ; [SP-244]
 0055B6  A5 32                         lda  $32             ; A=[$0032] X=A Y=$0010 ; [SP-244]
 0055B8  85 2C                         sta  $2C             ; A=[$0032] X=A Y=$0010 ; [SP-244]
 0055BA  AD 8F 55                      lda  $558F           ; A=[$558F] X=A Y=$0010 ; [SP-244]
@@ -3700,155 +5540,155 @@
 0055C6  CA                            dex                  ; A=A+$03 X=X-$01 Y=$0010 ; [SP-244]
 0055C7  A0 02                         ldy  #$02            ; A=A+$03 X=X-$01 Y=$0002 ; [SP-244]
 
-; === while loop starts here [nest:61] ===
-0055C9  DD B8 53          L_0055C9    cmp  $53B8,X         ; A=A+$03 X=X-$01 Y=$0002 ; [SP-244]
-0055CC  D0 0B                         bne  L_0055D9        ; A=A+$03 X=X-$01 Y=$0002 ; [SP-244]
+; === while loop starts here (counter: $00, range: 0..18978, step: 18980, iters: 81561428970028) [nest:60] [inner] ===
+0055C9  DD B8 53                      cmp  $53B8,X         ; A=A+$03 X=X-$01 Y=$0002 ; [SP-244]
+0055CC  D0 0B                         bne  loc_0055D9      ; A=A+$03 X=X-$01 Y=$0002 ; [SP-244]
 0055CE  CA                            dex                  ; A=A+$03 X=X-$01 Y=$0002 ; [SP-244]
 0055CF  88                            dey                  ; A=A+$03 X=X-$01 Y=$0001 ; [SP-244]
-0055D0  10 F7                         bpl  L_0055C9        ; A=A+$03 X=X-$01 Y=$0001 ; [SP-244]
-; === End of while loop ===
+0055D0  10 F7                         bpl  $55C9           ; A=A+$03 X=X-$01 Y=$0001 ; [SP-244]
+; === End of while loop (counter: $00) ===
 
-0055D2  20 03 04                      jsr  $0403           ; A=A+$03 X=X-$01 Y=$0001 ; [SP-246]
+0055D2  20 03 04                      jsr  $0403           ; Call $000403(A, Y)
 0055D5  C9 80                         cmp  #$80            ; A=A+$03 X=X-$01 Y=$0001 ; [SP-246]
-0055D7  B0 06                         bcs  L_0055DF        ; A=A+$03 X=X-$01 Y=$0001 ; [SP-246]
-0055D9  AE 8F 55          L_0055D9    ldx  $558F           ; A=A+$03 X=X-$01 Y=$0001 ; [SP-246]
-0055DC  20 0C 4B                      jsr  SelectProjectileType        ; A=A+$03 X=X-$01 Y=$0001 ; [OPT] TAIL_CALL: Tail call: JSR/JSL at $0055DC followed by RTS ; [SP-248]
-; === End of while loop (counter: Y) ===
+0055D7  B0 06                         bcs  $55DF           ; A=A+$03 X=X-$01 Y=$0001 ; [SP-246]
+0055D9  AE 8F 55          loc_0055D9  ldx  $558F           ; A=A+$03 X=X-$01 Y=$0001 ; [SP-246]
+0055DC  20 0C 4B                      jsr  SelectProjectileType ; Call $004B0C(X)
+; === End of while loop (counter: $00) ===
 
-0055DF  60                L_0055DF    rts                  ; A=A+$03 X=X-$01 Y=$0001 ; [SP-246]
+0055DF  60                            rts                  ; A=A+$03 X=X-$01 Y=$0001 ; [SP-246]
 
 ; --- Data region ---
 0055E0  E0E000                  HEX     E0E000
 
-; === while loop starts here (counter: X 'iter_x') [nest:27] ===
+; === while loop starts here (counter: $00, range: 0..16610, step: 16612, iters: 71365176606950) [nest:26] [inner] ===
 
-; FUNC $0055E3: register -> A:X [L]
-; Proto: uint32_t func_0055E3(uint16_t param_A, uint16_t param_X, uint16_t param_Y);
+; FUNC $0055E3 (DrawAlienRowDirB): register -> A:X [L]
+; Proto: uint32_t DrawAlienRowDirB(uint16_t param_A, uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(A,X,Y) returns(A,X,Y)
 ; --- End data region (3 bytes) ---
 
-0055E3  EE E1 55          DrawAlienRowDirB    inc  $55E1           ; A=A+$03 X=X-$01 Y=$0001 ; [SP-249]
-0055E6  F0 01                         beq  L_0055E9        ; A=A+$03 X=X-$01 Y=$0001 ; [SP-249]
+0055E3  EE E1 55          DrawAlienRowDirB  inc  $55E1           ; A=A+$03 X=X-$01 Y=$0001 ; [SP-249]
+0055E6  F0 01                         beq  loc_0055E9      ; A=A+$03 X=X-$01 Y=$0001 ; [SP-249]
 0055E8  60                            rts                  ; A=A+$03 X=X-$01 Y=$0001 ; [SP-247]
-0055E9  AD E0 55          L_0055E9    lda  $55E0           ; A=[$55E0] X=X-$01 Y=$0001 ; [SP-247]
+0055E9  AD E0 55          loc_0055E9  lda  $55E0           ; A=[$55E0] X=X-$01 Y=$0001 ; [SP-247]
 0055EC  8D E1 55                      sta  $55E1           ; A=[$55E0] X=X-$01 Y=$0001 ; [SP-247]
 0055EF  CE E2 55                      dec  $55E2           ; A=[$55E0] X=X-$01 Y=$0001 ; [SP-247]
 0055F2  AD E2 55                      lda  $55E2           ; A=[$55E2] X=X-$01 Y=$0001 ; [SP-247]
-0055F5  10 08                         bpl  L_0055FF        ; A=[$55E2] X=X-$01 Y=$0001 ; [SP-247]
+0055F5  10 08                         bpl  $55FF           ; A=[$55E2] X=X-$01 Y=$0001 ; [SP-247]
 0055F7  A9 03                         lda  #$03            ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
 0055F9  8D E2 55                      sta  $55E2           ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-0055FC  4C FD 53                      jmp  L_0053FD        ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-; === End of while loop (counter: Y) ===
+0055FC  4C FD 53                      jmp  $53FD           ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+; === End of while loop (counter: c) ===
 
-0055FF  D0 03             L_0055FF    bne  L_005604        ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-005601  4C C5 54                      jmp  L_0054C5        ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-; === End of while loop (counter: Y) ===
+0055FF  D0 03                         bne  loc_005604      ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+005601  4C C5 54                      jmp  $54C5           ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+; === End of while loop (counter: $00) ===
 
-005604  C9 01             L_005604    cmp  #$01            ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-005606  D0 03                         bne  L_00560B        ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-005608  4C 61 54                      jmp  L_005461        ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-; === End of while loop (counter: Y) ===
+005604  C9 01             loc_005604  cmp  #$01            ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+005606  D0 03                         bne  $560B           ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+005608  4C 61 54                      jmp  $5461           ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+; === End of while loop (counter: $00) ===
 
-00560B  4C 29 55          L_00560B    jmp  L_005529        ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-; === End of while loop ===
+00560B  4C 29 55                      jmp  $5529           ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+; === End of while loop (counter: $05) ===
 
 
-; FUNC $00560E: register -> A:X [L]
-; Proto: uint32_t func_00560E(uint16_t param_Y);
+; FUNC $00560E (DrawAlienRowDirC): register -> A:X [L]
+; Proto: uint32_t DrawAlienRowDirC(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y) [2 dead stores]
-00560E  E0 01             DrawAlienRowDirC    cpx  #$01            ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-005610  D0 03                         bne  L_005615        ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-005612  4C 9E 56                      jmp  L_00569E        ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-005615  E0 02             L_005615    cpx  #$02            ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-005617  D0 03                         bne  L_00561C        ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-005619  4C 4C 56                      jmp  L_00564C        ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-00561C  E0 03             L_00561C    cpx  #$03            ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-00561E  D0 03                         bne  L_005623        ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-005620  4C 75 56                      jmp  L_005675        ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
-005623  AD EC 53          L_005623    lda  $53EC           ; A=[$53EC] X=X-$01 Y=$0001 ; [SP-247]
+00560E  E0 01                         cpx  #$01            ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+005610  D0 03                         bne  $5615           ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+005612  4C 9E 56                      jmp  loc_00569E      ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+005615  E0 02                         cpx  #$02            ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+005617  D0 03                         bne  loc_00561C      ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+005619  4C 4C 56                      jmp  loc_00564C      ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+00561C  E0 03             loc_00561C  cpx  #$03            ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+00561E  D0 03                         bne  $5623           ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+005620  4C 75 56                      jmp  loc_005675      ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+005623  AD EC 53                      lda  $53EC           ; A=[$53EC] X=X-$01 Y=$0001 ; [SP-247]
 005626  8D FB 53                      sta  $53FB           ; A=[$53EC] X=X-$01 Y=$0001 ; [SP-247]
 005629  A9 03                         lda  #$03            ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
 00562B  8D F8 53                      sta  $53F8           ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
 
-; === while loop starts here (counter: $00, range: 0..19878, step: 19881, iters: 86388972211856) [nest:57] [inner] ===
-00562E  AE F8 53          L_00562E    ldx  $53F8           ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
+; === while loop starts here (counter: $00 '', range: 0..17325, step: 17132, iters: 74547747373943) [nest:56] [inner] ===
+00562E  AE F8 53                      ldx  $53F8           ; A=$0003 X=X-$01 Y=$0001 ; [SP-247]
 005631  AD FB 53                      lda  $53FB           ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-247]
 005634  18                            clc                  ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-247]
 005635  7D E4 53                      adc  $53E4,X         ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-247]
 005638  C9 5F                         cmp  #$5F            ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-247]
-00563A  90 08                         bcc  L_005644        ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-247]
+00563A  90 08                         bcc  $5644           ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-247]
 00563C  C9 6F                         cmp  #$6F            ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-247]
-00563E  B0 04                         bcs  L_005644        ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-247]
+00563E  B0 04                         bcs  $5644           ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-247]
 005640  BD B8 53                      lda  $53B8,X         ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-247]
 005643  60                            rts                  ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-245]
-005644  CE F8 53          L_005644    dec  $53F8           ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-245]
-005647  10 E5                         bpl  L_00562E        ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-245]
+005644  CE F8 53                      dec  $53F8           ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-245]
+005647  10 E5                         bpl  $562E           ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-245]
 ; === End of while loop (counter: $00) ===
 
 005649  A9 00                         lda  #$00            ; A=$0000 X=X-$01 Y=$0001 ; [SP-245]
 00564B  60                            rts                  ; A=$0000 X=X-$01 Y=$0001 ; [SP-243]
-00564C  AD EE 53          L_00564C    lda  $53EE           ; A=[$53EE] X=X-$01 Y=$0001 ; [SP-243]
+00564C  AD EE 53          loc_00564C  lda  $53EE           ; A=[$53EE] X=X-$01 Y=$0001 ; [SP-243]
 00564F  8D FB 53                      sta  $53FB           ; A=[$53EE] X=X-$01 Y=$0001 ; [SP-243]
 005652  A9 03                         lda  #$03            ; A=$0003 X=X-$01 Y=$0001 ; [SP-243]
 005654  8D F8 53                      sta  $53F8           ; A=$0003 X=X-$01 Y=$0001 ; [SP-243]
 
-; === while loop starts here (counter: $00, range: 0..20188, step: 20191, iters: 86638080315083) [nest:57] [inner] ===
-005657  AE F8 53          L_005657    ldx  $53F8           ; A=$0003 X=X-$01 Y=$0001 ; [SP-243]
+; === while loop starts here (counter: $00 '', range: 0..22569, step: 22259, iters: 91766271268642) [nest:56] [inner] ===
+005657  AE F8 53                      ldx  $53F8           ; A=$0003 X=X-$01 Y=$0001 ; [SP-243]
 00565A  AD FB 53                      lda  $53FB           ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-243]
 00565D  18                            clc                  ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-243]
 00565E  7D E4 53                      adc  $53E4,X         ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-243]
 005661  C9 5F                         cmp  #$5F            ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-243]
-005663  90 08                         bcc  L_00566D        ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-243]
+005663  90 08                         bcc  $566D           ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-243]
 005665  C9 6F                         cmp  #$6F            ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-243]
-005667  B0 04                         bcs  L_00566D        ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-243]
+005667  B0 04                         bcs  $566D           ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-243]
 005669  BD C0 53                      lda  $53C0,X         ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-243]
 00566C  60                            rts                  ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-241]
-00566D  CE F8 53          L_00566D    dec  $53F8           ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-241]
-005670  10 E5                         bpl  L_005657        ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-241]
+00566D  CE F8 53                      dec  $53F8           ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-241]
+005670  10 E5                         bpl  $5657           ; A=[$53FB] X=X-$01 Y=$0001 ; [SP-241]
 ; === End of while loop (counter: $00) ===
 
 005672  A9 00                         lda  #$00            ; A=$0000 X=X-$01 Y=$0001 ; [SP-241]
 005674  60                            rts                  ; A=$0000 X=X-$01 Y=$0001 ; [SP-239]
-005675  AD F3 53          L_005675    lda  $53F3           ; A=[$53F3] X=X-$01 Y=$0001 ; [SP-239]
+005675  AD F3 53          loc_005675  lda  $53F3           ; A=[$53F3] X=X-$01 Y=$0001 ; [SP-239]
 005678  8D F9 53                      sta  $53F9           ; A=[$53F3] X=X-$01 Y=$0001 ; [SP-239]
 00567B  A9 03                         lda  #$03            ; A=$0003 X=X-$01 Y=$0001 ; [SP-239]
 00567D  8D F8 53                      sta  $53F8           ; A=$0003 X=X-$01 Y=$0001 ; [SP-239]
 
-; === while loop starts here (counter: $00 '', range: 0..20122, step: 19908, iters: 90851443232439) [nest:57] [inner] ===
-005680  AE F8 53          L_005680    ldx  $53F8           ; A=$0003 X=X-$01 Y=$0001 ; [SP-239]
+; === while loop starts here (counter: $00, range: 0..22535, step: 22537, iters: 96842922612753) [nest:56] [inner] ===
+005680  AE F8 53                      ldx  $53F8           ; A=$0003 X=X-$01 Y=$0001 ; [SP-239]
 005683  AD F9 53                      lda  $53F9           ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-239]
 005686  18                            clc                  ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-239]
 005687  7D E8 53                      adc  $53E8,X         ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-239]
 00568A  C9 5A                         cmp  #$5A            ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-239]
-00568C  90 08                         bcc  L_005696        ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-239]
+00568C  90 08                         bcc  $5696           ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-239]
 00568E  C9 63                         cmp  #$63            ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-239]
-005690  B0 04                         bcs  L_005696        ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-239]
+005690  B0 04                         bcs  $5696           ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-239]
 005692  BD C4 53                      lda  $53C4,X         ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-239]
 005695  60                            rts                  ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-237]
-005696  CE F8 53          L_005696    dec  $53F8           ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-237]
-005699  10 E5                         bpl  L_005680        ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-237]
+005696  CE F8 53                      dec  $53F8           ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-237]
+005699  10 E5                         bpl  $5680           ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-237]
 ; === End of while loop (counter: $00) ===
 
 00569B  A9 00                         lda  #$00            ; A=$0000 X=X-$01 Y=$0001 ; [SP-237]
 00569D  60                            rts                  ; A=$0000 X=X-$01 Y=$0001 ; [SP-235]
-00569E  AD F1 53          L_00569E    lda  $53F1           ; A=[$53F1] X=X-$01 Y=$0001 ; [SP-235]
+00569E  AD F1 53          loc_00569E  lda  $53F1           ; A=[$53F1] X=X-$01 Y=$0001 ; [SP-235]
 0056A1  8D F9 53                      sta  $53F9           ; A=[$53F1] X=X-$01 Y=$0001 ; [SP-235]
 0056A4  A9 03                         lda  #$03            ; A=$0003 X=X-$01 Y=$0001 ; [SP-235]
 0056A6  8D F8 53                      sta  $53F8           ; A=$0003 X=X-$01 Y=$0001 ; [SP-235]
 
-; === while loop starts here (counter: $00, range: 0..19884, step: 19887, iters: 86023899991611) [nest:57] [inner] ===
-0056A9  AE F8 53          L_0056A9    ldx  $53F8           ; A=$0003 X=X-$01 Y=$0001 ; [SP-235]
+; === while loop starts here (counter: $00 '', range: 0..22309, step: 21366, iters: 91766271268648) [nest:56] [inner] ===
+0056A9  AE F8 53                      ldx  $53F8           ; A=$0003 X=X-$01 Y=$0001 ; [SP-235]
 0056AC  AD F9 53                      lda  $53F9           ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-235]
 0056AF  18                            clc                  ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-235]
 0056B0  7D E8 53                      adc  $53E8,X         ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-235]
 0056B3  C9 5A                         cmp  #$5A            ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-235]
-0056B5  90 08                         bcc  L_0056BF        ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-235]
+0056B5  90 08                         bcc  $56BF           ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-235]
 0056B7  C9 63                         cmp  #$63            ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-235]
-0056B9  B0 04                         bcs  L_0056BF        ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-235]
+0056B9  B0 04                         bcs  $56BF           ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-235]
 0056BB  BD BC 53                      lda  $53BC,X         ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-235]
 0056BE  60                            rts                  ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-233]
-0056BF  CE F8 53          L_0056BF    dec  $53F8           ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-233]
-0056C2  10 E5                         bpl  L_0056A9        ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-233]
+0056BF  CE F8 53                      dec  $53F8           ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-233]
+0056C2  10 E5                         bpl  $56A9           ; A=[$53F9] X=X-$01 Y=$0001 ; [SP-233]
 ; === End of while loop (counter: $00) ===
 
 0056C4  A9 00                         lda  #$00            ; A=$0000 X=X-$01 Y=$0001 ; [SP-233]
@@ -3857,91 +5697,68 @@
 ; --- Data region ---
 0056C7  0000                    HEX     0000
 
-; === while loop starts here (counter: X 'iter_x') [nest:27] ===
+; === while loop starts here (counter: $00, range: 0..19466, step: 19469, iters: 102065602845917) [nest:26] [inner] ===
 
-; FUNC $0056C9: register -> A:X []
-; Proto: uint32_t func_0056C9(uint16_t param_Y);
+; FUNC $0056C9 (DrawAlienRowDirD): register -> A:X []
+; Proto: uint32_t DrawAlienRowDirD(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y) [2 dead stores]
 ; --- End data region (2 bytes) ---
 
-0056C9  20 03 04          DrawAlienRowDirD    jsr  $0403           ; A=$0000 X=X-$01 Y=$0001 ; [SP-236]
+0056C9  20 03 04          DrawAlienRowDirD  jsr  $0403           ; A=$0000 X=X-$01 Y=$0001 ; [SP-236]
 0056CC  29 03                         and  #$03            ; A=A&$03 X=X-$01 Y=$0001 ; [SP-236]
 0056CE  AA                            tax                  ; A=A&$03 X=A Y=$0001 ; [SP-236]
 0056CF  BD 54 5D                      lda  $5D54,X         ; A=A&$03 X=A Y=$0001 ; [SP-236]
-0056D2  F0 0E                         beq  L_0056E2        ; A=A&$03 X=A Y=$0001 ; [SP-236]
+0056D2  F0 0E                         beq  $56E2           ; A=A&$03 X=A Y=$0001 ; [SP-236]
 0056D4  8E C7 56                      stx  $56C7           ; A=A&$03 X=A Y=$0001 ; [SP-236]
-0056D7  20 C4 44                      jsr  DrawHitFlash        ; A=A&$03 X=A Y=$0001 ; [SP-238]
-; === End of while loop (counter: X) ===
+0056D7  20 C4 44                      jsr  DrawHitFlash    ; Call $0044C4(A)
+; === End of while loop (counter: $00) ===
 
 0056DA  AE C7 56                      ldx  $56C7           ; A=A&$03 X=A Y=$0001 ; [SP-238]
 0056DD  A9 00                         lda  #$00            ; A=$0000 X=A Y=$0001 ; [SP-238]
 0056DF  9D 54 5D                      sta  $5D54,X         ; A=$0000 X=A Y=$0001 ; [SP-238]
-0056E2  60                L_0056E2    rts                  ; A=$0000 X=A Y=$0001 ; [SP-236]
+0056E2  60                            rts                  ; A=$0000 X=A Y=$0001 ; [SP-236]
 
 ; --- Data region ---
 0056E3  50                      HEX     50
 
-; FUNC $0056E4: register -> A:X [L]
-; Proto: uint32_t func_0056E4(uint16_t param_X, uint16_t param_Y);
+; FUNC $0056E4 (IncreaseDifficulty): register -> A:X [L]
+; Proto: uint32_t IncreaseDifficulty(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y)
 ; --- End data region (1 bytes) ---
 
 ; ---------------------------------------------------------------------------
-; DIFFICULTY SYSTEM ($56E4) - IncreaseDifficulty
-; HOW: DEC $31 (step counter). When $31 reaches 0 AND $30 > 0:
-;      DEC $30 (one step harder), then JMP LoadDifficultyTables to
-;      reload ALL 8 timing parameters from the lookup tables.
-;
-; WHY two-stage: $31 acts as a "hits until next difficulty bump".
-;      At easiest ($30=11), $31 starts at $10 (16 hits between bumps).
-;      At hardest ($30=0), $31=$FF (difficulty is already maxed).
-;      This creates a smooth difficulty curve - the game gets faster
-;      roughly every 16-42 successful hits depending on current level.
-;
-; CALLED FROM: $4DDD (alien hit) and $4FC4 (satellite hit).
-;      Every successful hit brings the game one step closer to speeding up.
+; DIFFICULTY SYSTEM ($56E4)
+; Decrements step counter $31. When it reaches 0 and $30 > 0,
+; decreases $30 (making game harder) and reloads all timing tables.
+; $30 ranges from $0B (easiest) to $00 (hardest).
+; Called after hitting aliens and collecting hearts.
 ; ---------------------------------------------------------------------------
-0056E4  C6 31             IncreaseDifficulty    dec  $31             ; A=$0000 X=A Y=$0001 ; [SP-236]
-0056E6  D0 09                         bne  L_0056F1        ; A=$0000 X=A Y=$0001 ; [SP-236]
+0056E4  C6 31                         dec  $31             ; A=$0000 X=A Y=$0001 ; [SP-236]
+0056E6  D0 09                         bne  $56F1           ; A=$0000 X=A Y=$0001 ; [SP-236]
 0056E8  A5 30                         lda  $30             ; A=[$0030] X=A Y=$0001 ; [SP-236]
-0056EA  F0 05                         beq  L_0056F1        ; A=[$0030] X=A Y=$0001 ; [SP-236]
+0056EA  F0 05                         beq  $56F1           ; A=[$0030] X=A Y=$0001 ; [SP-236]
 0056EC  C6 30                         dec  $30             ; A=[$0030] X=A Y=$0001 ; [SP-236]
-0056EE  4C F3 56                      jmp  LoadDifficultyTables        ; A=[$0030] X=A Y=$0001 ; [SP-236]
-0056F1  60                L_0056F1    rts                  ; A=[$0030] X=A Y=$0001 ; [SP-234]
+0056EE  4C F3 56                      jmp  LoadDifficultyTables ; A=[$0030] X=A Y=$0001 ; [SP-236]
+0056F1  60                            rts                  ; A=[$0030] X=A Y=$0001 ; [SP-234]
 
 ; --- Data region ---
 0056F2  00                      HEX     00
 
-; === while loop starts here (counter: Y 'iter_y', range: 0..192, iters: 192) [nest:48] ===
+; === while loop starts here (counter: Y 'iter_y', range: 0..192, iters: 192) [nest:47] ===
 
-; FUNC $0056F3: register -> A:X [J]
-; Proto: uint32_t func_0056F3(uint16_t param_Y);
+; FUNC $0056F3 (LoadDifficultyTables): register -> A:X [J]
+; Proto: uint32_t LoadDifficultyTables(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y) [5 dead stores]
 ; --- End data region (1 bytes) ---
 
 ; ---------------------------------------------------------------------------
-; LOAD DIFFICULTY TABLES ($56F3) - LoadDifficultyTables
-; HOW: Uses $30 as an index (0-11) into 8 consecutive 12-byte tables
-;      at $576C-$57CB. Each table controls one timing parameter.
-;      LDX $30, then LDA $576C,X / STA $2F, LDA $5778,X / STA $52F2, etc.
-;
-; THE 8 TABLES AND WHAT THEY CONTROL:
-;   $576C[12] -> $2F  : Frame delay reload (main game speed)
-;   $5778[12] -> $52F2: Redraw timing threshold
-;   $5784[12] -> $55E0: Alien draw timing
-;   $5790[12] -> $32  : Alien fire rate (how often aliens shoot)
-;   $579C[12] -> $57CC: Timing parameter 5
-;   $57A8[12] -> $57CF: Timing parameter 6
-;   $57B4[12] -> $57D2: Timing parameter 7
-;   $57C0[12] -> $31  : Steps until next difficulty increase
-;
-; WHY table-driven: Instead of computing speeds with formulas,
-;      the designer hand-tuned 12 difficulty levels. This gives
-;      precise control over the difficulty curve - the game feels
-;      fair because each step was play-tested. Table lookup is also
-;      faster than computation on the 6502.
+; LOAD DIFFICULTY TABLES ($56F3)
+; Uses $30 as index into 8 lookup tables at $576C-$57CB to set:
+;   $2F = frame delay reload, $32 = alien fire rate,
+;   $31 = steps until next difficulty increase, plus other timing values.
+; Higher values = slower/easier, lower values = faster/harder.
 ; ---------------------------------------------------------------------------
-0056F3  A6 30             LoadDifficultyTables    ldx  $30             ; A=[$0030] X=A Y=$0001 ; [SP-237]
+0056F3  A6 30                         ldx  $30             ; A=[$0030] X=A Y=$0001 ; [SP-237]
 0056F5  BD 6C 57                      lda  $576C,X         ; A=[$0030] X=A Y=$0001 ; [SP-237]
 0056F8  85 2F                         sta  $2F             ; A=[$0030] X=A Y=$0001 ; [SP-237]
 0056FA  BD 78 57                      lda  $5778,X         ; A=[$0030] X=A Y=$0001 ; [SP-237]
@@ -3958,13 +5775,13 @@
 00571A  8D D2 57                      sta  $57D2           ; A=[$0030] X=A Y=$0001 ; [SP-237]
 00571D  BD C0 57                      lda  $57C0,X         ; A=[$0030] X=A Y=$0001 ; [SP-237]
 005720  85 31                         sta  $31             ; A=[$0030] X=A Y=$0001 ; [SP-237]
-005722  20 76 53                      jsr  Set4DirAmmoB        ; A=[$0030] X=A Y=$0001 ; [SP-239]
+005722  20 76 53                      jsr  $5376           ; Call $005376(A)
 ; === End of while loop (counter: X) ===
 
-005725  20 76 53                      jsr  Set4DirAmmoB        ; A=[$0030] X=A Y=$0001 ; [SP-241]
+005725  20 76 53                      jsr  $5376           ; A=[$0030] X=A Y=$0001 ; [SP-241]
 ; === End of while loop (counter: X) ===
 
-005728  20 76 53                      jsr  Set4DirAmmoB        ; Call $005376(A, Y, 1 stack)
+005728  20 76 53                      jsr  $5376           ; A=[$0030] X=A Y=$0001 ; [SP-243]
 ; === End of while loop (counter: X) ===
 
 00572B  A5 30                         lda  $30             ; A=[$0030] X=A Y=$0001 ; [SP-243]
@@ -3976,25 +5793,25 @@
 005737  8D F2 56                      sta  $56F2           ; A=$0006 X=A Y=$0001 ; [SP-243]
 00573A  A2 03                         ldx  #$03            ; A=$0006 X=$0003 Y=$0001 ; [SP-243]
 
-; === while loop starts here [nest:55] ===
-00573C  BD B8 53          L_00573C    lda  $53B8,X         ; -> $53BB ; A=$0006 X=$0003 Y=$0001 ; [SP-243]
-00573F  D0 06                         bne  L_005747        ; A=$0006 X=$0003 Y=$0001 ; [SP-243]
+; === while loop starts here [nest:54] ===
+00573C  BD B8 53                      lda  $53B8,X         ; -> $53BB ; A=$0006 X=$0003 Y=$0001 ; [SP-243]
+00573F  D0 06                         bne  $5747           ; A=$0006 X=$0003 Y=$0001 ; [SP-243]
 005741  AD F2 56                      lda  $56F2           ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
 005744  9D B8 53                      sta  $53B8,X         ; -> $53BB ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
-005747  BD C0 53          L_005747    lda  $53C0,X         ; -> $53C3 ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
-00574A  D0 06                         bne  L_005752        ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
+005747  BD C0 53                      lda  $53C0,X         ; -> $53C3 ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
+00574A  D0 06                         bne  $5752           ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
 00574C  AD F2 56                      lda  $56F2           ; A=[$56F2] X=$0003 Y=$0001 ; [OPT] REDUNDANT_LOAD: Redundant LDA: same value loaded at $005741 ; [SP-243]
 00574F  9D C0 53                      sta  $53C0,X         ; -> $53C3 ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
-005752  BD BC 53          L_005752    lda  $53BC,X         ; -> $53BF ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
-005755  D0 06                         bne  L_00575D        ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
+005752  BD BC 53                      lda  $53BC,X         ; -> $53BF ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
+005755  D0 06                         bne  $575D           ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
 005757  AD F2 56                      lda  $56F2           ; A=[$56F2] X=$0003 Y=$0001 ; [OPT] REDUNDANT_LOAD: Redundant LDA: same value loaded at $00574C ; [SP-243]
 00575A  9D BC 53                      sta  $53BC,X         ; -> $53BF ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
-00575D  BD C4 53          L_00575D    lda  $53C4,X         ; -> $53C7 ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
-005760  D0 06                         bne  L_005768        ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
+00575D  BD C4 53                      lda  $53C4,X         ; -> $53C7 ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
+005760  D0 06                         bne  loc_005768      ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
 005762  AD F2 56                      lda  $56F2           ; A=[$56F2] X=$0003 Y=$0001 ; [OPT] REDUNDANT_LOAD: Redundant LDA: same value loaded at $005757 ; [SP-243]
 005765  9D C4 53                      sta  $53C4,X         ; -> $53C7 ; A=[$56F2] X=$0003 Y=$0001 ; [SP-243]
-005768  CA                L_005768    dex                  ; A=[$56F2] X=$0002 Y=$0001 ; [SP-243]
-005769  10 D1                         bpl  L_00573C        ; A=[$56F2] X=$0002 Y=$0001 ; [SP-243]
+005768  CA                loc_005768  dex                  ; A=[$56F2] X=$0002 Y=$0001 ; [SP-243]
+005769  10 D1                         bpl  $573C           ; A=[$56F2] X=$0002 Y=$0001 ; [SP-243]
 ; === End of while loop ===
 
 00576B  60                            rts                  ; A=[$56F2] X=$0002 Y=$0001 ; [SP-241]
@@ -4021,30 +5838,18 @@
 ; ============================================================================
 ; MAIN ENTRY POINT ($57D7)
 ; ============================================================================
-; HOW: Called via JMP $57D7 from the bootstrap after relocation completes.
-;      Sequence: CLD (ensure binary mode) -> SetClipBounds -> InitHiRes ->
-;      SetupTitle -> zero scores -> set lives=3 -> DrawTitleScreen ->
-;      wait for RETURN key ($8D).
-;
-; WHY CLD first: The 6502 decimal mode flag persists across subroutine
-;      calls. If any prior code (DOS, BASIC) left decimal mode on,
-;      all ADC/SBC operations would produce BCD results instead of
-;      binary. CLD ensures correct arithmetic from the start.
-;
-; WHY $0C-$0F zeroed: Score is stored in BCD (Binary Coded Decimal) at
-;      $0C-$0D, high score at $0E-$0F. BCD means each nibble holds
-;      one decimal digit (0-9), so score $1234 = $12 in $0D, $34 in $0C.
-;      BCD is used because displaying the score is trivial - just split
-;      each byte into nibbles and add $B0 ('0'). No division needed.
+; Called after bootstrap relocation completes.
+; Initializes clipping bounds, clears HGR screen, sets up title screen,
+; zeroes score/high-score, sets lives=3, then waits for RETURN key.
 ; ============================================================================
 0057D7  D8                            cld                  ; A=[$56F2] X=$0002 Y=$0001 ; [SP-264]
-0057D8  20 5B 41                      jsr  SetClipBounds        ; A=[$56F2] X=$0002 Y=$0001 ; [SP-266]
+0057D8  20 5B 41                      jsr  SetClipBounds   ; Call $00415B(2 stack)
 ; === End of while loop (counter: Y) ===
 
-0057DB  20 20 41                      jsr  InitHiRes        ; A=[$56F2] X=$0002 Y=$0001 ; [SP-268]
+0057DB  20 20 41                      jsr  InitHiRes       ; A=[$56F2] X=$0002 Y=$0001 ; [SP-268]
 ; === End of while loop (counter: Y) ===
 
-0057DE  20 B5 43                      jsr  SetupTitle        ; A=[$56F2] X=$0002 Y=$0001 ; [SP-270]
+0057DE  20 B5 43                      jsr  SetupTitle      ; A=[$56F2] X=$0002 Y=$0001 ; [SP-270]
 ; === End of while loop (counter: Y) ===
 
 0057E1  A9 00                         lda  #$00            ; A=$0000 X=$0002 Y=$0001 ; [SP-270]
@@ -4060,46 +5865,35 @@
 0057F5  A9 03                         lda  #$03            ; A=$0003 X=$0002 Y=$0001 ; [SP-270]
 0057F7  85 10                         sta  $10             ; A=$0003 X=$0002 Y=$0001 ; [SP-270]
 0057F9  85 00                         sta  $00             ; A=$0003 X=$0002 Y=$0001 ; [SP-270]
-0057FB  20 FC 42                      jsr  DrawTitleScreen        ; A=$0003 X=$0002 Y=$0001 ; [SP-272]
+0057FB  20 FC 42                      jsr  DrawTitleScreen ; Call $0042FC(A)
 ; === End of while loop (counter: Y) ===
 
 
-; === while loop starts here [nest:51] ===
+; === while loop starts here [nest:50] ===
 ; ---------------------------------------------------------------------------
 ; Wait for RETURN key to start game
 ; ---------------------------------------------------------------------------
-0057FE  E6 00             WaitForReturn    inc  $00             ; A=$0003 X=$0002 Y=$0001 ; [SP-272]
+0057FE  E6 00                         inc  $00             ; A=$0003 X=$0002 Y=$0001 ; [SP-272]
 005800  C6 01                         dec  $01             ; A=$0003 X=$0002 Y=$0001 ; [SP-272]
-005802  AD 00 C0                      lda  $C000           ; KBD - Keyboard data / 80STORE off {Keyboard} <keyboard_read>
+005802  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off {Keyboard} <keyboard_read>
 005805  C9 8D                         cmp  #$8D            ; A=[$C000] X=$0002 Y=$0001 ; [SP-272]  ; key: RETURN
-005807  D0 F5                         bne  WaitForReturn        ; A=[$C000] X=$0002 Y=$0001 ; [SP-272]
+005807  D0 F5                         bne  WaitForReturn   ; A=[$C000] X=$0002 Y=$0001 ; [SP-272]
 ; === End of while loop ===
 
 
-; === while loop starts here [nest:45] ===
+; === while loop starts here (counter: $00, range: 0..22078, step: 22080, iters: 95202245105292) [nest:44] [inner] ===
 ; ============================================================================
 ; START NEW GAME ($5809)
 ; ============================================================================
-; HOW: Initializes all game state for a fresh game:
-;      lives=3, level counter $3A=5 (counts DOWN: 5=Level1, 0=Victory),
-;      score=$0000, direction=UP(0), difficulty=$0B (easiest of 12 levels),
-;      4-dir fire ammo=3, all projectiles inactive, all aliens reset.
-;
-; WHY level counts DOWN: The game tracks progress as $3A = 5,4,3,2,1,0.
-;      Level completion does DEC $3A and checks BEQ for victory at 0.
-;      Counting down is simpler on the 6502 (DEC + BEQ vs INC + CMP).
-;
-; WHY difficulty starts at $0B: The difficulty system uses $30 as an
-;      index into 12-entry lookup tables (0=hardest, 11=easiest).
-;      As the player scores hits, $31 counts down. When $31 reaches 0,
-;      $30 decrements (harder) and all timing tables are reloaded.
-;      Starting at 11 gives the player a gradual ramp-up over ~100 hits.
+; Sets lives=3, level=$3A=5 (Level 1), calls LevelSetup, zeros score,
+; sets direction=UP, difficulty=easiest ($0B), loads timing tables,
+; sets 4-dir fire ammo=3, initializes projectile/alien state.
 ; ============================================================================
-005809  A9 03             StartNewGame    lda  #$03            ; A=$0003 X=$0002 Y=$0001 ; [SP-272]
+005809  A9 03                         lda  #$03            ; A=$0003 X=$0002 Y=$0001 ; [SP-272]
 00580B  85 10                         sta  $10             ; A=$0003 X=$0002 Y=$0001 ; [SP-272]
 00580D  A9 05                         lda  #$05            ; A=$0005 X=$0002 Y=$0001 ; [SP-272]
 00580F  85 3A                         sta  $3A             ; A=$0005 X=$0002 Y=$0001 ; [SP-272]
-005811  20 73 4D                      jsr  LevelSetup        ; A=$0005 X=$0002 Y=$0001 ; [SP-274]
+005811  20 73 4D                      jsr  LevelSetup      ; Call $004D73(A)
 ; === End of while loop (counter: A) ===
 
 005814  A9 00                         lda  #$00            ; A=$0000 X=$0002 Y=$0001 ; [SP-274]
@@ -4108,69 +5902,60 @@
 00581A  85 11                         sta  $11             ; A=$0000 X=$0002 Y=$0001 ; [SP-274]
 00581C  85 34                         sta  $34             ; A=$0000 X=$0002 Y=$0001 ; [SP-274]
 00581E  85 36                         sta  $36             ; A=$0000 X=$0002 Y=$0001 ; [SP-274]
-005820  20 87 43                      jsr  InitGameVarsB        ; Call $004387(A)
+005820  20 87 43                      jsr  InitGameVarsB   ; Call $004387(A)
 ; === End of while loop (counter: A) ===
 
 005823  A9 0B                         lda  #$0B            ; A=$000B X=$0002 Y=$0001 ; [SP-276]
 005825  85 2B                         sta  $2B             ; A=$000B X=$0002 Y=$0001 ; [SP-276]
 005827  85 30                         sta  $30             ; A=$000B X=$0002 Y=$0001 ; [SP-276]
-005829  20 F3 56                      jsr  LoadDifficultyTables        ; A=$000B X=$0002 Y=$0001 ; [SP-278]
+005829  20 F3 56                      jsr  LoadDifficultyTables ; Call $0056F3(A)
 ; === End of while loop (counter: Y) ===
 
-00582C  20 70 53                      jsr  Set4DirAmmo        ; Call $005370(1 stack)
+00582C  20 70 53                      jsr  Set4DirAmmo     ; A=$000B X=$0002 Y=$0001 ; [SP-280]
 ; === End of while loop (counter: Y) ===
 
-00582F  20 77 5B                      jsr  InputProcessD        ; A=$000B X=$0002 Y=$0001 ; [SP-282]
+00582F  20 77 5B                      jsr  $5B77           ; A=$000B X=$0002 Y=$0001 ; [SP-282]
 005832  A9 05                         lda  #$05            ; A=$0005 X=$0002 Y=$0001 ; [SP-282]
 005834  85 35                         sta  $35             ; A=$0005 X=$0002 Y=$0001 ; [SP-282]
-005836  20 E5 52                      jsr  DrawBase        ; A=$0005 X=$0002 Y=$0001 ; [SP-284]
+005836  20 E5 52                      jsr  DrawBase        ; Call $0052E5(A)
 ; === End of while loop (counter: Y) ===
 
 
-; === while loop starts here (counter: $00, range: 0..23792, step: 23795, iters: 102211631734003) [nest:3] [inner] ===
+; === while loop starts here (counter: X 'iter_x', range: 0..32, iters: 32) [nest:2] ===
 ; ---------------------------------------------------------------------------
-; CHECK LIFE LOST ($5839)
-; HOW: LDA $10 (lives), SEC, SBC #$01, BPL continue.
-;      If result negative (lives was 0): JSR GameOver, JMP StartNewGame.
-;      If positive: store decremented value, continue to next life.
-;
-; WHY SBC instead of DEC: DEC $10 would modify $10 in-place, but
-;      the code needs to test the result BEFORE committing. SBC into A
-;      lets it check the sign bit (BPL) first. If the player has lives
-;      remaining, A is stored to $10. If not, $10 is left unchanged
-;      and GameOver handles the display before StartNewGame zeroes it.
+; Check if player lost a life - decrement lives, if <0 game over
 ; ---------------------------------------------------------------------------
-005839  A5 10             CheckLifeLost    lda  $10             ; A=[$0010] X=$0002 Y=$0001 ; [SP-284]
+005839  A5 10                         lda  $10             ; A=[$0010] X=$0002 Y=$0001 ; [SP-284]
 00583B  38                            sec                  ; A=[$0010] X=$0002 Y=$0001 ; [SP-284]
 00583C  E9 01                         sbc  #$01            ; A=A-$01 X=$0002 Y=$0001 ; [SP-284]
-00583E  10 06                         bpl  ContinueAfterDeath        ; A=A-$01 X=$0002 Y=$0001 ; [SP-284]
-005840  20 86 4A                      jsr  GameOver        ; A=A-$01 X=$0002 Y=$0001 ; [SP-286]
+00583E  10 06                         bpl  ContinueAfterDeath      ; A=A-$01 X=$0002 Y=$0001 ; [SP-284]
+005840  20 86 4A                      jsr  GameOver        ; Call $004A86(A)
+; === End of while loop (counter: $00) ===
+
+005843  4C 09 58                      jmp  StartNewGame    ; A=A-$01 X=$0002 Y=$0001 ; [SP-286]
+; === End of while loop (counter: $00) ===
+
+005846  85 10             ContinueAfterDeath  sta  $10             ; A=A-$01 X=$0002 Y=$0001 ; [SP-286]
+005848  20 CD 43                      jsr  PerFrameUpdate  ; A=A-$01 X=$0002 Y=$0001 ; [SP-288]
 ; === End of while loop (counter: Y) ===
 
-005843  4C 09 58                      jmp  StartNewGame        ; A=A-$01 X=$0002 Y=$0001 ; [SP-286]
-; === End of while loop ===
-
-005846  85 10             ContinueAfterDeath    sta  $10             ; A=A-$01 X=$0002 Y=$0001 ; [SP-286]
-005848  20 CD 43                      jsr  PerFrameUpdate        ; A=A-$01 X=$0002 Y=$0001 ; [SP-288]
-; === End of while loop (counter: Y) ===
-
-00584B  20 3E 41                      jsr  ClearPlayfield        ; A=A-$01 X=$0002 Y=$0001 ; [SP-290]
+00584B  20 3E 41                      jsr  ClearPlayfield  ; A=A-$01 X=$0002 Y=$0001 ; [SP-290]
 ; === End of while loop (counter: Y) ===
 
 00584E  A2 03                         ldx  #$03            ; A=A-$01 X=$0003 Y=$0001 ; [SP-290]
 005850  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=$0001 ; [SP-290]
 
-; === while loop starts here [nest:46] ===
-005852  9D 58 5D          ClearProjectiles_Loop    sta  $5D58,X         ; -> $5D5B ; A=$0000 X=$0003 Y=$0001 ; [SP-290]
+; === while loop starts here [nest:45] ===
+005852  9D 58 5D                      sta  $5D58,X         ; -> $5D5B ; A=$0000 X=$0003 Y=$0001 ; [SP-290]
 005855  9D 54 5D                      sta  $5D54,X         ; -> $5D57 ; A=$0000 X=$0003 Y=$0001 ; [SP-290]
 005858  CA                            dex                  ; A=$0000 X=$0002 Y=$0001 ; [SP-290]
-005859  10 F7                         bpl  ClearProjectiles_Loop        ; A=$0000 X=$0002 Y=$0001 ; [SP-290]
+005859  10 F7                         bpl  $5852           ; A=$0000 X=$0002 Y=$0001 ; [SP-290]
 ; === End of while loop ===
 
-00585B  20 7A 43                      jsr  InitGameVarsA        ; A=$0000 X=$0002 Y=$0001 ; [SP-292]
-; === End of while loop (counter: $00) ===
+00585B  20 7A 43                      jsr  InitGameVarsA   ; Call $00437A(A, X)
+; === End of while loop (counter: Y) ===
 
-00585E  20 4F 5B                      jsr  InputProcessA        ; A=$0000 X=$0002 Y=$0001 ; [SP-294]
+00585E  20 4F 5B                      jsr  InputProcessA   ; A=$0000 X=$0002 Y=$0001 ; [SP-294]
 005861  AD D3 57                      lda  $57D3           ; A=[$57D3] X=$0002 Y=$0001 ; [SP-294]
 005864  8D D4 57                      sta  $57D4           ; A=[$57D3] X=$0002 Y=$0001 ; [SP-294]
 005867  8D D5 57                      sta  $57D5           ; A=[$57D3] X=$0002 Y=$0001 ; [SP-294]
@@ -4178,72 +5963,55 @@
 00586C  85 2C                         sta  $2C             ; A=$00F0 X=$0002 Y=$0001 ; [SP-294]
 00586E  85 2D                         sta  $2D             ; A=$00F0 X=$0002 Y=$0001 ; [SP-294]
 005870  85 2E                         sta  $2E             ; A=$00F0 X=$0002 Y=$0001 ; [SP-294]
-005872  8D 10 C0                      sta  $C010           ; KBDSTRB - Clear keyboard strobe {Keyboard} <keyboard_strobe>
+005872  8D 10 C0                      sta  CLRKBD          ; KBDSTRB - Clear keyboard strobe {Keyboard} <keyboard_strobe>
 
-; === while loop starts here (counter: X 'iter_x') [nest:29] ===
+; === while loop starts here (counter: A, range: 0..22651, step: 22654, iters: 87299505278820) [nest:28] [inner] ===
 ; ============================================================================
 ; MAIN GAME LOOP ($5875)
 ; ============================================================================
-; HOW: This is the core game tick. Each iteration processes one frame
-;      of game logic in a fixed sequence, with a timing loop at the
-;      end to maintain consistent speed.
-;
-; TICK SEQUENCE (order matters for game feel):
-;   1. MoveAllLasers ($457F) - advance player shots first, so hits
-;      are detected with current positions (feels responsive)
-;   2. RedrawScreen ($52F3) - render everything with updated positions
-;   3. CheckSatelliteHits ($4F5B) - bonus target collision
-;   4. UpdateStarTwinkle ($5C1C) - cosmetic animation (background stars)
-;   5. CheckAllTVs ($5C78) - level complete? (all 16 aliens = TV)
-;   6. KeyboardHandler ($43E0) - read input AFTER display update
-;      (reduces perceived input lag by ~1 frame)
-;   7. Check paddle button ($C061) - alternative fire input
-;   8. FireProjectile ($58A5) - spawn new shot if fire triggered
-;   9. UpdateAlienPositions ($4D87) - move aliens toward player
-;  10. CheckLaserHits ($58CB) - laser vs alien collision
-;      (on hit: alien evolves, +1 point, difficulty step)
-;  11. FrameTimingLoop ($5A04) - wait until frame timer expires
-;  12. JMP back to top
-;
-; WHY this order: Moving projectiles before drawing ensures the screen
-;      shows current state. Checking input after drawing means the
-;      player sees the result of their LAST input on this frame and
-;      provides NEW input for the NEXT frame - standard game loop pattern.
-;
-; FRAME TIMING: Counter $2E counts up from $2F (reload) to $FF.
-;      Higher $2F = fewer ticks before action = FASTER game.
-;      At difficulty 0 (hardest), $2F=$FC (only 3 ticks).
-;      At difficulty 11 (easiest), $2F=$E0 (31 ticks).
+; Each tick:
+;   1. Move all 4 laser beams ($457F)
+;   2. Redraw screen/sprites ($52F3)
+;   3. Check laser vs satellite collisions ($4F5B)
+;   4. Update star twinkle animation ($5C1C)
+;   5. Check if all 16 aliens are TVs - level complete ($5C78)
+;   6. Handle keyboard input ($43E0) - direction + fire
+;   7. Check paddle button ($C061) - alternative fire
+;   8. Fire projectile if triggered ($58A5)
+;   9. Update alien positions ($4D87)
+;  10. Check laser vs alien collisions ($58CB)
+;  11. Frame timing delay ($5A04)
+;  12. Loop back to top
 ; ============================================================================
-005875  20 7F 45          MainGameLoop    jsr  MoveAllLasers        ; A=$00F0 X=$0002 Y=$0001 ; [SP-296]
+005875  20 7F 45                      jsr  MoveAllLasers   ; Call $00457F(A)
+; === End of while loop (counter: $00) ===
+
+005878  20 F3 52                      jsr  RedrawScreen    ; A=$00F0 X=$0002 Y=$0001 ; [SP-298]
 ; === End of while loop (counter: Y) ===
 
-005878  20 F3 52                      jsr  RedrawScreen        ; A=$00F0 X=$0002 Y=$0001 ; [SP-298]
-; === End of while loop (counter: $00) ===
+00587B  20 5B 4F                      jsr  CheckSatelliteHits ; A=$00F0 X=$0002 Y=$0001 ; [SP-300]
+; === End of while loop (counter: Y) ===
 
-00587B  20 5B 4F                      jsr  CheckSatelliteHits        ; A=$00F0 X=$0002 Y=$0001 ; [SP-300]
-; === End of while loop (counter: $00) ===
-
-00587E  20 1C 5C                      jsr  UpdateStarTwinkle        ; A=$00F0 X=$0002 Y=$0001 ; [SP-302]
-005881  20 78 5C                      jsr  CheckAllTVs        ; A=$00F0 X=$0002 Y=$0001 ; [SP-304]
+00587E  20 1C 5C                      jsr  UpdateStarTwinkle ; A=$00F0 X=$0002 Y=$0001 ; [SP-302]
+005881  20 78 5C                      jsr  CheckAllTVs     ; A=$00F0 X=$0002 Y=$0001 ; [SP-304]
 005884  A5 36                         lda  $36             ; A=[$0036] X=$0002 Y=$0001 ; [SP-304]
-005886  F0 09                         beq  CheckPaddle        ; A=[$0036] X=$0002 Y=$0001 ; [SP-304]
+005886  F0 09                         beq  $5891           ; A=[$0036] X=$0002 Y=$0001 ; [SP-304]
 005888  E6 01                         inc  $01             ; A=[$0036] X=$0002 Y=$0001 ; [SP-304]
 00588A  A9 00                         lda  #$00            ; A=$0000 X=$0002 Y=$0001 ; [SP-304]
 00588C  85 36                         sta  $36             ; A=$0000 X=$0002 Y=$0001 ; [SP-304]
-00588E  4C A5 58                      jmp  FireProjectile        ; A=$0000 X=$0002 Y=$0001 ; [SP-304]
-005891  AD 61 C0          CheckPaddle    lda  $C061           ; BUTN0 - Button 0 / Open Apple {Joystick} <joystick_read>
-005894  30 05                         bmi  PaddleDebounce        ; A=[$C061] X=$0002 Y=$0001 ; [SP-304]
+00588E  4C A5 58                      jmp  FireProjectile  ; A=$0000 X=$0002 Y=$0001 ; [SP-304]
+005891  AD 61 C0                      lda  BUTN0           ; BUTN0 - Button 0 / Open Apple {Joystick} <joystick_read>
+005894  30 05                         bmi  $589B           ; A=[$C061] X=$0002 Y=$0001 ; [SP-304]
 005896  85 2B                         sta  $2B             ; A=[$C061] X=$0002 Y=$0001 ; [SP-304]
-005898  4C C3 58                      jmp  AfterFire        ; A=[$C061] X=$0002 Y=$0001 ; [SP-304]
-00589B  25 2B             PaddleDebounce    and  $2B             ; A=[$C061] X=$0002 Y=$0001 ; [SP-304]
-00589D  30 24                         bmi  AfterFire        ; A=[$C061] X=$0002 Y=$0001 ; [SP-304]
+005898  4C C3 58                      jmp  AfterFire      ; A=[$C061] X=$0002 Y=$0001 ; [SP-304]
+00589B  25 2B                         and  $2B             ; A=[$C061] X=$0002 Y=$0001 ; [SP-304]
+00589D  30 24                         bmi  AfterFire      ; A=[$C061] X=$0002 Y=$0001 ; [SP-304]
 00589F  E6 01                         inc  $01             ; A=[$C061] X=$0002 Y=$0001 ; [SP-304]
 0058A1  A9 80                         lda  #$80            ; A=$0080 X=$0002 Y=$0001 ; [SP-304]
 0058A3  85 2B                         sta  $2B             ; A=$0080 X=$0002 Y=$0001 ; [SP-304]
-0058A5  A6 11             FireProjectile    ldx  $11             ; A=$0080 X=$0002 Y=$0001 ; [SP-304]
+0058A5  A6 11                         ldx  $11             ; A=$0080 X=$0002 Y=$0001 ; [SP-304]
 0058A7  BD 58 5D                      lda  $5D58,X         ; -> $5D5A ; A=$0080 X=$0002 Y=$0001 ; [SP-304]
-0058AA  D0 17                         bne  AfterFire        ; A=$0080 X=$0002 Y=$0001 ; [SP-304]
+0058AA  D0 17                         bne  AfterFire      ; A=$0080 X=$0002 Y=$0001 ; [SP-304]
 0058AC  A9 01                         lda  #$01            ; A=$0001 X=$0002 Y=$0001 ; [SP-304]
 0058AE  9D 58 5D                      sta  $5D58,X         ; -> $5D5A ; A=$0001 X=$0002 Y=$0001 ; [SP-304]
 0058B1  BD 68 5D                      lda  $5D68,X         ; -> $5D6A ; A=$0001 X=$0002 Y=$0001 ; [SP-304]
@@ -4252,286 +6020,270 @@
 0058BA  9D 60 5D                      sta  $5D60,X         ; -> $5D62 ; A=$0001 X=$0002 Y=$0001 ; [SP-304]
 0058BD  BD 70 5D                      lda  $5D70,X         ; -> $5D72 ; A=$0001 X=$0002 Y=$0001 ; [SP-304]
 0058C0  9D 64 5D                      sta  $5D64,X         ; -> $5D66 ; A=$0001 X=$0002 Y=$0001 ; [SP-304]
-0058C3  20 87 4D          AfterFire    jsr  UpdateAlienPositions        ; A=$0001 X=$0002 Y=$0001 ; [SP-306]
+0058C3  20 87 4D          AfterFire  jsr  UpdateAlienPositions ; Call $004D87(A, X)
 ; === End of while loop (counter: $00) ===
 
 0058C6  A2 03                         ldx  #$03            ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
 0058C8  8E D6 57                      stx  $57D6           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
 
-; === while loop starts here [nest:37] ===
+; === while loop starts here (counter: $00 '', range: 0..21049, step: 21060, iters: 90482076045894) [nest:36] [inner] ===
 ; ---------------------------------------------------------------------------
-; CHECK LASER VS ALIEN COLLISIONS ($58CB) - CheckLaserHits
-; HOW: Loops X=3 down to 0. For each active laser, compares the laser's
-;      draw position against the alien's track position:
-;        UP (X=0):    hit if laser Y ($5D64) <= alien Y ($5D50)
-;        LEFT (X=1):  hit if laser X <= alien X (both low+high bytes)
-;        DOWN (X=2):  hit if laser Y >= alien Y
-;        RIGHT (X=3): hit if laser X >= alien X
-;      On hit: call $44C4 (draw flash), $4441 (clear sprite), evolve
-;      alien, add 1 point via AddScore, play hit sound.
-;
-; WHY simple line-crossing: Instead of bounding-box intersection,
-;      the game checks if the laser has reached or passed the alien's
-;      coordinate along its axis of travel. This is much simpler (no
-;      rectangle math) and feels precise because the laser visually
-;      crosses the alien's row/column exactly when the hit registers.
-;
-; WHY check all 4 every frame: Even though only one laser can fire at
-;      a time in most cases, the 4-direction fire powerup (A/F keys)
-;      can activate all 4 simultaneously, so all must be checked.
+; Check laser vs alien collisions (all 4 directions)
+; Direction-specific coordinate comparisons determine hits.
+; On hit: alien evolves, play sound, add 1 point.
 ; ---------------------------------------------------------------------------
-0058CB  AE D6 57          CheckLaserHits    ldx  $57D6           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+0058CB  AE D6 57                      ldx  $57D6           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
 0058CE  BD 58 5D                      lda  $5D58,X         ; -> $5D5B ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-0058D1  F0 08                         beq  L_0058DB        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+0058D1  F0 08                         beq  $58DB           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
 0058D3  BD 54 5D                      lda  $5D54,X         ; -> $5D57 ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-0058D6  F0 03                         beq  L_0058DB        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-0058D8  4C DE 58                      jmp  L_0058DE        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-0058DB  4C 6E 59          L_0058DB    jmp  L_00596E        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-0058DE  E0 03             L_0058DE    cpx  #$03            ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-0058E0  F0 31                         beq  L_005913        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+0058D6  F0 03                         beq  $58DB           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+0058D8  4C DE 58                      jmp  $58DE           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+0058DB  4C 6E 59                      jmp  $596E           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+0058DE  E0 03                         cpx  #$03            ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+0058E0  F0 31                         beq  $5913           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
 0058E2  E0 02                         cpx  #$02            ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-0058E4  F0 22                         beq  L_005908        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+0058E4  F0 22                         beq  $5908           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
 0058E6  E0 01                         cpx  #$01            ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-0058E8  F0 0B                         beq  L_0058F5        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+0058E8  F0 0B                         beq  $58F5           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
 0058EA  BD 64 5D                      lda  $5D64,X         ; -> $5D67 ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
 0058ED  DD 50 5D                      cmp  $5D50,X         ; -> $5D53 ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-0058F0  90 2C                         bcc  L_00591E        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-0058F2  4C 6E 59                      jmp  L_00596E        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-0058F5  BD 60 5D          L_0058F5    lda  $5D60,X         ; -> $5D63 ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+0058F0  90 2C                         bcc  $591E           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+0058F2  4C 6E 59                      jmp  $596E           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+0058F5  BD 60 5D                      lda  $5D60,X         ; -> $5D63 ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
 0058F8  DD 4C 5D                      cmp  $5D4C,X         ; -> $5D4F ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-0058FB  90 71                         bcc  L_00596E        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+0058FB  90 71                         bcc  $596E           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
 0058FD  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
 005900  DD 48 5D                      cmp  $5D48,X         ; -> $5D4B ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-005903  90 69                         bcc  L_00596E        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-005905  4C 1E 59                      jmp  L_00591E        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-005908  BD 64 5D          L_005908    lda  $5D64,X         ; -> $5D67 ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+005903  90 69                         bcc  $596E           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+005905  4C 1E 59                      jmp  $591E           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+005908  BD 64 5D                      lda  $5D64,X         ; -> $5D67 ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
 00590B  DD 50 5D                      cmp  $5D50,X         ; -> $5D53 ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-00590E  B0 0E                         bcs  L_00591E        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-005910  4C 6E 59                      jmp  L_00596E        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-005913  BD 5C 5D          L_005913    lda  $5D5C,X         ; -> $5D5F ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+00590E  B0 0E                         bcs  $591E           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+005910  4C 6E 59                      jmp  $596E           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+005913  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
 005916  DD 48 5D                      cmp  $5D48,X         ; -> $5D4B ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-005919  90 03                         bcc  L_00591E        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-00591B  4C 6E 59                      jmp  L_00596E        ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
-00591E  20 C4 44          L_00591E    jsr  DrawHitFlash        ; A=$0001 X=$0003 Y=$0001 ; [SP-308]
-; === End of while loop (counter: Y) ===
+005919  90 03                         bcc  $591E           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+00591B  4C 6E 59                      jmp  $596E           ; A=$0001 X=$0003 Y=$0001 ; [SP-306]
+00591E  20 C4 44                      jsr  DrawHitFlash    ; A=$0001 X=$0003 Y=$0001 ; [SP-308]
+; === End of while loop (counter: $00) ===
 
 005921  AE D6 57                      ldx  $57D6           ; A=$0001 X=$0003 Y=$0001 ; [SP-308]
-005924  20 41 44                      jsr  ClearSpriteArea        ; A=$0001 X=$0003 Y=$0001 ; [SP-310]
-; === End of while loop (counter: Y) ===
+005924  20 41 44                      jsr  ClearSpriteArea ; Call $004441(X)
+; === End of while loop (counter: $00) ===
 
 005927  AE D6 57                      ldx  $57D6           ; A=$0001 X=$0003 Y=$0001 ; [SP-310]
 00592A  BD 54 5D                      lda  $5D54,X         ; -> $5D57 ; A=$0001 X=$0003 Y=$0001 ; [SP-310]
 00592D  C9 02                         cmp  #$02            ; A=$0001 X=$0003 Y=$0001 ; [SP-310]
-00592F  D0 09                         bne  L_00593A        ; A=$0001 X=$0003 Y=$0001 ; [SP-310]
-005931  20 65 4B                      jsr  PunishmentRoutine        ; A=$0001 X=$0003 Y=$0001 ; [SP-312]
-; === End of while loop (counter: Y) ===
+00592F  D0 09                         bne  $593A           ; A=$0001 X=$0003 Y=$0001 ; [SP-310]
+005931  20 65 4B                      jsr  PunishmentRoutine ; Call $004B65(A, X)
+; === End of while loop (counter: $00) ===
 
 005934  AE D6 57                      ldx  $57D6           ; A=$0001 X=$0003 Y=$0001 ; [SP-312]
-005937  4C 54 59                      jmp  L_005954        ; A=$0001 X=$0003 Y=$0001 ; [SP-312]
-00593A  C9 03             L_00593A    cmp  #$03            ; A=$0001 X=$0003 Y=$0001 ; [SP-312]
-00593C  D0 16                         bne  L_005954        ; A=$0001 X=$0003 Y=$0001 ; [SP-312]
+005937  4C 54 59                      jmp  $5954           ; A=$0001 X=$0003 Y=$0001 ; [SP-312]
+00593A  C9 03                         cmp  #$03            ; A=$0001 X=$0003 Y=$0001 ; [SP-312]
+00593C  D0 16                         bne  $5954           ; A=$0001 X=$0003 Y=$0001 ; [SP-312]
 00593E  AE D6 57                      ldx  $57D6           ; A=$0001 X=$0003 Y=$0001 ; [SP-312]
 005941  A9 02                         lda  #$02            ; A=$0002 X=$0003 Y=$0001 ; [SP-312]
 005943  9D 54 5D                      sta  $5D54,X         ; -> $5D57 ; A=$0002 X=$0003 Y=$0001 ; [SP-312]
-005946  20 99 44                      jsr  DrawProjectile        ; A=$0002 X=$0003 Y=$0001 ; [SP-314]
-; === End of while loop (counter: Y) ===
+005946  20 99 44                      jsr  DrawProjectile  ; Call $004499(A, X)
+; === End of while loop (counter: $00) ===
 
 005949  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=$0001 ; [SP-314]
 00594B  AE D6 57                      ldx  $57D6           ; A=$0000 X=$0003 Y=$0001 ; [SP-314]
 00594E  9D 58 5D                      sta  $5D58,X         ; -> $5D5B ; A=$0000 X=$0003 Y=$0001 ; [SP-314]
-005951  4C 5C 59                      jmp  L_00595C        ; A=$0000 X=$0003 Y=$0001 ; [SP-314]
-005954  A9 00             L_005954    lda  #$00            ; A=$0000 X=$0003 Y=$0001 ; [SP-314]
+005951  4C 5C 59                      jmp  loc_00595C      ; A=$0000 X=$0003 Y=$0001 ; [SP-314]
+005954  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=$0001 ; [SP-314]
 005956  9D 54 5D                      sta  $5D54,X         ; -> $5D57 ; A=$0000 X=$0003 Y=$0001 ; [SP-314]
 005959  9D 58 5D                      sta  $5D58,X         ; -> $5D5B ; A=$0000 X=$0003 Y=$0001 ; [SP-314]
-00595C  A9 01             L_00595C    lda  #$01            ; A=$0001 X=$0003 Y=$0001 ; [SP-314]
-00595E  20 E0 4A                      jsr  AddScore        ; A=$0001 X=$0003 Y=$0001 ; [SP-316]
-; === End of while loop (counter: Y) ===
+00595C  A9 01             loc_00595C  lda  #$01            ; A=$0001 X=$0003 Y=$0001 ; [SP-314]
+00595E  20 E0 4A                      jsr  AddScore        ; Call $004AE0(A)
+; === End of while loop (counter: $00) ===
 
 005961  A0 14                         ldy  #$14            ; A=$0001 X=$0003 Y=$0014 ; [SP-316]
 005963  A9 C4                         lda  #$C4            ; A=$00C4 X=$0003 Y=$0014 ; [SP-316]
 005965  8D 67 5B                      sta  $5B67           ; A=$00C4 X=$0003 Y=$0014 ; [SP-316]
-005968  20 62 5B                      jsr  InputProcessB        ; A=$00C4 X=$0003 Y=$0014 ; [SP-318]
-00596B  20 4F 5B                      jsr  InputProcessA        ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
-00596E  CE D6 57          L_00596E    dec  $57D6           ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
-005971  30 03                         bmi  L_005976        ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
-005973  4C CB 58                      jmp  CheckLaserHits        ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
-; === End of while loop ===
+005968  20 62 5B                      jsr  InputProcessB      ; Call $005B62(A, Y)
+00596B  20 4F 5B                      jsr  InputProcessA   ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
+00596E  CE D6 57                      dec  $57D6           ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
+005971  30 03                         bmi  loc_005976      ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
+005973  4C CB 58                      jmp  CheckLaserHits  ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
+; === End of while loop (counter: $00) ===
 
-005976  A2 03             L_005976    ldx  #$03            ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
+005976  A2 03             loc_005976  ldx  #$03            ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
 005978  86 12                         stx  $12             ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
 
-; === while loop starts here [nest:36] ===
-00597A  A6 12             L_00597A    ldx  $12             ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
+; === while loop starts here (counter: $00 '', range: 0..16728, step: 16704, iters: 97109210585177) [nest:35] [inner] ===
+00597A  A6 12             loc_00597A  ldx  $12             ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
 00597C  BD 58 5D                      lda  $5D58,X         ; -> $5D5B ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
-00597F  F0 41                         beq  L_0059C2        ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
+00597F  F0 41                         beq  $59C2           ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
 005981  E0 03                         cpx  #$03            ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
-005983  F0 29                         beq  L_0059AE        ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
+005983  F0 29                         beq  $59AE           ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
 005985  E0 02                         cpx  #$02            ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
-005987  F0 1B                         beq  L_0059A4        ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
+005987  F0 1B                         beq  $59A4           ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
 005989  E0 01                         cpx  #$01            ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
-00598B  F0 08                         beq  L_005995        ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
+00598B  F0 08                         beq  $5995           ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
 00598D  BD 64 5D                      lda  $5D64,X         ; -> $5D67 ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
-005990  F0 23                         beq  L_0059B5        ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
-005992  4C C2 59                      jmp  L_0059C2        ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
-005995  BD 5C 5D          L_005995    lda  $5D5C,X         ; -> $5D5F ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
+005990  F0 23                         beq  $59B5           ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
+005992  4C C2 59                      jmp  $59C2           ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
+005995  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
 005998  C9 16                         cmp  #$16            ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
 00599A  BD 60 5D                      lda  $5D60,X         ; -> $5D63 ; A=$00C4 X=$0003 Y=$0014 ; [SP-320]
 00599D  E9 01                         sbc  #$01            ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
-00599F  B0 14                         bcs  L_0059B5        ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
-0059A1  4C C2 59                      jmp  L_0059C2        ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
-0059A4  BD 64 5D          L_0059A4    lda  $5D64,X         ; -> $5D67 ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
+00599F  B0 14                         bcs  $59B5           ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
+0059A1  4C C2 59                      jmp  $59C2           ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
+0059A4  BD 64 5D                      lda  $5D64,X         ; -> $5D67 ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
 0059A7  C9 BF                         cmp  #$BF            ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
-0059A9  F0 0A                         beq  L_0059B5        ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
-0059AB  4C C2 59                      jmp  L_0059C2        ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
-0059AE  BD 5C 5D          L_0059AE    lda  $5D5C,X         ; -> $5D5F ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
+0059A9  F0 0A                         beq  $59B5           ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
+0059AB  4C C2 59                      jmp  $59C2           ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
+0059AE  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
 0059B1  C9 3E                         cmp  #$3E            ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
-0059B3  D0 0D                         bne  L_0059C2        ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
-0059B5  20 41 44          L_0059B5    jsr  ClearSpriteArea        ; A=A-$01 X=$0003 Y=$0014 ; [SP-322]
-; === End of while loop (counter: Y) ===
+0059B3  D0 0D                         bne  $59C2           ; A=A-$01 X=$0003 Y=$0014 ; [SP-320]
+0059B5  20 41 44                      jsr  ClearSpriteArea ; Call $004441(A)
+; === End of while loop (counter: $00) ===
 
-0059B8  20 4F 5B                      jsr  InputProcessA        ; A=A-$01 X=$0003 Y=$0014 ; [SP-324]
+0059B8  20 4F 5B                      jsr  InputProcessA   ; A=A-$01 X=$0003 Y=$0014 ; [SP-324]
 0059BB  A6 12                         ldx  $12             ; A=A-$01 X=$0003 Y=$0014 ; [SP-324]
 0059BD  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=$0014 ; [SP-324]
 0059BF  9D 58 5D                      sta  $5D58,X         ; -> $5D5B ; A=$0000 X=$0003 Y=$0014 ; [SP-324]
-0059C2  C6 12             L_0059C2    dec  $12             ; A=$0000 X=$0003 Y=$0014 ; [SP-324]
-0059C4  10 B4                         bpl  L_00597A        ; A=$0000 X=$0003 Y=$0014 ; [SP-324]
-; === End of while loop ===
+0059C2  C6 12                         dec  $12             ; A=$0000 X=$0003 Y=$0014 ; [SP-324]
+0059C4  10 B4                         bpl  loc_00597A      ; A=$0000 X=$0003 Y=$0014 ; [SP-324]
+; === End of while loop (counter: $00) ===
 
 0059C6  A6 11                         ldx  $11             ; A=$0000 X=$0003 Y=$0014 ; [SP-324]
-0059C8  20 E0 43                      jsr  KeyboardHandler        ; A=$0000 X=$0003 Y=$0014 ; [SP-326]
-; === End of while loop (counter: Y) ===
+0059C8  20 E0 43                      jsr  KeyboardHandler ; Call $0043E0(A, X)
+; === End of while loop (counter: $00) ===
 
 0059CB  E4 11                         cpx  $11             ; A=$0000 X=$0003 Y=$0014 ; [SP-326]
-0059CD  D0 03                         bne  L_0059D2        ; A=$0000 X=$0003 Y=$0014 ; [SP-326]
-0059CF  4C E8 59                      jmp  L_0059E8        ; A=$0000 X=$0003 Y=$0014 ; [SP-326]
-0059D2  BD 34 5D          L_0059D2    lda  $5D34,X         ; -> $5D37 ; A=$0000 X=$0003 Y=$0014 ; [SP-326]
+0059CD  D0 03                         bne  $59D2           ; A=$0000 X=$0003 Y=$0014 ; [SP-326]
+0059CF  4C E8 59                      jmp  $59E8           ; A=$0000 X=$0003 Y=$0014 ; [SP-326]
+0059D2  BD 34 5D                      lda  $5D34,X         ; -> $5D37 ; A=$0000 X=$0003 Y=$0014 ; [SP-326]
 0059D5  85 02                         sta  $02             ; A=$0000 X=$0003 Y=$0014 ; [SP-326]
 0059D7  BD 38 5D                      lda  $5D38,X         ; -> $5D3B ; A=$0000 X=$0003 Y=$0014 ; [SP-326]
 0059DA  85 04                         sta  $04             ; A=$0000 X=$0003 Y=$0014 ; [SP-326]
 0059DC  8A                            txa                  ; A=$0003 X=$0003 Y=$0014 ; [SP-326]
 0059DD  18                            clc                  ; A=$0003 X=$0003 Y=$0014 ; [SP-326]
 0059DE  69 0B                         adc  #$0B            ; A=A+$0B X=$0003 Y=$0014 ; [SP-326]
-0059E0  20 C0 40                      jsr  DrawSpriteXY        ; A=A+$0B X=$0003 Y=$0014 ; [SP-328]
-; === End of while loop (counter: X) ===
+0059E0  20 C0 40                      jsr  DrawSpriteXY    ; Call $0040C0(A)
+; === End of while loop (counter: $00) ===
 
-0059E3  20 4F 5B                      jsr  InputProcessA        ; A=A+$0B X=$0003 Y=$0014 ; [SP-330]
+0059E3  20 4F 5B                      jsr  InputProcessA   ; A=A+$0B X=$0003 Y=$0014 ; [SP-330]
 0059E6  E6 01                         inc  $01             ; A=A+$0B X=$0003 Y=$0014 ; [SP-330]
-0059E8  20 91 55          L_0059E8    jsr  DrawAlienRowDir        ; A=A+$0B X=$0003 Y=$0014 ; [SP-332]
-; === End of while loop (counter: X) ===
+0059E8  20 91 55                      jsr  DrawAlienRowDir ; A=A+$0B X=$0003 Y=$0014 ; [SP-332]
+; === End of while loop (counter: $00) ===
 
-0059EB  20 E3 55                      jsr  DrawAlienRowDirB        ; A=A+$0B X=$0003 Y=$0014 ; [SP-334]
-; === End of while loop (counter: X) ===
+0059EB  20 E3 55                      jsr  DrawAlienRowDirB      ; A=A+$0B X=$0003 Y=$0014 ; [SP-334]
+; === End of while loop (counter: $00) ===
 
 0059EE  EE CD 57                      inc  $57CD           ; A=A+$0B X=$0003 Y=$0014 ; [SP-334]
-0059F1  D0 11                         bne  FrameTimingLoop        ; A=A+$0B X=$0003 Y=$0014 ; [SP-334]
+0059F1  D0 11                         bne  FrameTimingLoop ; A=A+$0B X=$0003 Y=$0014 ; [SP-334]
 0059F3  EE CE 57                      inc  $57CE           ; A=A+$0B X=$0003 Y=$0014 ; [SP-334]
-0059F6  D0 0C                         bne  FrameTimingLoop        ; A=A+$0B X=$0003 Y=$0014 ; [SP-334]
+0059F6  D0 0C                         bne  FrameTimingLoop ; A=A+$0B X=$0003 Y=$0014 ; [SP-334]
 0059F8  AD CC 57                      lda  $57CC           ; A=[$57CC] X=$0003 Y=$0014 ; [SP-334]
 0059FB  8D CD 57                      sta  $57CD           ; A=[$57CC] X=$0003 Y=$0014 ; [SP-334]
 0059FE  8D CE 57                      sta  $57CE           ; A=[$57CC] X=$0003 Y=$0014 ; [SP-334]
-005A01  20 C9 56                      jsr  DrawAlienRowDirD        ; A=[$57CC] X=$0003 Y=$0014 ; [SP-336]
-; === End of while loop (counter: X) ===
+005A01  20 C9 56                      jsr  DrawAlienRowDirD      ; Call $0056C9(A)
+; === End of while loop (counter: $00) ===
 
-005A04  E6 2E             FrameTimingLoop    inc  $2E             ; A=[$57CC] X=$0003 Y=$0014 ; [SP-336]  ; <<< Frame timing: INC $2E, when wraps reload from $2F
-005A06  D0 52                         bne  LoopBack_MainGame        ; A=[$57CC] X=$0003 Y=$0014 ; [SP-336]
+005A04  E6 2E                         inc  $2E             ; A=[$57CC] X=$0003 Y=$0014 ; [SP-336]  ; <<< Frame timing: INC $2E, when wraps reload from $2F
+005A06  D0 52                         bne  $5A5A           ; A=[$57CC] X=$0003 Y=$0014 ; [SP-336]
 005A08  A5 2F                         lda  $2F             ; A=[$002F] X=$0003 Y=$0014 ; [SP-336]
 005A0A  85 2E                         sta  $2E             ; A=[$002F] X=$0003 Y=$0014 ; [SP-336]
-005A0C  20 0E 45                      jsr  PeriodicGameLogic        ; Call $00450E(A)
-; === End of while loop (counter: X) ===
+005A0C  20 0E 45                      jsr  PeriodicGameLogic ; Call $00450E(A)
+; === End of while loop (counter: $00) ===
 
 005A0F  A2 03                         ldx  #$03            ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
 005A11  86 12                         stx  $12             ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
 
-; === while loop starts here [nest:30] ===
-005A13  A6 12             L_005A13    ldx  $12             ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+; === while loop starts here (counter: $00, range: 0..19206, step: 19209, iters: 95537252552644) [nest:29] [inner] ===
+005A13  A6 12             loc_005A13  ldx  $12             ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
 005A15  BD 54 5D                      lda  $5D54,X         ; -> $5D57 ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A18  F0 3C                         beq  L_005A56        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A18  F0 3C                         beq  loc_005A56      ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
 005A1A  E0 03                         cpx  #$03            ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A1C  F0 1C                         beq  L_005A3A        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A1C  F0 1C                         beq  $5A3A           ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
 005A1E  E0 02                         cpx  #$02            ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A20  F0 0E                         beq  L_005A30        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A20  F0 0E                         beq  $5A30           ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
 005A22  E0 01                         cpx  #$01            ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A24  F0 1E                         beq  L_005A44        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A24  F0 1E                         beq  $5A44           ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
 005A26  BD 50 5D                      lda  $5D50,X         ; -> $5D53 ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
 005A29  C9 52                         cmp  #$52            ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A2B  B0 30                         bcs  L_005A5D        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A2D  4C 56 5A                      jmp  L_005A56        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A30  BD 50 5D          L_005A30    lda  $5D50,X         ; -> $5D53 ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A2B  B0 30                         bcs  $5A5D           ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A2D  4C 56 5A                      jmp  loc_005A56      ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A30  BD 50 5D                      lda  $5D50,X         ; -> $5D53 ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
 005A33  C9 6B                         cmp  #$6B            ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A35  90 26                         bcc  L_005A5D        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A37  4C 56 5A                      jmp  L_005A56        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A3A  BD 48 5D          L_005A3A    lda  $5D48,X         ; -> $5D4B ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A35  90 26                         bcc  $5A5D           ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A37  4C 56 5A                      jmp  loc_005A56      ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A3A  BD 48 5D                      lda  $5D48,X         ; -> $5D4B ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
 005A3D  C9 9B                         cmp  #$9B            ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]  ; key: ESC (fire)
-005A3F  90 15                         bcc  L_005A56        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A41  4C 5D 5A                      jmp  L_005A5D        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A44  BD 48 5D          L_005A44    lda  $5D48,X         ; -> $5D4B ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A3F  90 15                         bcc  loc_005A56      ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A41  4C 5D 5A                      jmp  $5A5D           ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A44  BD 48 5D                      lda  $5D48,X         ; -> $5D4B ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
 005A47  C9 B6                         cmp  #$B6            ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A49  90 03                         bcc  L_005A4E        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A4B  4C 56 5A                      jmp  L_005A56        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A4E  BD 4C 5D          L_005A4E    lda  $5D4C,X         ; -> $5D4F ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A51  D0 03                         bne  L_005A56        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A53  4C 5D 5A                      jmp  L_005A5D        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A49  90 03                         bcc  $5A4E           ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A4B  4C 56 5A                      jmp  loc_005A56      ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A4E  BD 4C 5D                      lda  $5D4C,X         ; -> $5D4F ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A51  D0 03                         bne  loc_005A56      ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A53  4C 5D 5A                      jmp  $5A5D           ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
 
-; === while loop starts here [nest:23] ===
-005A56  C6 12             L_005A56    dec  $12             ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A58  10 B9                         bpl  L_005A13        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-; === End of while loop ===
+; === while loop starts here (counter: $00, range: 0..19518, step: 19520, iters: 83867826408517) [nest:22] [inner] ===
+005A56  C6 12             loc_005A56  dec  $12             ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A58  10 B9                         bpl  loc_005A13      ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+; === End of while loop (counter: $00) ===
 
-005A5A  4C 75 58          LoopBack_MainGame    jmp  MainGameLoop        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-; === End of while loop (counter: X) ===
+005A5A  4C 75 58                      jmp  MainGameLoop    ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+; === End of while loop (counter: A) ===
 
-005A5D  BD 54 5D          L_005A5D    lda  $5D54,X         ; -> $5D57 ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A5D  BD 54 5D                      lda  $5D54,X         ; -> $5D57 ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
 005A60  C9 02                         cmp  #$02            ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A62  D0 18                         bne  L_005A7C        ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
-005A64  20 C4 44                      jsr  DrawHitFlash        ; A=[$002F] X=$0003 Y=$0014 ; [SP-340]
-; === End of while loop (counter: X) ===
+005A62  D0 18                         bne  $5A7C           ; A=[$002F] X=$0003 Y=$0014 ; [SP-338]
+005A64  20 C4 44                      jsr  DrawHitFlash    ; Call $0044C4(A)
+; === End of while loop (counter: $00) ===
 
 005A67  A6 12                         ldx  $12             ; A=[$002F] X=$0003 Y=$0014 ; [SP-340]
 005A69  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=$0014 ; [SP-340]
 005A6B  9D 54 5D                      sta  $5D54,X         ; -> $5D57 ; A=$0000 X=$0003 Y=$0014 ; [SP-340]
-005A6E  20 7A 43                      jsr  InitGameVarsA        ; A=$0000 X=$0003 Y=$0014 ; [SP-342]
-; === End of while loop (counter: X) ===
+005A6E  20 7A 43                      jsr  InitGameVarsA   ; Call $00437A(A, X)
+; === End of while loop (counter: $00) ===
 
-005A71  20 4F 5B                      jsr  InputProcessA        ; A=$0000 X=$0003 Y=$0014 ; [SP-344]
+005A71  20 4F 5B                      jsr  InputProcessA   ; A=$0000 X=$0003 Y=$0014 ; [SP-344]
 005A74  A9 05                         lda  #$05            ; A=$0005 X=$0003 Y=$0014 ; [SP-344]
-005A76  20 E0 4A                      jsr  AddScore        ; A=$0005 X=$0003 Y=$0014 ; [SP-346]
-; === End of while loop (counter: X) ===
+005A76  20 E0 4A                      jsr  AddScore        ; Call $004AE0(A)
+; === End of while loop (counter: $00) ===
 
-005A79  4C 56 5A                      jmp  L_005A56        ; A=$0005 X=$0003 Y=$0014 ; [SP-346]
-; === End of while loop ===
+005A79  4C 56 5A                      jmp  loc_005A56      ; A=$0005 X=$0003 Y=$0014 ; [SP-346]
+; === End of while loop (counter: $00) ===
 
-005A7C  C9 03             L_005A7C    cmp  #$03            ; A=$0005 X=$0003 Y=$0014 ; [SP-346]
-005A7E  D0 1A                         bne  L_005A9A        ; A=$0005 X=$0003 Y=$0014 ; [SP-346]
+005A7C  C9 03                         cmp  #$03            ; A=$0005 X=$0003 Y=$0014 ; [SP-346]
+005A7E  D0 1A                         bne  $5A9A           ; A=$0005 X=$0003 Y=$0014 ; [SP-346]
 005A80  8E D6 57                      stx  $57D6           ; A=$0005 X=$0003 Y=$0014 ; [SP-346]
-005A83  20 C4 44                      jsr  DrawHitFlash        ; A=$0005 X=$0003 Y=$0014 ; [SP-348]
-; === End of while loop (counter: X) ===
+005A83  20 C4 44                      jsr  DrawHitFlash    ; A=$0005 X=$0003 Y=$0014 ; [SP-348]
+; === End of while loop (counter: $00) ===
 
 005A86  AE D6 57                      ldx  $57D6           ; A=$0005 X=$0003 Y=$0014 ; [SP-348]
 005A89  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=$0014 ; [SP-348]
 005A8B  9D 54 5D                      sta  $5D54,X         ; -> $5D57 ; A=$0000 X=$0003 Y=$0014 ; [SP-348]
-005A8E  20 7A 43                      jsr  InitGameVarsA        ; A=$0000 X=$0003 Y=$0014 ; [SP-350]
-; === End of while loop (counter: X) ===
+005A8E  20 7A 43                      jsr  InitGameVarsA   ; Call $00437A(A, X)
+; === End of while loop (counter: $00) ===
 
-005A91  20 4F 5B                      jsr  InputProcessA        ; A=$0000 X=$0003 Y=$0014 ; [SP-352]
-005A94  20 65 4B                      jsr  PunishmentRoutine        ; A=$0000 X=$0003 Y=$0014 ; [SP-354]
-; === End of while loop (counter: X) ===
+005A91  20 4F 5B                      jsr  InputProcessA   ; A=$0000 X=$0003 Y=$0014 ; [SP-352]
+005A94  20 65 4B                      jsr  PunishmentRoutine ; A=$0000 X=$0003 Y=$0014 ; [SP-354]
+; === End of while loop (counter: $00) ===
 
-005A97  4C 56 5A                      jmp  L_005A56        ; A=$0000 X=$0003 Y=$0014 ; [SP-354]
-; === End of while loop ===
+005A97  4C 56 5A                      jmp  loc_005A56      ; A=$0000 X=$0003 Y=$0014 ; [SP-354]
+; === End of while loop (counter: $00) ===
 
-005A9A  A2 03             L_005A9A    ldx  #$03            ; A=$0000 X=$0003 Y=$0014 ; [SP-354]
+005A9A  A2 03                         ldx  #$03            ; A=$0000 X=$0003 Y=$0014 ; [SP-354]
 005A9C  86 12                         stx  $12             ; A=$0000 X=$0003 Y=$0014 ; [SP-354]
 
-; === while loop starts here [nest:22] ===
-005A9E  A6 12             L_005A9E    ldx  $12             ; A=$0000 X=$0003 Y=$0014 ; [SP-354]
+; === while loop starts here (counter: $00, range: 0..22250, step: 22252, iters: 75045963583438) [nest:21] [inner] ===
+005A9E  A6 12                         ldx  $12             ; A=$0000 X=$0003 Y=$0014 ; [SP-354]
 005AA0  BD 54 5D                      lda  $5D54,X         ; -> $5D57 ; A=$0000 X=$0003 Y=$0014 ; [SP-354]
-005AA3  F0 03                         beq  L_005AA8        ; A=$0000 X=$0003 Y=$0014 ; [SP-354]
-005AA5  20 C4 44                      jsr  DrawHitFlash        ; A=$0000 X=$0003 Y=$0014 ; [SP-356]
-; === End of while loop (counter: X) ===
+005AA3  F0 03                         beq  loc_005AA8      ; A=$0000 X=$0003 Y=$0014 ; [SP-354]
+005AA5  20 C4 44                      jsr  DrawHitFlash    ; Call $0044C4(A, X)
+; === End of while loop (counter: $00) ===
 
-005AA8  C6 12             L_005AA8    dec  $12             ; A=$0000 X=$0003 Y=$0014 ; [SP-356]
-005AAA  10 F2                         bpl  L_005A9E        ; A=$0000 X=$0003 Y=$0014 ; [SP-356]
-; === End of while loop ===
+005AA8  C6 12             loc_005AA8  dec  $12             ; A=$0000 X=$0003 Y=$0014 ; [SP-356]
+005AAA  10 F2                         bpl  $5A9E           ; A=$0000 X=$0003 Y=$0014 ; [SP-356]
+; === End of while loop (counter: $00) ===
 
 005AAC  A6 11                         ldx  $11             ; A=$0000 X=$0003 Y=$0014 ; [SP-356]
 005AAE  BD 34 5D                      lda  $5D34,X         ; -> $5D37 ; A=$0000 X=$0003 Y=$0014 ; [SP-356]
@@ -4541,41 +6293,41 @@
 005AB8  8A                            txa                  ; A=$0003 X=$0003 Y=$0014 ; [SP-356]
 005AB9  18                            clc                  ; A=$0003 X=$0003 Y=$0014 ; [SP-356]
 005ABA  69 0B                         adc  #$0B            ; A=A+$0B X=$0003 Y=$0014 ; [SP-356]
-005ABC  20 C0 40                      jsr  DrawSpriteXY        ; A=A+$0B X=$0003 Y=$0014 ; [SP-358]
-; === End of while loop (counter: X) ===
+005ABC  20 C0 40                      jsr  DrawSpriteXY    ; Call $0040C0(A, X)
+; === End of while loop (counter: $00) ===
 
 005ABF  A9 56                         lda  #$56            ; A=$0056 X=$0003 Y=$0014 ; [SP-358]
 005AC1  85 04                         sta  $04             ; A=$0056 X=$0003 Y=$0014 ; [SP-358]
 005AC3  A9 17                         lda  #$17            ; A=$0017 X=$0003 Y=$0014 ; [SP-358]
 005AC5  85 02                         sta  $02             ; A=$0017 X=$0003 Y=$0014 ; [SP-358]
 005AC7  A9 18                         lda  #$18            ; A=$0018 X=$0003 Y=$0014 ; [SP-358]
-005AC9  20 C0 40                      jsr  DrawSpriteXY        ; A=$0018 X=$0003 Y=$0014 ; [SP-360]
-; === End of while loop (counter: X) ===
+005AC9  20 C0 40                      jsr  DrawSpriteXY    ; Call $0040C0(A)
+; === End of while loop (counter: $00) ===
 
 005ACC  A2 03                         ldx  #$03            ; A=$0018 X=$0003 Y=$0014 ; [SP-360]
 005ACE  86 12                         stx  $12             ; A=$0018 X=$0003 Y=$0014 ; [SP-360]
 
-; === while loop starts here [nest:19] ===
-005AD0  A6 12             L_005AD0    ldx  $12             ; A=$0018 X=$0003 Y=$0014 ; [SP-360]
+; === while loop starts here (counter: $00 '', range: 0..20444, step: 21193, iters: 87892210765803) [nest:18] [inner] ===
+005AD0  A6 12             loc_005AD0  ldx  $12             ; A=$0018 X=$0003 Y=$0014 ; [SP-360]
 005AD2  BD 58 5D                      lda  $5D58,X         ; -> $5D5B ; A=$0018 X=$0003 Y=$0014 ; [SP-360]
-005AD5  F0 03                         beq  L_005ADA        ; A=$0018 X=$0003 Y=$0014 ; [SP-360]
-005AD7  20 41 44                      jsr  ClearSpriteArea        ; A=$0018 X=$0003 Y=$0014 ; [SP-362]
-; === End of while loop (counter: X) ===
+005AD5  F0 03                         beq  loc_005ADA      ; A=$0018 X=$0003 Y=$0014 ; [SP-360]
+005AD7  20 41 44                      jsr  ClearSpriteArea ; Call $004441(A, X)
+; === End of while loop (counter: $00) ===
 
-005ADA  C6 12             L_005ADA    dec  $12             ; A=$0018 X=$0003 Y=$0014 ; [SP-362]
-005ADC  10 F2                         bpl  L_005AD0        ; A=$0018 X=$0003 Y=$0014 ; [SP-362]
-; === End of while loop ===
+005ADA  C6 12             loc_005ADA  dec  $12             ; A=$0018 X=$0003 Y=$0014 ; [SP-362]
+005ADC  10 F2                         bpl  loc_005AD0      ; A=$0018 X=$0003 Y=$0014 ; [SP-362]
+; === End of while loop (counter: $00) ===
 
 005ADE  A2 03                         ldx  #$03            ; A=$0018 X=$0003 Y=$0014 ; [SP-362]
 005AE0  86 12                         stx  $12             ; A=$0018 X=$0003 Y=$0014 ; [SP-362]
 
-; === while loop starts here [nest:19] ===
-005AE2  A9 D0             L_005AE2    lda  #$D0            ; A=$00D0 X=$0003 Y=$0014 ; [SP-362]
+; === while loop starts here (counter: $00 '', range: 0..22654, step: 23580, iters: 101326868470821) [nest:18] [inner] ===
+005AE2  A9 D0             loc_005AE2  lda  #$D0            ; A=$00D0 X=$0003 Y=$0014 ; [SP-362]
 005AE4  85 2C                         sta  $2C             ; A=$00D0 X=$0003 Y=$0014 ; [SP-362]
 005AE6  85 2D                         sta  $2D             ; A=$00D0 X=$0003 Y=$0014 ; [SP-362]
 
-; === while loop starts here [nest:20] ===
-005AE8  A9 56             L_005AE8    lda  #$56            ; A=$0056 X=$0003 Y=$0014 ; [SP-362]
+; === while loop starts here (counter: $00 '', range: 0..20335, step: 20361, iters: 87522843578254) [nest:19] [inner] ===
+005AE8  A9 56             loc_005AE8  lda  #$56            ; A=$0056 X=$0003 Y=$0014 ; [SP-362]
 005AEA  85 04                         sta  $04             ; A=$0056 X=$0003 Y=$0014 ; [SP-362]
 005AEC  A9 17                         lda  #$17            ; A=$0017 X=$0003 Y=$0014 ; [SP-362]
 005AEE  85 02                         sta  $02             ; A=$0017 X=$0003 Y=$0014 ; [SP-362]
@@ -4583,70 +6335,70 @@
 005AF2  29 03                         and  #$03            ; A=A&$03 X=$0003 Y=$0014 ; [SP-362]
 005AF4  18                            clc                  ; A=A&$03 X=$0003 Y=$0014 ; [SP-362]
 005AF5  69 26                         adc  #$26            ; A=A+$26 X=$0003 Y=$0014 ; [SP-362]
-005AF7  20 16 04                      jsr  $0416           ; A=A+$26 X=$0003 Y=$0014 ; [SP-364]
-005AFA  20 1C 5C                      jsr  UpdateStarTwinkle        ; A=A+$26 X=$0003 Y=$0014 ; [SP-366]
+005AF7  20 16 04                      jsr  $0416           ; Call $000416(A, X)
+005AFA  20 1C 5C                      jsr  UpdateStarTwinkle ; A=A+$26 X=$0003 Y=$0014 ; [SP-366]
 005AFD  A0 80                         ldy  #$80            ; A=A+$26 X=$0003 Y=$0080 ; [SP-366]
 005AFF  A9 F2                         lda  #$F2            ; A=$00F2 X=$0003 Y=$0080 ; [SP-366]
 005B01  8D 67 5B                      sta  $5B67           ; A=$00F2 X=$0003 Y=$0080 ; [SP-366]
-005B04  20 62 5B                      jsr  InputProcessB        ; A=$00F2 X=$0003 Y=$0080 ; [SP-368]
+005B04  20 62 5B                      jsr  InputProcessB      ; Call $005B62(A, Y)
 005B07  C6 2C                         dec  $2C             ; A=$00F2 X=$0003 Y=$0080 ; [SP-368]
-005B09  10 DD                         bpl  L_005AE8        ; A=$00F2 X=$0003 Y=$0080 ; [SP-368]
-; === End of while loop ===
+005B09  10 DD                         bpl  loc_005AE8      ; A=$00F2 X=$0003 Y=$0080 ; [SP-368]
+; === End of while loop (counter: $00) ===
 
 005B0B  C6 2D                         dec  $2D             ; A=$00F2 X=$0003 Y=$0080 ; [SP-368]
-005B0D  10 D9                         bpl  L_005AE8        ; A=$00F2 X=$0003 Y=$0080 ; [SP-368]
-; === End of while loop ===
+005B0D  10 D9                         bpl  loc_005AE8      ; A=$00F2 X=$0003 Y=$0080 ; [SP-368]
+; === End of while loop (counter: $00) ===
 
 005B0F  C6 12                         dec  $12             ; A=$00F2 X=$0003 Y=$0080 ; [SP-368]
-005B11  10 CF                         bpl  L_005AE2        ; A=$00F2 X=$0003 Y=$0080 ; [SP-368]
-; === End of while loop ===
+005B11  10 CF                         bpl  loc_005AE2      ; A=$00F2 X=$0003 Y=$0080 ; [SP-368]
+; === End of while loop (counter: $00) ===
 
 005B13  A5 10                         lda  $10             ; A=[$0010] X=$0003 Y=$0080 ; [SP-368]
-005B15  D0 1D                         bne  L_005B34        ; A=[$0010] X=$0003 Y=$0080 ; [SP-368]
+005B15  D0 1D                         bne  $5B34           ; A=[$0010] X=$0003 Y=$0080 ; [SP-368]
 005B17  A9 56                         lda  #$56            ; A=$0056 X=$0003 Y=$0080 ; [SP-368]
 005B19  85 04                         sta  $04             ; A=$0056 X=$0003 Y=$0080 ; [SP-368]
 005B1B  A9 17                         lda  #$17            ; A=$0017 X=$0003 Y=$0080 ; [SP-368]
 005B1D  85 02                         sta  $02             ; A=$0017 X=$0003 Y=$0080 ; [SP-368]
 005B1F  A9 26                         lda  #$26            ; A=$0026 X=$0003 Y=$0080 ; [SP-368]
-005B21  20 C0 40                      jsr  DrawSpriteXY        ; A=$0026 X=$0003 Y=$0080 ; [SP-370]
-; === End of while loop (counter: X) ===
+005B21  20 C0 40                      jsr  DrawSpriteXY    ; Call $0040C0(A)
+; === End of while loop (counter: $00) ===
 
 005B24  A9 56                         lda  #$56            ; A=$0056 X=$0003 Y=$0080 ; [SP-370]
 005B26  85 04                         sta  $04             ; A=$0056 X=$0003 Y=$0080 ; [SP-370]
 005B28  A9 17                         lda  #$17            ; A=$0017 X=$0003 Y=$0080 ; [SP-370]
 005B2A  85 02                         sta  $02             ; A=$0017 X=$0003 Y=$0080 ; [SP-370]
 005B2C  A9 90                         lda  #$90            ; A=$0090 X=$0003 Y=$0080 ; [SP-370]
-005B2E  20 16 04                      jsr  $0416           ; A=$0090 X=$0003 Y=$0080 ; [SP-372]
-005B31  4C 39 58                      jmp  CheckLifeLost        ; A=$0090 X=$0003 Y=$0080 ; [SP-372]
-; === End of while loop (counter: X) ===
+005B2E  20 16 04                      jsr  $0416           ; Call $000416(A)
+005B31  4C 39 58                      jmp  CheckLifeLost   ; A=$0090 X=$0003 Y=$0080 ; [SP-372]
+; === End of while loop (counter: $00) ===
 
-005B34  A9 00             L_005B34    lda  #$00            ; A=$0000 X=$0003 Y=$0080 ; [SP-372]
+005B34  A9 00                         lda  #$00            ; A=$0000 X=$0003 Y=$0080 ; [SP-372]
 005B36  85 2C                         sta  $2C             ; A=$0000 X=$0003 Y=$0080 ; [SP-372]
 005B38  A9 19                         lda  #$19            ; A=$0019 X=$0003 Y=$0080 ; [SP-372]
 005B3A  85 2D                         sta  $2D             ; A=$0019 X=$0003 Y=$0080 ; [SP-372]
 
-; === while loop starts here [nest:17] ===
-005B3C  A9 0A             L_005B3C    lda  #$0A            ; A=$000A X=$0003 Y=$0080 ; [SP-372]
-005B3E  20 6C 5C                      jsr  StarTwinkleC        ; A=$000A X=$0003 Y=$0080 ; [SP-374]
-005B41  20 1C 5C                      jsr  UpdateStarTwinkle        ; A=$000A X=$0003 Y=$0080 ; [SP-376]
+; === while loop starts here (counter: $00 '', range: 0..22657, step: 23672, iters: 101713415527551) [nest:16] [inner] ===
+005B3C  A9 0A             loc_005B3C  lda  #$0A            ; A=$000A X=$0003 Y=$0080 ; [SP-372]
+005B3E  20 6C 5C                      jsr  StarTwinkleC      ; Call $005C6C(A)
+005B41  20 1C 5C                      jsr  UpdateStarTwinkle ; A=$000A X=$0003 Y=$0080 ; [SP-376]
 005B44  C6 2C                         dec  $2C             ; A=$000A X=$0003 Y=$0080 ; [SP-376]
-005B46  D0 F4                         bne  L_005B3C        ; A=$000A X=$0003 Y=$0080 ; [SP-376]
-; === End of while loop ===
+005B46  D0 F4                         bne  loc_005B3C      ; A=$000A X=$0003 Y=$0080 ; [SP-376]
+; === End of while loop (counter: $00) ===
 
 005B48  C6 2D                         dec  $2D             ; A=$000A X=$0003 Y=$0080 ; [SP-376]
-005B4A  D0 F0                         bne  L_005B3C        ; A=$000A X=$0003 Y=$0080 ; [SP-376]
-; === End of while loop ===
+005B4A  D0 F0                         bne  loc_005B3C      ; A=$000A X=$0003 Y=$0080 ; [SP-376]
+; === End of while loop (counter: $00) ===
 
-005B4C  4C 39 58                      jmp  CheckLifeLost        ; A=$000A X=$0003 Y=$0080 ; [SP-376]
-; === End of while loop (counter: X) ===
+005B4C  4C 39 58                      jmp  CheckLifeLost   ; A=$000A X=$0003 Y=$0080 ; [SP-376]
+; === End of while loop (counter: $00) ===
 
 
-; === while loop starts here (counter: $00, range: 0..21103, step: 21105, iters: 90473486111293) [nest:8] [inner] ===
+; === while loop starts here (counter: X 'iter_x', range: 0..32, iters: 32) [nest:7] ===
 
-; FUNC $005B4F: register -> A:X [L]
-; Proto: uint32_t func_005B4F(uint16_t param_Y);
+; FUNC $005B4F (InputProcessA): register -> A:X [L]
+; Proto: uint32_t InputProcessA(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y) [3 dead stores]
-005B4F  A6 11             InputProcessA    ldx  $11             ; A=$000A X=$0003 Y=$0080 ; [SP-376]
+005B4F  A6 11                         ldx  $11             ; A=$000A X=$0003 Y=$0080 ; [SP-376]
 005B51  BD 34 5D                      lda  $5D34,X         ; -> $5D37 ; A=$000A X=$0003 Y=$0080 ; [SP-376]
 005B54  85 02                         sta  $02             ; A=$000A X=$0003 Y=$0080 ; [SP-376]
 005B56  BD 38 5D                      lda  $5D38,X         ; -> $5D3B ; A=$000A X=$0003 Y=$0080 ; [SP-376]
@@ -4656,75 +6408,75 @@
 005B5D  69 0B                         adc  #$0B            ; A=A+$0B X=$0003 Y=$0080 ; [SP-376]
 005B5F  4C 62 04                      jmp  $0462           ; A=A+$0B X=$0003 Y=$0080 ; [SP-376]
 
-; === loop starts here (counter: Y, range: 0..18967, iters: 71347996737762) [nest:17] [inner] ===
+; === loop starts here (counter: Y) [nest:16] [inner] ===
 
-; FUNC $005B62: register -> A:X []
-; Proto: uint32_t func_005B62(uint16_t param_X, uint16_t param_Y);
+; FUNC $005B62 (InputProcessB): register -> A:X []
+; Proto: uint32_t InputProcessB(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [1 dead stores]
-005B62  98                InputProcessB    tya                  ; A=$0080 X=$0003 Y=$0080 ; [SP-376]
-005B63  20 6F 5B                      jsr  InputProcessC        ; A=$0080 X=$0003 Y=$0080 ; [SP-378]
+005B62  98                InputProcessB  tya                  ; A=$0080 X=$0003 Y=$0080 ; [SP-376]
+005B63  20 6F 5B                      jsr  $5B6F           ; A=$0080 X=$0003 Y=$0080 ; [SP-378]
 005B66  49 FF                         eor  #$FF            ; A=A^$FF X=$0003 Y=$0080 ; [SP-378]
-005B68  20 6F 5B                      jsr  InputProcessC        ; Call $005B6F(1 stack)
+005B68  20 6F 5B                      jsr  $5B6F           ; A=A^$FF X=$0003 Y=$0080 ; [SP-380]
 005B6B  88                            dey                  ; A=A^$FF X=$0003 Y=$007F ; [SP-380]
-005B6C  D0 F4                         bne  InputProcessB        ; A=A^$FF X=$0003 Y=$007F ; [SP-380]
+005B6C  D0 F4                         bne  InputProcessB      ; A=A^$FF X=$0003 Y=$007F ; [SP-380]
 ; === End of loop (counter: Y) ===
 
 005B6E  60                            rts                  ; A=A^$FF X=$0003 Y=$007F ; [SP-378]
 
-; FUNC $005B6F: register -> A:X [L]
-; Proto: uint32_t func_005B6F(uint16_t param_A, uint16_t param_Y);
+; FUNC $005B6F (InputProcessC): register -> A:X [L]
+; Proto: uint32_t InputProcessC(uint16_t param_A, uint16_t param_Y);
 ; Liveness: params(A,Y) returns(A,X,Y)
-005B6F  AA                InputProcessC    tax                  ; A=A^$FF X=A Y=$007F ; [SP-378]
+005B6F  AA                            tax                  ; A=A^$FF X=A Y=$007F ; [SP-378]
 
-; === loop starts here (counter: X, range: 0..18727, iters: 81518479297058) [nest:18] [inner] ===
-005B70  CA                L_005B70    dex                  ; A=A^$FF X=X-$01 Y=$007F ; [SP-378]
-005B71  D0 FD                         bne  L_005B70        ; A=A^$FF X=X-$01 Y=$007F ; [SP-378]
+; === loop starts here (counter: X '', range: 0..20277) [nest:17] ===
+005B70  CA                            dex                  ; A=A^$FF X=X-$01 Y=$007F ; [SP-378]
+005B71  D0 FD                         bne  $5B70           ; A=A^$FF X=X-$01 Y=$007F ; [SP-378]
 ; === End of loop (counter: X) ===
 
-005B73  2C 30 C0                      bit  $C030           ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
+005B73  2C 30 C0                      bit  SPKR            ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
 005B76  60                            rts                  ; A=A^$FF X=X-$01 Y=$007F ; [SP-376]
 
-; FUNC $005B77: register -> A:X []
-; Proto: uint32_t func_005B77(uint16_t param_Y);
+; FUNC $005B77 (InputProcessD): register -> A:X []
+; Proto: uint32_t InputProcessD(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y) [4 dead stores]
-005B77  A2 1F             InputProcessD    ldx  #$1F            ; A=A^$FF X=$001F Y=$007F ; [SP-376]
+005B77  A2 1F                         ldx  #$1F            ; A=A^$FF X=$001F Y=$007F ; [SP-376]
 
-; === while loop starts here [nest:18] ===
-005B79  20 03 04          L_005B79    jsr  $0403           ; A=A^$FF X=$001F Y=$007F ; [SP-378]
+; === while loop starts here [nest:17] ===
+005B79  20 03 04                      jsr  $0403           ; Call $000403(X)
 005B7C  29 1F                         and  #$1F            ; A=A&$1F X=$001F Y=$007F ; [SP-378]
 005B7E  18                            clc                  ; A=A&$1F X=$001F Y=$007F ; [SP-378]
 005B7F  69 01                         adc  #$01            ; A=A+$01 X=$001F Y=$007F ; [SP-378]
 005B81  29 1F                         and  #$1F            ; A=A&$1F X=$001F Y=$007F ; [SP-378]
-005B83  F0 F4                         beq  L_005B79        ; A=A&$1F X=$001F Y=$007F ; [SP-378]
+005B83  F0 F4                         beq  $5B79           ; A=A&$1F X=$001F Y=$007F ; [SP-378]
 ; === End of while loop ===
 
 005B85  18                            clc                  ; A=A&$1F X=$001F Y=$007F ; [SP-378]
 005B86  69 08                         adc  #$08            ; A=A+$08 X=$001F Y=$007F ; [SP-378]
 005B88  9D B4 5B                      sta  $5BB4,X         ; -> $5BD3 ; A=A+$08 X=$001F Y=$007F ; [SP-378]
 
-; === while loop starts here [nest:20] ===
-005B8B  20 03 04          L_005B8B    jsr  $0403           ; A=A+$08 X=$001F Y=$007F ; [SP-380]
+; === while loop starts here [nest:19] ===
+005B8B  20 03 04          loc_005B8B  jsr  $0403           ; A=A+$08 X=$001F Y=$007F ; [SP-380]
 005B8E  C9 C0                         cmp  #$C0            ; A=A+$08 X=$001F Y=$007F ; [SP-380]
-005B90  B0 F9                         bcs  L_005B8B        ; A=A+$08 X=$001F Y=$007F ; [SP-380]
+005B90  B0 F9                         bcs  loc_005B8B      ; A=A+$08 X=$001F Y=$007F ; [SP-380]
 ; === End of while loop ===
 
 005B92  9D D4 5B                      sta  $5BD4,X         ; -> $5BF3 ; A=A+$08 X=$001F Y=$007F ; [SP-380]
 005B95  C9 50                         cmp  #$50            ; A=A+$08 X=$001F Y=$007F ; [SP-380]
-005B97  90 0F                         bcc  L_005BA8        ; A=A+$08 X=$001F Y=$007F ; [SP-380]
+005B97  90 0F                         bcc  loc_005BA8      ; A=A+$08 X=$001F Y=$007F ; [SP-380]
 005B99  C9 71                         cmp  #$71            ; A=A+$08 X=$001F Y=$007F ; [SP-380]
-005B9B  B0 0B                         bcs  L_005BA8        ; A=A+$08 X=$001F Y=$007F ; [SP-380]
+005B9B  B0 0B                         bcs  loc_005BA8      ; A=A+$08 X=$001F Y=$007F ; [SP-380]
 005B9D  BD B4 5B                      lda  $5BB4,X         ; -> $5BD3 ; A=A+$08 X=$001F Y=$007F ; [SP-380]
 005BA0  C9 1B                         cmp  #$1B            ; A=A+$08 X=$001F Y=$007F ; [SP-380]
-005BA2  B0 04                         bcs  L_005BA8        ; A=A+$08 X=$001F Y=$007F ; [SP-380]
+005BA2  B0 04                         bcs  loc_005BA8      ; A=A+$08 X=$001F Y=$007F ; [SP-380]
 005BA4  C9 16                         cmp  #$16            ; A=A+$08 X=$001F Y=$007F ; [SP-380]
-005BA6  B0 D1                         bcs  L_005B79        ; A=A+$08 X=$001F Y=$007F ; [SP-380]
+005BA6  B0 D1                         bcs  $5B79           ; A=A+$08 X=$001F Y=$007F ; [SP-380]
 ; === End of while loop ===
 
-005BA8  20 03 04          L_005BA8    jsr  $0403           ; A=A+$08 X=$001F Y=$007F ; [SP-382]
+005BA8  20 03 04          loc_005BA8  jsr  $0403           ; Call $000403(A)
 005BAB  29 07                         and  #$07            ; A=A&$07 X=$001F Y=$007F ; [SP-382]
 005BAD  9D F4 5B                      sta  $5BF4,X         ; -> $5C13 ; A=A&$07 X=$001F Y=$007F ; [SP-382]
 005BB0  CA                            dex                  ; A=A&$07 X=$001E Y=$007F ; [SP-382]
-005BB1  10 C6                         bpl  L_005B79        ; A=A&$07 X=$001E Y=$007F ; [SP-382]
+005BB1  10 C6                         bpl  $5B79           ; A=A&$07 X=$001E Y=$007F ; [SP-382]
 ; === End of while loop ===
 
 005BB3  60                            rts                  ; A=A&$07 X=$001E Y=$007F ; [SP-380]
@@ -4738,29 +6490,29 @@
 005C04  99A0A0AE                HEX     99A0A0AE C38AA0D0 A0F480A0 A5A0D6A0
 005C14  00081018                HEX     00081018 00889098
 
-; FUNC $005C1C: register -> A:X [L]
-; Proto: uint32_t func_005C1C(uint16_t param_X, uint16_t param_Y);
+; FUNC $005C1C (UpdateStarTwinkle): register -> A:X [L]
+; Proto: uint32_t UpdateStarTwinkle(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [1 dead stores]
 ; --- End data region (104 bytes) ---
 
-005C1C  A5 34             UpdateStarTwinkle    lda  $34             ; A=[$0034] X=$001E Y=$007F ; [SP-386]
+005C1C  A5 34                         lda  $34             ; A=[$0034] X=$001E Y=$007F ; [SP-386]
 005C1E  18                            clc                  ; A=[$0034] X=$001E Y=$007F ; [SP-386]
 005C1F  69 01                         adc  #$01            ; A=A+$01 X=$001E Y=$007F ; [SP-386]
 005C21  85 34                         sta  $34             ; A=A+$01 X=$001E Y=$007F ; [SP-386]
 005C23  C9 28                         cmp  #$28            ; A=A+$01 X=$001E Y=$007F ; [SP-386]
-005C25  B0 01                         bcs  UpdateStarTwinkleB        ; A=A+$01 X=$001E Y=$007F ; [SP-386]
+005C25  B0 01                         bcs  UpdateStarTwinkleB      ; A=A+$01 X=$001E Y=$007F ; [SP-386]
 005C27  60                            rts                  ; A=A+$01 X=$001E Y=$007F ; [SP-384]
 
-; FUNC $005C28: register -> A:X []
+; FUNC $005C28 (UpdateStarTwinkleB): register -> A:X []
 ; Liveness: returns(A,X,Y) [7 dead stores]
-005C28  A9 00             UpdateStarTwinkleB    lda  #$00            ; A=$0000 X=$001E Y=$007F ; [SP-384]
+005C28  A9 00             UpdateStarTwinkleB  lda  #$00            ; A=$0000 X=$001E Y=$007F ; [SP-384]
 005C2A  85 34                         sta  $34             ; A=$0000 X=$001E Y=$007F ; [SP-384]
 005C2C  A6 33                         ldx  $33             ; A=$0000 X=$001E Y=$007F ; [SP-384]
 005C2E  E8                            inx                  ; A=$0000 X=$001F Y=$007F ; [SP-384]
 005C2F  E0 20                         cpx  #$20            ; A=$0000 X=$001F Y=$007F ; [SP-384]
-005C31  90 02                         bcc  L_005C35        ; A=$0000 X=$001F Y=$007F ; [SP-384]
+005C31  90 02                         bcc  loc_005C35      ; A=$0000 X=$001F Y=$007F ; [SP-384]
 005C33  A2 00                         ldx  #$00            ; A=$0000 X=$0000 Y=$007F ; [SP-384]
-005C35  86 33             L_005C35    stx  $33             ; A=$0000 X=$0000 Y=$007F ; [SP-384]
+005C35  86 33             loc_005C35  stx  $33             ; A=$0000 X=$0000 Y=$007F ; [SP-384]
 005C37  BD D4 5B                      lda  $5BD4,X         ; A=$0000 X=$0000 Y=$007F ; [SP-384]
 005C3A  A8                            tay                  ; A=$0000 X=$0000 Y=$0000 ; [SP-384]
 005C3B  B9 6C 41                      lda  $416C,Y         ; A=$0000 X=$0000 Y=$0000 ; [SP-384]
@@ -4788,174 +6540,159 @@
 005C69  91 06                         sta  ($06),Y         ; A=A^$FF X=A Y=A ; [SP-384]
 005C6B  60                            rts                  ; A=A^$FF X=A Y=A ; [SP-382]
 
-; FUNC $005C6C: register -> A:X []
-; Proto: uint32_t func_005C6C(uint16_t param_A, uint16_t param_X, uint16_t param_Y);
+; FUNC $005C6C (StarTwinkleC): register -> A:X []
+; Proto: uint32_t StarTwinkleC(uint16_t param_A, uint16_t param_X, uint16_t param_Y);
 ; Frame: push_only [saves: A]
 ; Liveness: params(A,X,Y) returns(A,X,Y) [2 dead stores]
-005C6C  38                StarTwinkleC    sec                  ; A=A^$FF X=A Y=A ; [SP-382]
+005C6C  38                StarTwinkleC  sec                  ; A=A^$FF X=A Y=A ; [SP-382]
 
-; === while loop starts here (counter: $00, range: 0..23601, step: 23603, iters: 101670465853569) [nest:18] [inner] ===
-005C6D  48                L_005C6D    pha                  ; A=A^$FF X=A Y=A ; [SP-383]
+; === while loop starts here (iters: 75900662072559) [nest:17] ===
+005C6D  48                loc_005C6D  pha                  ; A=A^$FF X=A Y=A ; [SP-383]
 
-; === while loop starts here (counter: $00 '', range: 0..20348, step: 20469, iters: 101275328862334) [nest:19] [inner] ===
-005C6E  E9 01             L_005C6E    sbc  #$01            ; A=A-$01 X=A Y=A ; [SP-383]
-005C70  D0 FC                         bne  L_005C6E        ; A=A-$01 X=A Y=A ; [SP-383]
-; === End of while loop (counter: $00) ===
+; === while loop starts here [nest:18] ===
+005C6E  E9 01             loc_005C6E  sbc  #$01            ; A=A-$01 X=A Y=A ; [SP-383]
+005C70  D0 FC                         bne  loc_005C6E      ; A=A-$01 X=A Y=A ; [SP-383]
+; === End of while loop ===
 
 005C72  68                            pla                  ; A=[stk] X=A Y=A ; [SP-382]
 005C73  E9 01                         sbc  #$01            ; A=A-$01 X=A Y=A ; [SP-382]
-005C75  D0 F6                         bne  L_005C6D        ; A=A-$01 X=A Y=A ; [SP-382]
-; === End of while loop (counter: $00) ===
+005C75  D0 F6                         bne  loc_005C6D      ; A=A-$01 X=A Y=A ; [SP-382]
+; === End of while loop ===
 
 005C77  60                            rts                  ; A=A-$01 X=A Y=A ; [SP-380]
 
-; FUNC $005C78: register -> A:X []
-; Proto: uint32_t func_005C78(uint16_t param_Y);
+; FUNC $005C78 (CheckAllTVs): register -> A:X []
+; Proto: uint32_t CheckAllTVs(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y)
-005C78  A2 0F             CheckAllTVs    ldx  #$0F            ; A=A-$01 X=$000F Y=A ; [SP-380]
+005C78  A2 0F                         ldx  #$0F            ; A=A-$01 X=$000F Y=A ; [SP-380]
 
-; === while loop starts here (counter: $00 '', range: 0..20467, step: 20383, iters: 87913685602292) [nest:18] [inner] ===
-005C7A  BD B8 53          L_005C7A    lda  $53B8,X         ; -> $53C7 ; A=A-$01 X=$000F Y=A ; [SP-380]
+; === while loop starts here [nest:17] ===
+005C7A  BD B8 53          loc_005C7A  lda  $53B8,X         ; -> $53C7 ; A=A-$01 X=$000F Y=A ; [SP-380]
 005C7D  C9 04                         cmp  #$04            ; A=A-$01 X=$000F Y=A ; [SP-380]
-005C7F  F0 01                         beq  L_005C82        ; A=A-$01 X=$000F Y=A ; [SP-380]
+005C7F  F0 01                         beq  loc_005C82      ; A=A-$01 X=$000F Y=A ; [SP-380]
 005C81  60                            rts                  ; A=A-$01 X=$000F Y=A ; [SP-378]
-005C82  CA                L_005C82    dex                  ; A=A-$01 X=$000E Y=A ; [SP-378]
-005C83  10 F5                         bpl  L_005C7A        ; A=A-$01 X=$000E Y=A ; [SP-378]
-; === End of while loop (counter: $00) ===
+005C82  CA                loc_005C82  dex                  ; A=A-$01 X=$000E Y=A ; [SP-378]
+005C83  10 F5                         bpl  loc_005C7A      ; A=A-$01 X=$000E Y=A ; [SP-378]
+; === End of while loop ===
 
-005C85  20 27 5D                      jsr  InitProjectileTablesB        ; A=A-$01 X=$000E Y=A ; [SP-380]
-005C88  20 14 5D                      jsr  InitProjectileTables        ; A=A-$01 X=$000E Y=A ; [SP-382]
+005C85  20 27 5D                      jsr  $5D27           ; A=A-$01 X=$000E Y=A ; [SP-380]
+005C88  20 14 5D                      jsr  InitProjectileTables ; A=A-$01 X=$000E Y=A ; [SP-382]
 005C8B  A9 03                         lda  #$03            ; A=$0003 X=$000E Y=A ; [SP-382]
 005C8D  8D 13 5D                      sta  $5D13           ; A=$0003 X=$000E Y=A ; [SP-382]
 
-; === while loop starts here (counter: $00, range: 0..19187, step: 19190, iters: 82502026808070) [nest:16] [inner] ===
-005C90  AE 13 5D          L_005C90    ldx  $5D13           ; A=$0003 X=$000E Y=A ; [SP-382]
+; === while loop starts here (counter: $00) [nest:15] [inner] ===
+005C90  AE 13 5D          loc_005C90  ldx  $5D13           ; A=$0003 X=$000E Y=A ; [SP-382]
 005C93  BD 54 5D                      lda  $5D54,X         ; -> $5D62 ; A=$0003 X=$000E Y=A ; [SP-382]
-005C96  F0 0B                         beq  L_005CA3        ; A=$0003 X=$000E Y=A ; [SP-382]
-005C98  20 C4 44                      jsr  DrawHitFlash        ; A=$0003 X=$000E Y=A ; [SP-384]
+005C96  F0 0B                         beq  loc_005CA3      ; A=$0003 X=$000E Y=A ; [SP-382]
+005C98  20 C4 44                      jsr  DrawHitFlash    ; Call $0044C4(A, X)
 ; === End of while loop (counter: $00) ===
 
 005C9B  AE 13 5D                      ldx  $5D13           ; A=$0003 X=$000E Y=A ; [SP-384]
 005C9E  A9 00                         lda  #$00            ; A=$0000 X=$000E Y=A ; [SP-384]
 005CA0  9D 54 5D                      sta  $5D54,X         ; -> $5D62 ; A=$0000 X=$000E Y=A ; [SP-384]
-005CA3  BD 12 52          L_005CA3    lda  $5212,X         ; -> $5220 ; A=$0000 X=$000E Y=A ; [SP-384]
-005CA6  F0 0B                         beq  L_005CB3        ; A=$0000 X=$000E Y=A ; [SP-384]
-005CA8  20 C9 52                      jsr  DrawSatelliteD        ; A=$0000 X=$000E Y=A ; [SP-386]
-; === End of while loop (counter: $00) ===
+005CA3  BD 12 52          loc_005CA3  lda  $5212,X         ; -> $5220 ; A=$0000 X=$000E Y=A ; [SP-384]
+005CA6  F0 0B                         beq  loc_005CB3      ; A=$0000 X=$000E Y=A ; [SP-384]
+005CA8  20 C9 52                      jsr  $52C9           ; Call $0052C9(A, X)
+; === End of while loop (counter: X) ===
 
 005CAB  AE 13 5D                      ldx  $5D13           ; A=$0000 X=$000E Y=A ; [SP-386]
 005CAE  A9 00                         lda  #$00            ; A=$0000 X=$000E Y=A ; [SP-386]
 005CB0  9D 12 52                      sta  $5212,X         ; -> $5220 ; A=$0000 X=$000E Y=A ; [SP-386]
-005CB3  CE 13 5D          L_005CB3    dec  $5D13           ; A=$0000 X=$000E Y=A ; [SP-386]
-005CB6  10 D8                         bpl  L_005C90        ; A=$0000 X=$000E Y=A ; [SP-386]
+005CB3  CE 13 5D          loc_005CB3  dec  $5D13           ; A=$0000 X=$000E Y=A ; [SP-386]
+005CB6  10 D8                         bpl  loc_005C90      ; A=$0000 X=$000E Y=A ; [SP-386]
 ; === End of while loop (counter: $00) ===
 
 ; ============================================================================
 ; LEVEL COMPLETE ($5CB8)
 ; ============================================================================
-; HOW: Awards 50 points (BCD $50), decrements $3A (level counter).
-;      If $3A now < 4: spawns 4 satellites (they appear from level 3+).
-;      If $3A = 0: VICTORY! Jump to celebration screen.
-;      Otherwise: reset all 16 aliens to type 1 (UFO) and continue.
-;
-; WHY satellites appear on level 3+: $3A < 4 means levels 3,4,5
-;      (remember $3A counts DOWN: 5=L1, 4=L2, 3=L3, 2=L4, 1=L5).
-;      Satellites add bonus scoring opportunities to later levels,
-;      rewarding skilled players with extra points.
-;
-; CHEAT CODE (during animation at $4CEF):
-;      Press Shift-N ($9E) on Apple II/II+ keyboard = caret key.
-;      Effect: +3 lives AND resets difficulty to $0B (easiest).
-;      The difficulty reset is the real power - it undoes ALL speed
-;      increases accumulated during play. Can be activated multiple
-;      times during a single animation!
-;      (Developer test feature left in the shipping game.)
+; Awards 50 point bonus, advances level (DEC $3A), plays animation.
+; If $3A < 4: spawns 4 satellites.
+; If $3A = 0: VICTORY!
+; During animation: checks for Shift-N cheat code ($9E) which gives
+; +3 lives and resets difficulty to easiest.
 ; ============================================================================
 005CB8  A9 50                         lda  #$50            ; A=$0050 X=$000E Y=A ; [SP-386]
-005CBA  20 E0 4A                      jsr  AddScore        ; A=$0050 X=$000E Y=A ; [SP-388]
-; === End of while loop (counter: $00) ===
+005CBA  20 E0 4A                      jsr  AddScore        ; Call $004AE0(A, X)
+; === End of while loop (counter: X) ===
 
 005CBD  C6 3A                         dec  $3A             ; A=$0050 X=$000E Y=A ; [SP-388]
-005CBF  20 33 4D                      jsr  DisplayLevelNum        ; A=$0050 X=$000E Y=A ; [SP-390]
-; === End of while loop (counter: $00) ===
+005CBF  20 33 4D                      jsr  DisplayLevelNum ; A=$0050 X=$000E Y=A ; [SP-390]
+; === End of while loop (counter: A) ===
 
-005CC2  20 99 4C                      jsr  LevelCompleteAnim        ; A=$0050 X=$000E Y=A ; [SP-392]
-; === End of while loop (counter: $00) ===
+005CC2  20 99 4C                      jsr  LevelCompleteAnim ; A=$0050 X=$000E Y=A ; [SP-392]
+; === End of while loop (counter: A) ===
 
 005CC5  A9 32                         lda  #$32            ; A=$0032 X=$000E Y=A ; [SP-392]
 005CC7  A0 FF                         ldy  #$FF            ; A=$0032 X=$000E Y=$00FF ; [SP-392]
 005CC9  8D 67 5B                      sta  $5B67           ; A=$0032 X=$000E Y=$00FF ; [SP-392]
-005CCC  20 62 5B                      jsr  InputProcessB        ; A=$0032 X=$000E Y=$00FF ; [SP-394]
-; === End of while loop (counter: $00) ===
+005CCC  20 62 5B                      jsr  InputProcessB      ; Call $005B62(A, Y)
+; === End of while loop (counter: A) ===
 
 005CCF  A9 03                         lda  #$03            ; A=$0003 X=$000E Y=$00FF ; [SP-394]
 005CD1  8D 13 5D                      sta  $5D13           ; A=$0003 X=$000E Y=$00FF ; [OPT] PEEPHOLE: Load after store: 2 byte pattern at $005CD1 ; [SP-394]
 
-; === while loop starts here (counter: $00, range: 0..19472, step: 19474, iters: 83618718305290) [nest:11] [inner] ===
-005CD4  AD 13 5D          L_005CD4    lda  $5D13           ; A=[$5D13] X=$000E Y=$00FF ; [SP-394]
-005CD7  20 3C 4C                      jsr  PlayPunishSound        ; A=[$5D13] X=$000E Y=$00FF ; [SP-396]
-; === End of while loop (counter: $00) ===
+; === while loop starts here [nest:10] ===
+005CD4  AD 13 5D          loc_005CD4  lda  $5D13           ; A=[$5D13] X=$000E Y=$00FF ; [SP-394]
+005CD7  20 3C 4C                      jsr  PlayPunishSound ; Call $004C3C(A)
+; === End of while loop (counter: A) ===
 
 005CDA  CE 13 5D                      dec  $5D13           ; A=[$5D13] X=$000E Y=$00FF ; [SP-396]
-005CDD  10 F5                         bpl  L_005CD4        ; A=[$5D13] X=$000E Y=$00FF ; [SP-396]
-; === End of while loop (counter: $00) ===
+005CDD  10 F5                         bpl  loc_005CD4      ; A=[$5D13] X=$000E Y=$00FF ; [SP-396]
+; === End of while loop ===
 
 005CDF  A2 0F                         ldx  #$0F            ; A=[$5D13] X=$000F Y=$00FF ; [SP-396]
 005CE1  A9 01                         lda  #$01            ; A=$0001 X=$000F Y=$00FF ; [SP-396]
 
-; === while loop starts here (counter: $00, range: 0..23783, step: 23785, iters: 102172977028331) [nest:11] [inner] ===
-005CE3  9D B8 53          L_005CE3    sta  $53B8,X         ; -> $53C7 ; A=$0001 X=$000F Y=$00FF ; [SP-396]
+; === while loop starts here (counter: $00) [nest:10] [inner] ===
+005CE3  9D B8 53          loc_005CE3  sta  $53B8,X         ; -> $53C7 ; A=$0001 X=$000F Y=$00FF ; [SP-396]
 005CE6  CA                            dex                  ; A=$0001 X=$000E Y=$00FF ; [SP-396]
-005CE7  10 FA                         bpl  L_005CE3        ; A=$0001 X=$000E Y=$00FF ; [SP-396]
+005CE7  10 FA                         bpl  loc_005CE3      ; A=$0001 X=$000E Y=$00FF ; [SP-396]
 ; === End of while loop (counter: $00) ===
 
 005CE9  A5 3A                         lda  $3A             ; A=[$003A] X=$000E Y=$00FF ; [SP-396]
-005CEB  F0 1C                         beq  Victory        ; A=[$003A] X=$000E Y=$00FF ; [SP-396]
-005CED  20 3E 41                      jsr  ClearPlayfield        ; A=[$003A] X=$000E Y=$00FF ; [SP-398]
-; === End of while loop (counter: $00) ===
+005CEB  F0 1C                         beq  Victory         ; A=[$003A] X=$000E Y=$00FF ; [SP-396]
+005CED  20 3E 41                      jsr  ClearPlayfield  ; Call $00413E(A, X)
+; === End of while loop (counter: X) ===
 
-005CF0  20 7A 43                      jsr  InitGameVarsA        ; A=[$003A] X=$000E Y=$00FF ; [SP-400]
-; === End of while loop (counter: $00) ===
+005CF0  20 7A 43                      jsr  InitGameVarsA   ; A=[$003A] X=$000E Y=$00FF ; [SP-400]
+; === End of while loop (counter: X) ===
 
-005CF3  20 4F 5B                      jsr  InputProcessA        ; A=[$003A] X=$000E Y=$00FF ; [SP-402]
-; === End of while loop (counter: $00) ===
+005CF3  20 4F 5B                      jsr  InputProcessA   ; A=[$003A] X=$000E Y=$00FF ; [SP-402]
+; === End of while loop (counter: X) ===
 
 005CF6  A5 3A                         lda  $3A             ; A=[$003A] X=$000E Y=$00FF ; [SP-402]
 005CF8  C9 04                         cmp  #$04            ; A=[$003A] X=$000E Y=$00FF ; [SP-402]
-005CFA  B0 0C                         bcs  L_005D08        ; A=[$003A] X=$000E Y=$00FF ; [SP-402]
-005CFC  20 27 52                      jsr  SpawnSatellite        ; A=[$003A] X=$000E Y=$00FF ; [SP-404]
+005CFA  B0 0C                         bcs  $5D08           ; A=[$003A] X=$000E Y=$00FF ; [SP-402]
+005CFC  20 27 52                      jsr  SpawnSatellite  ; Call $005227(A)
 ; === End of while loop (counter: $00) ===
 
-005CFF  20 27 52                      jsr  SpawnSatellite        ; A=[$003A] X=$000E Y=$00FF ; [SP-406]
-; === End of while loop (counter: $00) ===
+005CFF  20 27 52                      jsr  SpawnSatellite  ; A=[$003A] X=$000E Y=$00FF ; [SP-406]
+; === End of while loop (counter: X) ===
 
-005D02  20 27 52                      jsr  SpawnSatellite        ; A=[$003A] X=$000E Y=$00FF ; [SP-408]
-; === End of while loop (counter: $00) ===
+005D02  20 27 52                      jsr  SpawnSatellite  ; A=[$003A] X=$000E Y=$00FF ; [SP-408]
+; === End of while loop (counter: X) ===
 
-005D05  20 27 52                      jsr  SpawnSatellite        ; A=[$003A] X=$000E Y=$00FF ; [OPT] TAIL_CALL: Tail call: JSR/JSL at $005D05 followed by RTS ; [SP-410]
-; === End of while loop (counter: $00) ===
+005D05  20 27 52                      jsr  SpawnSatellite  ; A=[$003A] X=$000E Y=$00FF ; [OPT] TAIL_CALL: Tail call: JSR/JSL at $005D05 followed by RTS ; [SP-410]
+; === End of while loop (counter: X) ===
 
-005D08  60                L_005D08    rts                  ; A=[$003A] X=$000E Y=$00FF ; [SP-408]
-005D09  A9 00             Victory    lda  #$00            ; A=$0000 X=$000E Y=$00FF ; [SP-408]
+005D08  60                            rts                  ; A=[$003A] X=$000E Y=$00FF ; [SP-408]
+005D09  A9 00                         lda  #$00            ; A=$0000 X=$000E Y=$00FF ; [SP-408]
 005D0B  85 10                         sta  $10             ; A=$0000 X=$000E Y=$00FF ; [SP-408]
 005D0D  68                            pla                  ; A=[stk] X=$000E Y=$00FF ; [SP-407]
 005D0E  68                            pla                  ; A=[stk] X=$000E Y=$00FF ; [SP-406]
-005D0F  4C 39 58                      jmp  CheckLifeLost        ; A=[stk] X=$000E Y=$00FF ; [SP-406]
-; === End of while loop (counter: $00) ===
+005D0F  4C 39 58                      jmp  CheckLifeLost   ; A=[stk] X=$000E Y=$00FF ; [SP-406]
+; === End of while loop (counter: X) ===
 
-
-; === while loop starts here (counter: Y 'iter_y') [nest:1] ===
-005D12  60                L_005D12    rts                  ; A=[stk] X=$000E Y=$00FF ; [SP-404]
 
 ; --- Data region ---
-005D13  00                      HEX     00
+005D12  6000                    HEX     6000
 
-; FUNC $005D14: register -> A:X [LI]
-; Proto: uint32_t func_005D14(uint16_t param_Y);
+; FUNC $005D14 (InitProjectileTables): register -> A:X [LI]
+; Proto: uint32_t InitProjectileTables(uint16_t param_Y);
 ; Liveness: params(Y) returns(A,X,Y) [24 dead stores]
-; --- End data region (1 bytes) ---
+; --- End data region (2 bytes) ---
 
-005D14  A6 11             InitProjectileTables    ldx  $11             ; A=[stk] X=$000E Y=$00FF ; [SP-407]
+005D14  A6 11                         ldx  $11             ; A=[stk] X=$000E Y=$00FF ; [SP-407]
 005D16  BD 34 5D                      lda  $5D34,X         ; -> $5D42 ; A=[stk] X=$000E Y=$00FF ; [SP-407]
 005D19  85 02                         sta  $02             ; A=[stk] X=$000E Y=$00FF ; [SP-407]
 005D1B  BD 38 5D                      lda  $5D38,X         ; -> $5D46 ; A=[stk] X=$000E Y=$00FF ; [SP-407]
@@ -4963,854 +6700,365 @@
 005D20  8A                            txa                  ; A=$000E X=$000E Y=$00FF ; [SP-407]
 005D21  18                            clc                  ; A=$000E X=$000E Y=$00FF ; [SP-407]
 005D22  69 0B                         adc  #$0B            ; A=A+$0B X=$000E Y=$00FF ; [SP-407]
-005D24  4C C0 40                      jmp  DrawSpriteXY        ; A=A+$0B X=$000E Y=$00FF ; [SP-407]
-; === End of while loop (counter: $00) ===
+005D24  4C C0 40                      jmp  DrawSpriteXY    ; A=A+$0B X=$000E Y=$00FF ; [SP-407]
+; === End of while loop (counter: X) ===
 
 
-; FUNC $005D27: register -> A:X [IJ]
-; Proto: uint32_t func_005D27(uint16_t param_X, uint16_t param_Y);
+; FUNC $005D27 (InitProjectileTablesB): register -> A:X [IJ]
+; Proto: uint32_t InitProjectileTablesB(uint16_t param_X, uint16_t param_Y);
 ; Liveness: params(X,Y) returns(A,X,Y) [22 dead stores]
-005D27  A9 56             InitProjectileTablesB    lda  #$56            ; A=$0056 X=$000E Y=$00FF ; [SP-407]
+005D27  A9 56                         lda  #$56            ; A=$0056 X=$000E Y=$00FF ; [SP-407]
 005D29  85 04                         sta  $04             ; A=$0056 X=$000E Y=$00FF ; [SP-407]
 005D2B  A9 17                         lda  #$17            ; A=$0017 X=$000E Y=$00FF ; [SP-407]
 005D2D  85 02                         sta  $02             ; A=$0017 X=$000E Y=$00FF ; [SP-407]
 005D2F  A9 18                         lda  #$18            ; A=$0018 X=$000E Y=$00FF ; [SP-407]
-005D31  4C C0 40                      jmp  DrawSpriteXY        ; A=$0018 X=$000E Y=$00FF ; [SP-407]
-; === End of while loop (counter: $00) ===
+005D31  4C C0 40                      jmp  DrawSpriteXY    ; A=$0018 X=$000E Y=$00FF ; [SP-407]
+; === End of while loop (counter: X) ===
 
 
 ; --- Data region ---
 ; --- Base X Positions (4 directions) ---
-005D34  181A1816                HEX     181A1816 525D6B
-; --- End data region (7 bytes) ---
-
-005D3B  5D 17 25          L_005D3B    eor  $2517,X         ; -> $2525 ; A=$0018 X=$000E Y=$00FF ; [SP-407]
-005D3E  17 09                         ora  [$09],Y         ; A=$0018 X=$000E Y=$00FF ; [SP-407]
-005D40  01 56                         ora  ($56,X)         ; A=$0018 X=$000E Y=$00FF ; [SP-407]
-005D42  B1 56                         lda  ($56),Y         ; A=$0018 X=$000E Y=$00FF ; [SP-407]
-005D44  01 58                         ora  ($58,X)         ; A=$0018 X=$000E Y=$00FF ; [SP-407]
-005D46  B1 58                         lda  ($58),Y         ; A=$0018 X=$000E Y=$00FF ; [SP-407]
-005D48  A0 8C                         ldy  #$8C            ; A=$0018 X=$000E Y=$008C ; [SP-407]
-005D4A  BA                            tsx                  ; A=$0018 X=$000E Y=$008C ; [SP-407]
-005D4B  A0 A0                         ldy  #$A0            ; A=$0018 X=$000E Y=$00A0 ; [SP-407]
-005D4D  E6 D2                         inc  $D2             ; A=$0018 X=$000E Y=$00A0 ; [SP-407]
-005D4F  A0 A0                         ldy  #$A0            ; A=$0018 X=$000E Y=$00A0 ; [OPT] REDUNDANT_LOAD: Redundant LDY: same value loaded at $005D4B ; [SP-407]
-005D51  A0 C8                         ldy  #$C8            ; A=$0018 X=$000E Y=$00C8 ; [SP-407]
-005D53  A0 A0                         ldy  #$A0            ; A=$0018 X=$000E Y=$00A0 ; [SP-407]
-005D55  C8                            iny                  ; A=$0018 X=$000E Y=$00A1 ; [SP-407]
-005D56  A0 80                         ldy  #$80            ; A=$0018 X=$000E Y=$0080 ; [SP-407]
-005D58  D4 AC                         pei  ($AC)           ; A=$0018 X=$000E Y=$0080 ; [SP-409]
-005D5A  BA                            tsx                  ; A=$0018 X=$000E Y=$0080 ; [SP-409]
-005D5B  A0 A0                         ldy  #$A0            ; A=$0018 X=$000E Y=$00A0 ; [SP-409]
-005D5D  BB                            tyx                  ; A=$0018 X=$000E Y=$00A0 ; [SP-409]
-005D5E  A0 AC                         ldy  #$AC            ; A=$0018 X=$000E Y=$00AC ; [SP-409]
-005D60  A0 A0                         ldy  #$A0            ; A=$0018 X=$000E Y=$00A0 ; [SP-409]
-005D62  D0 AE                         bne  L_005D12        ; A=$0018 X=$000E Y=$00A0 ; [SP-409]
-; === End of while loop (counter: Y) ===
-
-005D64  E6 AF                         inc  $AF             ; A=$0018 X=$000E Y=$00A0 ; [SP-409]
-005D66  8C B0 AB                      sty  $ABB0           ; A=$0018 X=$000E Y=$00A0 ; [SP-409]
-005D69  BC AB 9A                      ldy  $9AAB,X         ; -> $9AB9 ; A=$0018 X=$000E Y=$00A0 ; [SP-409]
-005D6C  00 00                         brk  #$00            ; A=$0018 X=$000E Y=$00A0 ; [SP-412]
-
-; --- Data region ---
-005D6E  00005160                HEX     00005160
-; --- End data region (4 bytes) ---
-
-005D72  6C 60 A9          L_005D72    jmp  ($A960)         ; A=$0018 X=$000E Y=$00A0 ; [SP-415]
-
-; --- Data region ---
-005D75  A0                      HEX     A0
-; --- End data region (1 bytes) ---
-
-005D76  C6 A0                         dec  $A0             ; A=$0018 X=$000E Y=$00A0 ; [SP-415]
-005D78  C3 A0                         cmp  $A0,S           ; A=$0018 X=$000E Y=$00A0 ; [SP-415]
-005D7A  81 D4                         sta  ($D4,X)         ; A=$0018 X=$000E Y=$00A0 ; [SP-415]
-005D7C  00 07                         brk  #$07            ; A=$0018 X=$000E Y=$00A0 ; [SP-417]
-
-; --- Data region ---
-005D7E  0E151C23                HEX     0E151C23 2A31383F 4670747B 7F86B7DA
-005D8E  E80B3543                HEX     E80B3543 6697C807 2A5487B1 C6CBD0D5
-005D9E  DFE9F3FD                HEX     DFE9F3FD BA7B38F9 77A4E310 4F566472
-005DAE  808E9CAA                HEX     808E9CAA BFD4E9FE 13283D43 4F5B6773
-005DBE  7F8B92A0                HEX     7F8B92A0 AEBCCAD8 E6F40210 1E2C3A48
-005DCE  4F5D6B                  HEX     4F5D6B
-; --- End data region (83 bytes) ---
-
-005DD1  79 87 95          L_005DD1    adc  $9587,Y         ; -> $9627 ; A=$0018 X=$000E Y=$00A0 ; [SP-424]
-005DD4  A3 AA                         lda  $AA,S           ; A=$0018 X=$000E Y=$00A0 ; [SP-424]
-005DD6  B8                            clv                  ; A=$0018 X=$000E Y=$00A0 ; [SP-424]
-005DD7  C6 D4                         dec  $D4             ; A=$0018 X=$000E Y=$00A0 ; [SP-424]
-005DD9  E2 F0                         sep  #$F0            ; A=$0018 X=$000E Y=$00A0 ; [SP-424]
-005DDB  59 6E 83                      eor  $836E,Y         ; -> $840E ; A=$0018 X=$000E Y=$00A0 ; [SP-424]
-005DDE  FE 1A 2F                      inc  $2F1A,X         ; -> $2F28 ; A=$0018 X=$000E Y=$00A0 ; [SP-424]
-; Block move (MVP)
-005DE1  44 98 AA                      mvp  $AA,$98         ; A=$0018 X=$000E Y=$00A0 ; [SP-424]
-005DE4  BC CE E9                      ldy  $E9CE,X         ; -> $E9DC ; A=$0018 X=$000E Y=$00A0 ; [SP-424]
-005DE7  FB                            xce                  ; A=$0018 X=$000E Y=$00A0 ; [SP-424]
-005DE8  0D 1F 2D                      ora  $2D1F           ; A=$0018 X=$000E Y=$00A0 ; [SP-424]
-005DEB  42 57                         wdm  #$57            ; A=$0018 X=$000E Y=$00A0 ; [SP-424]
-005DED  6C 81 96                      jmp  ($9681)         ; A=$0018 X=$000E Y=$00A0 ; [SP-424]
-
-; --- Data region ---
-005DF0  ABB9CEE3                HEX     ABB9CEE3 F8061B30 3E53687D 92A7BCC2
-005E00  CEDAE6F2                HEX     CEDAE6F2 FE0A101C 2834404C 5818B878
-005E10  F050B010                HEX     F050B010 33B1C50D 55B5155D BD60
-; --- End data region (46 bytes) ---
-
-005E1E  60                L_005E1E    rts                  ; A=$0018 X=$000E Y=$00A0 ; [SP-421]
-
-; --- Data region ---
-005E1F  60606060                HEX     60606060 60606060 60606060 60606060
-005E2F  60616161                HEX     60616161 61616162 62626262 62626262
-005E3F  62626262                HEX     62626262 63636463 64646465 65656565
-005E4F  65656565                HEX     65656565 65656565 66666666 66666666
-005E5F  66666666                HEX     66666666 66666666 66666767 67676767
-005E6F  67676767                HEX     67676767 67676767 67676767 67686868
-005E7F  67686868                HEX     67686868 68686868 68686969 69696969
-005E8F  69696969                HEX     69696969 6969696A 6A6A6A6A 6A6A6A6A
-005E9F  6A6A6A6A                HEX     6A6A6A6A 6A6A6A6B 6B6B6B6B 6B6B6B6C
-005EAF  6B6C6C6D                HEX     6B6C6C6D 6D6E6E6E 6E6F6F6F 70707001
-005EBF  01010101                HEX     01010101 01010101 01060101 01010705
-005ECF  02050602                HEX     02050602 05070703 05030303 03010101
-005EDF  02020202                HEX     02020202 09030303 03030303 03010202
-005EEF  02020202                HEX     02020202 03030303 03030301 02020202
-005EFF  02020102                HEX     02020102 02020202 02020202 02020202
-005F0F  01020202                HEX     01020202 02020201 02020202 02020303
-005F1F  03040303                HEX     03040303 03020202 03020202 02030303
-005F2F  03030302                HEX     03030302 03030302 03030203 03030303
-005F3F  03010202                HEX     03010202 02020202 01020202 02020204
-005F4F  04040504                HEX     04040504 04040509 02030304 04030404
-; --- Sprite Height Table ---
-005F5F  07070707                HEX     07070707 07070707 07070704 07040707
-005F6F  07070707                HEX     07070707 07070707 15070E11 0E070505
-005F7F  05050505                HEX     05050505 050E1515 15150F15 0F150707
-005F8F  07070707                HEX     07070707 07070707 07070707 06060606
-005F9F  06060607                HEX     06060607 07070707 07070707 07070707
-005FAF  07070707                HEX     07070707 07070707 07070707 07070707
-005FBF  07070707                HEX     07070707 07070909 09090909 09070707
-005FCF  07070707                HEX     07070707 07070707 07070707 07070707
-005FDF  07070606                HEX     07070606 06060606 06060606 06060606
-005FEF  18181818                HEX     18181818 18181807 0E0A1818 18181818
-005FFF  181E3333                HEX     181E3333 3333331E 3C363330 3030301E
-00600F  3F33380E                HEX     3F33380E 3F3F1E3F 303E303F 1E383C36
-00601F  333F3030                HEX     333F3030 3F3F031F 303F1E1C 06031F33
-00602F  331E3F3F                HEX     331E3F3F 30180C0C 0C1E3F33 1E333F1E
-00603F  1E3F333E                HEX     1E3F333E 303E1E1E 1E1E1F3F 003F3F3F
-00604F  3F3F0003                HEX     3F3F0003 33333303 001E0333 3F1F0030
-00605F  33331F03                HEX     33331F03 003F3F3F 3B3F001E 1E1E333F
-00606F  00889CBE                HEX     00889CBE FF818387 8F878381 FFBE9C88
-; --- SPRITE DATA: Projectile/Bullet Sprite (diamond shape) ---
-00607F  C0E0F0F8                HEX     C0E0F0F8 F0E0C01E 3F333F3F 3F1E3F3F
-00608F  333F3F3F                HEX     333F3F3F 3F030337 030C0C33 3B1F3F1F
-00609F  0C0C0333                HEX     0C0C0333 033B030C 0C333F3F 333F0C3F
-0060AF  3F1E3F33                HEX     3F1E3F33 3F0C3F1E 1F1F3F3F 3F3F3F3F
-0060BF  3F3F3333                HEX     3F3F3333 0C030C33 3F0C1F0C 331F0C1F
-0060CF  0C3F3B3F                HEX     0C3F3B3F 030C1F33 3F030C1F 333F3333
-0060DF  331F1E33                HEX     331F1E33 0C3F0C1F 0C1E1E1E 3F3F3F3F
-0060EF  3F3F3F03                HEX     3F3F3F03 33330C0C 1E03330C 0C303333
-0060FF  0C0C3F3F                HEX     0C0C3F3F 3F0C0C1E 1E1E0C0C 1E1E331F
-00610F  1E633F3F                HEX     1E633F3F 333F3F77 03333333 336B1E03
-00611F  3F3F3F63                HEX     3F3F3F63 30333F1F 3F633F3F 333B3363
-00612F  1E1E3333                HEX     1E1E3333 3363333F 333F330C 3F0C3F0C
-00613F  333F333F                HEX     333F333F 3E3C1E1E 3C41363F 3F365D33
-00614F  33333345                HEX     33333345 303E1E30 5D303033 3041303E
-00615F  3F303E30                HEX     3F303E30 1E1E301E 3300033F 333F3F33
-00616F  00033F33                HEX     00033F33 3F333700 030C3703 333F3F03
-00617F  0C3F1F33                HEX     0C3F1F33 3B3F030C 3B033F33 003F3F33
-00618F  3F1E3300                HEX     3F1E3300 3F3F333F 1E331E3F 3F633C3F
-00619F  333F3F3F                HEX     333F3F3F 777E0333 030C036B
-; --- End data region (908 bytes) ---
-
-0061AB  06 1E             L_0061AB    asl  $1E             ; A=$0018 X=$000E Y=$00A0 ; [SP-474]
-0061AD  1E 1E 0C                      asl  $0C1E,X         ; -> $0C2C ; A=$0018 X=$000E Y=$00A0 ; [SP-474]
-0061B0  1F 63 3C 30                   ora  >$303C63,X      ; -> $303C71 ; A=$0018 X=$000E Y=$00A0 ; [SP-474]
-0061B4  0C 30 0C                      tsb  $0C30           ; A=$0018 X=$000E Y=$00A0 ; [SP-474]
-0061B7  03 63                         ora  $63,S           ; A=$0018 X=$000E Y=$00A0 ; [SP-474]
-0061B9  60                            rts                  ; A=$0018 X=$000E Y=$00A0 ; [SP-472]
-
-; --- Data region ---
-0061BA  3F0C3F0C                HEX     3F0C3F0C 3F637E1E 0C1E0C3F 633C80FF
-0061CA  80C0FF81                HEX     80C0FF81 A0DD82B0 DD86A8DD 8AACDD9A
-0061DA  AADDAAAB                HEX     AADDAAAB DDEAABDD EAFFFFFF FFFFFFFF
-0061EA  FFFFABDD                HEX     FFFFABDD EAABDDEA AADDAAAC DD9AA8DD
-0061FA  8AB0DD86                HEX     8AB0DD86 A0DD82C0 FF8180FF 80033F33
-00620A  3F1E033F                HEX     3F1E033F 333F3F03 0C330303 030C331F
-00621A  1E030C33                HEX     1E030C33 03303F3F 1E3F3F3F 3F0C3F1E
-00622A  D40095D4                HEX     D40095D4 C195D0FF 85D0FF85 C0948100
-00623A  94000094                HEX     94000094 00009400 00940000 940000AA
-00624A  0000AA00                HEX     0000AA00 00AA0000 88000000 C00000D0
-00625A  0000D000                HEX     0000D000 00D40000 D40000B8 008A9800
-00626A  DA9AC0DA                HEX     DA9AC0DA 9A00DA9A 008A9800 00B80000
-00627A  D40000D4                HEX     D40000D4 0000D000 00D00000 C0008800
-00628A  00AA0000                HEX     00AA0000 AA0000AA 00009400 00940000
-00629A  94000094                HEX     94000094 00009400 C09481D0 FF85D0FF
-0062AA  85D4C195                HEX     85D4C195 D40095E0 8700B89D 00AEF500
-0062BA  AFF481AE                HEX     AFF481AE F500B89D 00E08700 150E1B0E
-0062CA  152A1C36                HEX     152A1C36 1C2A5438 6C385428 01700058
-0062DA  01700028                HEX     01700028 01500260
-; --- End data region (296 bytes) ---
-
-0062E2  01 30             L_0062E2    ora  ($30,X)         ; A=$0018 X=$000E Y=$00A0 ; [SP-582]
-0062E4  03 60                         ora  $60,S           ; A=$0018 X=$000E Y=$00A0 ; [SP-582]
-0062E6  01 50                         ora  ($50,X)         ; A=$0018 X=$000E Y=$00A0 ; [SP-582]
-0062E8  02 20                         cop  #$20            ; A=$0018 X=$000E Y=$00A0 ; [SP-585]
-
-; --- Data region ---
-0062EA  05400360                HEX     05400360
-; --- End data region (4 bytes) ---
-
-0062EE  06 40             L_0062EE    asl  $40             ; A=$0018 X=$000E Y=$00A0 ; [SP-585]
-0062F0  03 20                         ora  $20,S           ; A=$0018 X=$000E Y=$00A0 ; [SP-585]
-0062F2  05 40                         ora  $40             ; A=$0018 X=$000E Y=$00A0 ; [SP-585]
-0062F4  0A                            asl  a               ; A=$0018 X=$000E Y=$00A0 ; [SP-585]
-0062F5  00 07                         brk  #$07            ; A=$0018 X=$000E Y=$00A0 ; [SP-588]
+005D34  181A1816                HEX     181A1816 525D6B5D 17251709 0156B156
+005D44  0158B158                HEX     0158B158 A08CBAA0 A0E6D2A0 A0A0C8A0
+; --- Projectile State: 0=none, 2=exploding, 3=active ---
+005D54  A0C8A080                HEX     A0C8A080 D4ACBAA0 A0BBA0AC A0A0D0AE
+; --- Draw Y (4 projectiles) ---
+005D64  E6AF8CB0                HEX     E6AF8CB0 ABBCAB9A 00000000 51606C60
+005D74  A9A0C6A0                HEX     A9A0C6A0 C3A081D4 00070E15 1C232A31
+005D84  383F4670                HEX     383F4670 747B7F86 B7DAE80B 35436697
+005D94  C8072A54                HEX     C8072A54 87B1C6CB D0D5DFE9 F3FDBA7B
+005DA4  38F977A4                HEX     38F977A4 E3104F56 6472808E 9CAABFD4
+005DB4  E9FE1328                HEX     E9FE1328 3D434F5B 67737F8B 92A0AEBC
+005DC4  CAD8E6F4                HEX     CAD8E6F4 02101E2C 3A484F5D 6B798795
+005DD4  A3AAB8C6                HEX     A3AAB8C6 D4E2F059 6E83FE1A 2F4498AA
+005DE4  BCCEE9FB                HEX     BCCEE9FB 0D1F2D42 576C8196 ABB9CEE3
+005DF4  F8061B30                HEX     F8061B30 3E53687D 92A7BCC2 CEDAE6F2
+005E04  FE0A101C                HEX     FE0A101C 2834404C 5818B878 F050B010
+005E14  33B1C50D                HEX     33B1C50D 55B5155D BD606060 60606060
+005E24  60606060                HEX     60606060 60606060 60606060 61616161
+005E34  61616262                HEX     61616262 62626262 62626262 62626263
+005E44  63646364                HEX     63646364 64646565 65656565 65656565
+005E54  65656566                HEX     65656566 66666666 66666666 66666666
+005E64  66666666                HEX     66666666 66676767 67676767 67676767
+005E74  67676767                HEX     67676767 67676767 68686867 68686868
+005E84  68686868                HEX     68686868 68696969 69696969 69696969
+005E94  69696A6A                HEX     69696A6A 6A6A6A6A 6A6A6A6A 6A6A6A6A
+005EA4  6A6A6B6B                HEX     6A6A6B6B 6B6B6B6B 6B6B6C6B 6C6C6D6D
+005EB4  6E6E6E6E                HEX     6E6E6E6E 6F6F6F70 70700101 01010101
+005EC4  01010101                HEX     01010101 06010101 01070502 05060205
+005ED4  07070305                HEX     07070305 03030303 01010102 02020209
+005EE4  03030303                HEX     03030303 03030303 01020202 02020203
+005EF4  03030303                HEX     03030303 03030102 02020202 02010202
+005F04  02020202                HEX     02020202 02020202 02020201 02020202
+005F14  02020102                HEX     02020102 02020202 02030303 04030303
+005F24  02020203                HEX     02020203 02020202 03030303 03030203
+005F34  03030203                HEX     03030203 03020303 03030303 01020202
+005F44  02020201                HEX     02020201 02020202 02020404 04050404
+005F54  04050902                HEX     04050902 03030404 03040407 07070707
+005F64  07070707                HEX     07070707 07070407 04070707 07070707
+005F74  07070715                HEX     07070715 070E110E 07050505 05050505
+005F84  0E151515                HEX     0E151515 150F150F 15070707 07070707
+005F94  07070707                HEX     07070707 07070706 06060606 06060707
+005FA4  07070707                HEX     07070707 07070707 07070707 07070707
+005FB4  07070707                HEX     07070707 07070707 07070707 07070707
+005FC4  07090909                HEX     07090909 09090909 07070707 07070707
+005FD4  07070707                HEX     07070707 07070707 07070707 07060606
+005FE4  06060606                HEX     06060606 06060606 06060618 18181818
+005FF4  1818070E                HEX     1818070E 0A181818 18181818 1E333333
+006004  33331E3C                HEX     33331E3C 36333030 30301E3F 33380E3F
+006014  3F1E3F30                HEX     3F1E3F30 3E303F1E 383C3633 3F30303F
+006024  3F031F30                HEX     3F031F30 3F1E1C06 031F3333 1E3F3F30
+006034  180C0C0C                HEX     180C0C0C 1E3F331E 333F1E1E 3F333E30
+006044  3E1E1E1E                HEX     3E1E1E1E 1E1F3F00 3F3F3F3F 3F000333
+006054  33330300                HEX     33330300 1E03333F 1F003033 331F0300
+; String: "???;?"
+006064  3F3F3F3B                HEX     3F3F3F3B 3F001E1E 1E333F00 889CBEFF
+006074  8183878F                HEX     8183878F 878381FF BE9C88C0 E0F0F8F0
+006084  E0C01E3F                HEX     E0C01E3F 333F3F3F 1E3F3F33 3F3F3F3F
+006094  03033703                HEX     03033703 0C0C333B 1F3F1F0C 0C033303
+0060A4  3B030C0C                HEX     3B030C0C 333F3F33 3F0C3F3F 1E3F333F
+0060B4  0C3F1E1F                HEX     0C3F1E1F 1F3F3F3F 3F3F3F3F 3F33330C
+0060C4  030C333F                HEX     030C333F 0C1F0C33 1F0C1F0C 3F3B3F03
+0060D4  0C1F333F                HEX     0C1F333F 030C1F33 3F333333 1F1E330C
+0060E4  3F0C1F0C                HEX     3F0C1F0C 1E1E1E3F 3F3F3F3F 3F3F0333
+0060F4  330C0C1E                HEX     330C0C1E 03330C0C 3033330C 0C3F3F3F
+006104  0C0C1E1E                HEX     0C0C1E1E 1E0C0C1E 1E331F1E 633F3F33
+006114  3F3F7703                HEX     3F3F7703 33333333 6B1E033F 3F3F6330
+006124  333F1F3F                HEX     333F1F3F 633F3F33 3B33631E 1E333333
+006134  63333F33                HEX     63333F33 3F330C3F 0C3F0C33 3F333F3E
+006144  3C1E1E3C                HEX     3C1E1E3C 41363F3F 365D3333 33334530
+006154  3E1E305D                HEX     3E1E305D 30303330 41303E3F 303E301E
+006164  1E301E33                HEX     1E301E33 00033F33 3F3F3300 033F333F
+006174  33370003                HEX     33370003 0C370333 3F3F030C 3F1F333B
+006184  3F030C3B                HEX     3F030C3B 033F3300 3F3F333F 1E33003F
+006194  3F333F1E                HEX     3F333F1E 331E3F3F 633C3F33 3F3F3F77
+0061A4  7E033303                HEX     7E033303 0C036B06 1E1E1E0C 1F633C30
+0061B4  0C300C03                HEX     0C300C03 63603F0C 3F0C3F63 7E1E0C1E
+0061C4  0C3F633C                HEX     0C3F633C 80FF80C0 FF81A0DD 82B0DD86
+0061D4  A8DD8AAC                HEX     A8DD8AAC DD9AAADD AAABDDEA ABDDEAFF
+0061E4  FFFFFFFF                HEX     FFFFFFFF FFFFFFFF ABDDEAAB DDEAAADD
+0061F4  AAACDD9A                HEX     AAACDD9A A8DD8AB0 DD86A0DD 82C0FF81
+006204  80FF8003                HEX     80FF8003 3F333F1E 033F333F 3F030C33
+006214  0303030C                HEX     0303030C 331F1E03 0C330330 3F3F1E3F
+006224  3F3F3F0C                HEX     3F3F3F0C 3F1ED400 95D4C195 D0FF85D0
+006234  FF85C094                HEX     FF85C094 81009400 00940000 94000094
+006244  00009400                HEX     00009400 00AA0000 AA0000AA 00008800
+006254  0000C000                HEX     0000C000 00D00000 D00000D4 0000D400
+006264  00B8008A                HEX     00B8008A 9800DA9A C0DA9A00 DA9A008A
+006274  980000B8                HEX     980000B8 0000D400 00D40000 D00000D0
+006284  0000C000                HEX     0000C000 880000AA 0000AA00 00AA0000
+006294  94000094                HEX     94000094 00009400 00940000 9400C094
+0062A4  81D0FF85                HEX     81D0FF85 D0FF85D4 C195D400 95E08700
+0062B4  B89D00AE                HEX     B89D00AE F500AFF4 81AEF500 B89D00E0
+0062C4  8700150E                HEX     8700150E 1B0E152A 1C361C2A 54386C38
+; Block move (MVN)
+0062D4  54280170                HEX     54280170 00580170 00280150 02600130
+0062E4  03600150                HEX     03600150 02200540 03600640 03200540
+0062F4  0A000740                HEX     0A000740 0D000740 0A1E1E63 7E001E33
+006304  3F1F1E1E                HEX     3F1F1E1E 637E001E 333F1F3F 3F777E00
+006314  3F333F3F                HEX     3F333F3F 3F3F777E 003F333F 3F03336B
+006324  06003333                HEX     06003333 03330333 6B060033 3303333B
+006334  3F633E00                HEX     3F633E00 33331F3F 3B3F633E 0033331F
+006344  3F333F63                HEX     3F333F63 06003333 031F333F 63060033
+006354  33031F3F                HEX     33031F3F 33637E00 3F1E3F3B 3F33637E
+006364  003F1E3F                HEX     003F1E3F 3B1E3363 7E001E0C 3F331E33
+006374  637E001E                HEX     637E001E 0C3F3300 7F00407F 01205D02
+006384  305D0628                HEX     305D0628 5D0A2C5D 1A2A5D2A 2B5D6A2B
+006394  5D6A7F7F                HEX     5D6A7F7F 7F7F7F7F 7F7F7F2B 5D6A2B5D
+0063A4  6A2A5D2A                HEX     6A2A5D2A 2C5D1A28 5D0A305D 06205D02
 ; Interrupt return (RTI)
-
-; --- Data region ---
-0062F7  400D0007                HEX     400D0007 400A1E1E 637E001E 333F1F1E
-006307  1E637E00                HEX     1E637E00 1E333F1F 3F3F777E 003F333F
-006317  3F3F3F77                HEX     3F3F3F77 7E003F33 3F3F0333 6B
-; --- End data region (45 bytes) ---
-
-006324  06 00             L_006324    asl  $00             ; A=$0018 X=$000E Y=$00A0 ; [SP-582]
-006326  33 33                         and  ($33,S),Y       ; A=$0018 X=$000E Y=$00A0 ; [SP-582]
-006328  03 33                         ora  $33,S           ; A=$0018 X=$000E Y=$00A0 ; [SP-582]
-00632A  03 33                         ora  $33,S           ; A=$0018 X=$000E Y=$00A0 ; [SP-582]
-00632C  6B                            rtl                  ; A=$0018 X=$000E Y=$00A0 ; [SP-579]
-
-; --- Data region ---
-00632D  06003333                HEX     06003333 03333B3F 633E0033 331F3F3B
-00633D  3F633E00                HEX     3F633E00 33331F3F 333F6306 00333303
-00634D  1F333F63                HEX     1F333F63 06003333 031F3F33 637E003F
-00635D  1E3F3B3F                HEX     1E3F3B3F 33637E00 3F1E3F3B 1E33637E
-00636D  001E0C3F                HEX     001E0C3F 331E3363 7E001E0C 3F33007F
-00637D  00407F01                HEX     00407F01 205D0230 5D06285D 0A2C5D1A
-00638D  2A5D2A2B                HEX     2A5D2A2B 5D6A2B5D 6A7F7F7F 7F7F7F7F
-00639D  7F7F2B5D                HEX     7F7F2B5D 6A2B5D6A 2A5D2A2C 5D1A285D
-0063AD  0A305D06                HEX     0A305D06 205D0240 7F01007F 0080FF80
-0063BD  C0FF81A0                HEX     C0FF81A0 DD82B0DD 86A8DD8A ACDD9AAA
-0063CD  DDAAABDD                HEX     DDAAABDD EAABDDEA FFFFFFFF FFFFFFFF
-0063DD  FFABDDEA                HEX     FFABDDEA ABDDEAAA DDAAACDD 9AA8DD8A
-0063ED  B0DD86A0                HEX     B0DD86A0 DD82C0FF 8180FF80 007F0040
-0063FD  7F01205D                HEX     7F01205D 02305D06 285D0A2C 5D1A2A5D
-00640D  2A2B5D6A                HEX     2A2B5D6A 2B5D6A7F 7F7F7F7F 7F7F7F7F
-00641D  2B5D6A2B                HEX     2B5D6A2B 5D6A2A5D 2A2C5D1A 285D0A30
-00642D  5D06205D                HEX     5D06205D 02407F01 007F0080 FF80C0FF
-00643D  81A0DD82                HEX     81A0DD82 B0DD86A8 DD8AACDD
-; --- End data region (284 bytes) ---
-
-006449  9A                L_006449    txs                  ; A=$0018 X=$000E Y=$00A0 ; [SP-600]
-00644A  AA                            tax                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-600]
-00644B  DD AA AB                      cmp  $ABAA,X         ; -> $ABC2 ; A=$0018 X=$0018 Y=$00A0 ; [SP-600]
-00644E  DD EA AB                      cmp  $ABEA,X         ; -> $AC02 ; A=$0018 X=$0018 Y=$00A0 ; [SP-600]
-006451  DD EA FF                      cmp  $FFEA,X         ; NMI_VEC_N - NMI vector (native mode)
-006454  FF FF FF FF                   sbc  >$FFFFFF,X      ; -> $000017 ; A=$0018 X=$0018 Y=$00A0 ; [SP-600]
-006458  FF FF FF FF                   sbc  >$FFFFFF,X      ; -> $000017 ; A=$0018 X=$0018 Y=$00A0 ; [SP-600]
-00645C  AB                            plb                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-599]
-00645D  DD EA AB                      cmp  $ABEA,X         ; -> $AC02 ; A=$0018 X=$0018 Y=$00A0 ; [SP-599]
-006460  DD EA AA                      cmp  $AAEA,X         ; -> $AB02 ; A=$0018 X=$0018 Y=$00A0 ; [SP-599]
-006463  DD AA AC                      cmp  $ACAA,X         ; -> $ACC2 ; A=$0018 X=$0018 Y=$00A0 ; [SP-599]
-006466  DD 9A A8                      cmp  $A89A,X         ; -> $A8B2 ; A=$0018 X=$0018 Y=$00A0 ; [SP-599]
-006469  DD 8A B0                      cmp  $B08A,X         ; -> $B0A2 ; A=$0018 X=$0018 Y=$00A0 ; [SP-599]
-00646C  DD 86 A0                      cmp  $A086,X         ; -> $A09E ; A=$0018 X=$0018 Y=$00A0 ; [SP-599]
-00646F  DD 82 C0                      cmp  $C082,X         ; LCBANK2RO - LC Bank 2, read ROM, no write {Language Card} <language_card>
-006472  FF 81 80 FF                   sbc  >$FF8081,X      ; -> $FF8099 ; A=$0018 X=$0018 Y=$00A0 ; [SP-599]
-006476  80 FD                         bra  $6475           ; A=$0018 X=$0018 Y=$00A0 ; [SP-599]
-; === End of while loop ===
-
-
-; --- Data region ---
-006478  00                      HEX     00
-; --- End data region (1 bytes) ---
-
-006479  DF FD 00 DF                   cmp  >$DF00FD,X      ; -> $DF0115 ; A=$0018 X=$0018 Y=$00A0 ; [SP-602]
-00647D  F9 FF CF                      sbc  $CFFF,Y         ; SLOTEXP_$7FF - Slot expansion ROM offset $7FF {Slot}
-006480  F4 FF 97                      pea  $97FF           ; A=$0018 X=$0018 Y=$00A0 ; [SP-604]
-006483  C4 9C                         cpy  $9C             ; A=$0018 X=$0018 Y=$00A0 ; [SP-604]
-006485  91 D4                         sta  ($D4),Y         ; A=$0018 X=$0018 Y=$00A0 ; [SP-604]
-006487  AA                            tax                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-604]
-006488  95 C0                         sta  $C0,X           ; -> $00D8 ; A=$0018 X=$0018 Y=$00A0 ; [SP-604]
-00648A  AA                            tax                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-604]
-00648B  81 C0                         sta  ($C0,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-604]
-00648D  AA                            tax                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-604]
-00648E  81 C0                         sta  ($C0,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-604]
-; -- language_card: LC Bank 2, read ROM, write RAM --
-006490  9C 81 C0                      stz  $C081           ; LCBANK2RD - LC Bank 2, read ROM, write RAM {Language Card} <language_card>
-006493  BE 81 C0                      ldx  $C081,Y         ; LCBANK2RD - LC Bank 2, read ROM, write RAM {Language Card} <language_card>
-006496  BE 81 C0                      ldx  $C081,Y         ; LCBANK2RD - LC Bank 2, read ROM, write RAM {Language Card} <language_card>
-006499  BE 81 C0                      ldx  $C081,Y         ; LCBANK2RD - LC Bank 2, read ROM, write RAM {Language Card} <language_card>
-00649C  BE 81 C0                      ldx  $C081,Y         ; LCBANK2RD - LC Bank 2, read ROM, write RAM {Language Card} <language_card>
-00649F  AA                            tax                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-604]
-0064A0  81 00                         sta  ($00,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-604]
-0064A2  AA                            tax                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-604]
-0064A3  00 00                         brk  #$00            ; A=$0018 X=$0018 Y=$00A0 ; [SP-607]
-
-; --- Data region ---
-0064A5  00D00000                HEX     00D00000 D40000E4 0000F500 00F90000
-0064B5  F900AAF9                HEX     F900AAF9 C000B9D0 9E99D0BD 9DD0BD9D
-0064C5  D0BD9DD0                HEX     D0BD9DD0 9E99C000 B900AAF9 0000F100
-0064D5  00F90000                HEX     00F90000 F50000E4 0000D400 00D000AA
-0064E5  00C0AA81                HEX     00C0AA81 C0BE81C0 BE81C0BE 81C0BE81
-0064F5  C09C81C0                HEX     C09C81C0 AA81C0AA 81D4AA95 C49C91F4
-006505  FF97F9FF                HEX     FF97F9FF CFFD00DF FD00DF85 00009500
-006515  00930000                HEX     00930000 D70000CF 0000CF00 00CFAA00
-006525  CE0081CC                HEX     CE0081CC BC85DCBE 85DCBE85 DCBE85CC
-006535  BC85CE00                HEX     BC85CE00 81CFAA00 CF0000CF 0000D700
-006545  00930000                HEX     00930000 95000085 00009494 D5D5D594
-006555  94D000D0                HEX     94D000D0 00D482D4 82D482D0 00D000C0
-006565  82C082D0                HEX     82C082D0 8AD08AD0 8AC082C0 82008A00
-006575  8AC0AAC0                HEX     8AC0AAC0 AAC0AA00 8A0008A8 00A800AA
-006585  81AA81AA                HEX     81AA81AA 81A800A8 00A081A0 81A885A8
-006595  85A885A0                HEX     85A885A0 81A08100 850085A0 95A095A0
-0065A5  95008500                HEX     95008500 85E08700 B89D00AE F500AFF4
-0065B5  81AEF500                HEX     81AEF500 B89D00E0 8700009F 00E0F500
-0065C5  B8D583BC                HEX     B8D583BC D187B8D5 83E0F500 009F0000
-0065D5  FC0000D7                HEX     FC0000D7 83E0D58E F0C59EE0 D58E00D7
-0065E5  8300FC00                HEX     8300FC00 00F08300 DC8E00D7 BAC097FA
-0065F5  00D7BA00                HEX     00D7BA00 DC8E00F0 83C08F00 F0BA00DC
-006605  EA81DEE8                HEX     EA81DEE8 83DCEA81 F0BA00C0 8F0000BE
-006615  00C0EB81                HEX     00C0EB81 F0AA87F8 A28FF0AA 87C0EB81
-006625  00BE0000                HEX     00BE0000 F88100AE 87C0AB9D E08BBDC0
-006635  AB9D00AE                HEX     AB9D00AE 8700F881 3E6B
-; --- End data region (410 bytes) ---
-
-00663F  7F 5D 63 3E       L_00663F    adc  >$3E635D,X      ; -> $3E6375 ; A=$0018 X=$0018 Y=$00A0 ; [SP-740]
-006643  78                            sei                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-740]
-006644  01 2C                         ora  ($2C,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-740]
-006646  03 7C                         ora  $7C,S           ; A=$0018 X=$0018 Y=$00A0 ; [SP-740]
-006648  03 74                         ora  $74,S           ; A=$0018 X=$0018 Y=$00A0 ; [SP-740]
-00664A  02 0C                         cop  #$0C            ; A=$0018 X=$0018 Y=$00A0 ; [SP-743]
-
-; --- Data region ---
-00664C  03780160                HEX     03780160
-; --- End data region (4 bytes) ---
-
-006650  07 30             L_006650    ora  [$30]           ; A=$0018 X=$0018 Y=$00A0 ; [SP-743]
-006652  0D 70 0F                      ora  $0F70           ; A=$0018 X=$0018 Y=$00A0 ; [SP-743]
-006655  50 0B                         bvc  L_006662        ; A=$0018 X=$0018 Y=$00A0 ; [SP-743]
-006657  30 0C                         bmi  L_006665        ; A=$0018 X=$0018 Y=$00A0 ; [SP-743]
-006659  60                            rts                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-741]
-
-; --- Data region ---
-00665A  07001F40                HEX     07001F40 35403F40
-; --- End data region (8 bytes) ---
-
-006662  2E 40 31          L_006662    rol  $3140           ; A=$0018 X=$0018 Y=$00A0 ; [SP-741]
-006665  00 1F             L_006665    brk  #$1F            ; A=$0018 X=$0018 Y=$00A0 ; [SP-741]
-
-; --- Data region ---
-006667  7C005601                HEX     7C005601 7E013A01 46017C00 70035806
-006677  78076805                HEX     78076805 18067003 400F60
-; --- End data region (27 bytes) ---
-
-006682  1A                L_006682    inc  a               ; A=$0018 X=$0018 Y=$00A0 ; [SP-744]
-006683  60                            rts                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-744]
-
-; --- Data region ---
-006684  1F201760                HEX     1F201760
-; --- End data region (4 bytes) ---
-
-006688  18                L_006688    clc                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-744]
+0063B4  407F0100                HEX     407F0100 7F0080FF 80C0FF81 A0DD82B0
+0063C4  DD86A8DD                HEX     DD86A8DD 8AACDD9A AADDAAAB DDEAABDD
+0063D4  EAFFFFFF                HEX     EAFFFFFF FFFFFFFF FFFFABDD EAABDDEA
+0063E4  AADDAAAC                HEX     AADDAAAC DD9AA8DD 8AB0DD86 A0DD82C0
+0063F4  FF8180FF                HEX     FF8180FF 80007F00 407F0120 5D02305D
+006404  06285D0A                HEX     06285D0A 2C5D1A2A 5D2A2B5D 6A2B5D6A
+006414  7F7F7F7F                HEX     7F7F7F7F 7F7F7F7F 7F2B5D6A 2B5D6A2A
+006424  5D2A2C5D                HEX     5D2A2C5D 1A285D0A 305D0620 5D02407F
+006434  01007F00                HEX     01007F00 80FF80C0 FF81A0DD 82B0DD86
+006444  A8DD8AAC                HEX     A8DD8AAC DD9AAADD AAABDDEA ABDDEAFF
+006454  FFFFFFFF                HEX     FFFFFFFF FFFFFFFF ABDDEAAB DDEAAADD
+006464  AAACDD9A                HEX     AAACDD9A A8DD8AB0 DD86A0DD 82C0FF81
+006474  80FF80FD                HEX     80FF80FD 00DFFD00 DFF9FFCF F4FF97C4
+006484  9C91D4AA                HEX     9C91D4AA 95C0AA81 C0AA81C0 9C81C0BE
+006494  81C0BE81                HEX     81C0BE81 C0BE81C0 BE81C0AA 8100AA00
+0064A4  0000D000                HEX     0000D000 00D40000 E40000F5 0000F900
+0064B4  00F900AA                HEX     00F900AA F9C000B9 D09E99D0 BD9DD0BD
+0064C4  9DD0BD9D                HEX     9DD0BD9D D09E99C0 00B900AA F90000F1
+0064D4  0000F900                HEX     0000F900 00F50000 E40000D4 0000D000
+0064E4  AA00C0AA                HEX     AA00C0AA 81C0BE81 C0BE81C0 BE81C0BE
+0064F4  81C09C81                HEX     81C09C81 C0AA81C0 AA81D4AA 95C49C91
+006504  F4FF97F9                HEX     F4FF97F9 FFCFFD00 DFFD00DF 85000095
+006514  00009300                HEX     00009300 00D70000 CF0000CF 0000CFAA
+006524  00CE0081                HEX     00CE0081 CCBC85DC BE85DCBE 85DCBE85
+006534  CCBC85CE                HEX     CCBC85CE 0081CFAA 00CF0000 CF0000D7
+006544  00009300                HEX     00009300 00950000 85000094 94D5D5D5
+006554  9494D000                HEX     9494D000 D000D482 D482D482 D000D000
+006564  C082C082                HEX     C082C082 D08AD08A D08AC082 C082008A
+006574  008AC0AA                HEX     008AC0AA C0AAC0AA 008A0008 A800A800
+006584  AA81AA81                HEX     AA81AA81 AA81A800 A800A081 A081A885
+006594  A885A885                HEX     A885A885 A081A081 00850085 A095A095
+0065A4  A0950085                HEX     A0950085 0085E087 00B89D00 AEF500AF
+0065B4  F481AEF5                HEX     F481AEF5 00B89D00 E0870000 9F00E0F5
+0065C4  00B8D583                HEX     00B8D583 BCD187B8 D583E0F5 00009F00
+0065D4  00FC0000                HEX     00FC0000 D783E0D5 8EF0C59E E0D58E00
+0065E4  D78300FC                HEX     D78300FC 0000F083 00DC8E00 D7BAC097
+0065F4  FA00D7BA                HEX     FA00D7BA 00DC8E00 F083C08F 00F0BA00
+006604  DCEA81DE                HEX     DCEA81DE E883DCEA 81F0BA00 C08F0000
+006614  BE00C0EB                HEX     BE00C0EB 81F0AA87 F8A28FF0 AA87C0EB
+006624  8100BE00                HEX     8100BE00 00F88100 AE87C0AB 9DE08BBD
+006634  C0AB9D00                HEX     C0AB9D00 AE8700F8 813E6B7F 5D633E78
+006644  012C037C                HEX     012C037C 0374020C 03780160 07300D70
+006654  0F500B30                HEX     0F500B30 0C600700 1F403540 3F402E40
+006664  31001F7C                HEX     31001F7C 0056017E 013A0146 017C0070
+006674  03580678                HEX     03580678 07680518 06700340 0F601A60
+006684  1F201760                HEX     1F201760 18400F0B 1C3E7F3E 1C082000
+006694  70007801                HEX     70007801 7C037801 70002000 00014003
+0066A4  6007700F                HEX     6007700F 60074003 00010004 000E001F
 ; Interrupt return (RTI)
-006689  40                            rti                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-741]
-
-; --- Data region ---
-00668A  0F0B1C3E                HEX     0F0B1C3E 7F3E1C08 20007000 78017C03
-00669A  78017000                HEX     78017000 20000001 400360
-; --- End data region (27 bytes) ---
-
-0066A5  07 70             L_0066A5    ora  [$70]           ; A=$0018 X=$0018 Y=$00A0 ; [SP-752]
-0066A7  0F 60 07 40                   ora  >$400760        ; A=$0018 X=$0018 Y=$00A0 ; [SP-752]
-0066AB  03 00                         ora  $00,S           ; A=$0018 X=$0018 Y=$00A0 ; [SP-752]
-0066AD  01 00                         ora  ($00,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-752]
-0066AF  04 00                         tsb  $00             ; A=$0018 X=$0018 Y=$00A0 ; [SP-752]
-0066B1  0E 00 1F                      asl  $1F00           ; A=$0018 X=$0018 Y=$00A0 ; [SP-752]
+0066B4  403F001F                HEX     403F001F 000E0004 10003800 7C007E01
+0066C4  7C003800                HEX     7C003800 10004000 60017003 78077003
+0066D4  60014000                HEX     60014000 00020007 400F601F 400F0007
+0066E4  00022800                HEX     00022800 2A012A01 D480AA81 AA81A800
+0066F4  20012805                HEX     20012805 2805D082 A885A885 A0810005
+006704  20152015                HEX     20152015 008AA095 A0950085 00140055
+006714  005500AA                HEX     005500AA 00D500D5 00945000 54025402
+006724  A800D482                HEX     A800D482 D482D000 4002500A 500AA084
+006734  D08AD08A                HEX     D08AD08A C082000A 402A402A 0095C0AA
+006744  C0AA00AA                HEX     C0AA00AA 94D5F7D5 115544D0 00D482DC
+006754  83D48210                HEX     83D48210 02540244 00C082D0 8AF08ED0
+006764  8A100250                HEX     8A100250 0A400B00 8AC0AAC0 BBC0AA00
+006774  22402A40                HEX     22402A40 08A880AA 81EE81AA 8122002A
+006784  010801A0                HEX     010801A0 81A885B8 87A88520 04280508
+006794  010085A0                HEX     010085A0 95E09DA0 95200420 15001104
+0067A4  04555555                HEX     04555555 04045000 50005402 54025402
+0067B4  50005000                HEX     50005000 40024002 500A500A 500A4002
 ; Interrupt return (RTI)
-0066B4  40                            rti                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-749]
-
-; --- Data region ---
-0066B5  3F001F00                HEX     3F001F00 0E000410 0038007C 007E017C
-0066C5  00380010                HEX     00380010 00400060
-; --- End data region (24 bytes) ---
-
-0066CD  01 70             L_0066CD    ora  ($70,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-767]
-0066CF  03 78                         ora  $78,S           ; A=$0018 X=$0018 Y=$00A0 ; [SP-767]
-0066D1  07 70                         ora  [$70]           ; A=$0018 X=$0018 Y=$00A0 ; [SP-767]
-0066D3  03 60                         ora  $60,S           ; A=$0018 X=$0018 Y=$00A0 ; [SP-767]
-0066D5  01 40                         ora  ($40,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-767]
-0066D7  00 00                         brk  #$00            ; A=$0018 X=$0018 Y=$00A0 ; [SP-770]
-
-; --- Data region ---
-0066D9  02000740                HEX     02000740 0F60
-; --- End data region (6 bytes) ---
-
-0066DF  1F 40 0F 00       L_0066DF    ora  >$000F40,X      ; -> $000F58 ; A=$0018 X=$0018 Y=$00A0 ; [SP-773]
-0066E3  07 00                         ora  [$00]           ; A=$0018 X=$0018 Y=$00A0 ; [SP-773]
-0066E5  02 28                         cop  #$28            ; A=$0018 X=$0018 Y=$00A0 ; [SP-776]
-
-; --- Data region ---
-0066E7  002A012A                HEX     002A012A 01D480AA 81AA81A8 00200128
-0066F7  052805D0                HEX     052805D0 82A885A8 85A08100 05201520
-006707  15008AA0                HEX     15008AA0 95A09500 85001400 55005500
-006717  AA00D500                HEX     AA00D500 D5009450 00540254 02A800D4
-006727  82D482D0                HEX     82D482D0 00400250 0A500AA0 84D08AD0
-006737  8AC08200                HEX     8AC08200 0A402A40 2A0095C0 AAC0AA00
-006747  AA94D5F7                HEX     AA94D5F7 D5115544 D000D482 DC83D482
-006757  10025402                HEX     10025402 4400C082 D08AF08E D08A1002
-006767  500A400B                HEX     500A400B 008AC0AA C0BBC0AA 0022402A
-; Interrupt return (RTI)
-006777  4008A880                HEX     4008A880 AA81EE81 AA812200 2A010801
-006787  A081A885                HEX     A081A885 B887A885 20042805 08010085
-006797  A095E09D                HEX     A095E09D A0952004 20150011 04045555
-0067A7  55040450                HEX     55040450 00500054 02540254 02500050
-0067B7  00400240                HEX     00400240 02500A50 0A500A40 02400200
-0067C7  0A000A40                HEX     0A000A40 2A402A40 2A000A00 00280028
-0067D7  002A012A                HEX     002A012A 012A0128 00280020 01200128
-0067E7  05280528                HEX     05280528 05200120 01000500 05201520
-0067F7  15201500                HEX     15201500 05000500 60
-; --- End data region (281 bytes) ---
-
-006800  07 00             L_006800    ora  [$00]           ; A=$0018 X=$0018 Y=$00A0 ; [SP-854]
-006802  00 38                         brk  #$38            ; A=$0018 X=$0018 Y=$00A0 ; [SP-857]
-
-; --- Data region ---
+0067C4  4002000A                HEX     4002000A 000A402A 402A402A 000A0000
+0067D4  28002800                HEX     28002800 2A012A01 2A012800 28002001
+0067E4  20012805                HEX     20012805 28052805 20012001 00050005
+0067F4  20152015                HEX     20152015 20150005 00050060 07000038
 006804  1D00002E                HEX     1D00002E 7500002F 7401002E 75000038
-006814  1D000060                HEX     1D000060
-; --- End data region (20 bytes) ---
-
-006818  07 00             L_006818    ora  [$00]           ; A=$0018 X=$0018 Y=$00A0 ; [SP-864]
-00681A  00 1F                         brk  #$1F            ; A=$0018 X=$0018 Y=$00A0 ; [SP-867]
-
-; --- Data region ---
-00681C  0060                    HEX     0060
-; --- End data region (2 bytes) ---
-
-00681E  75 00             L_00681E    adc  $00,X           ; -> $0018 ; A=$0018 X=$0018 Y=$00A0 ; [SP-870]
-006820  38                            sec                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-870]
-006821  55 03                         eor  $03,X           ; -> $001B ; A=$0018 X=$0018 Y=$00A0 ; [SP-870]
-006823  3C 51 07                      bit  $0751,X         ; -> $0769 ; A=$0018 X=$0018 Y=$00A0 ; [SP-870]
-006826  38                            sec                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-870]
-006827  55 03                         eor  $03,X           ; -> $001B ; A=$0018 X=$0018 Y=$00A0 ; [SP-870]
-006829  60                            rts                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-868]
-
-; --- Data region ---
-00682A  7500001F                HEX     7500001F 00007C00 00570360
-; --- End data region (12 bytes) ---
-
-006836  55 0E             L_006836    eor  $0E,X           ; -> $0026 ; A=$0018 X=$0018 Y=$00A0 ; [SP-872]
-006838  70 45                         bvs  L_00687F        ; A=$0018 X=$0018 Y=$00A0 ; [SP-872]
-00683A  1E 60 55                      asl  $5560,X         ; -> $5578 ; A=$0018 X=$0018 Y=$00A0 ; [SP-872]
-00683D  0E 00 57                      asl  $5700           ; A=$0018 X=$0018 Y=$00A0 ; [SP-872]
-006840  03 00                         ora  $00,S           ; A=$0018 X=$0018 Y=$00A0 ; [SP-872]
-006842  7C 00 00                      jmp  ($0000,X)       ; A=$0018 X=$0018 Y=$00A0 ; [SP-872]
-
-; --- Data region ---
-006845  7003005C                HEX     7003005C 0E00573A 40177A00 573A005C
-006855  0E007083                HEX     0E007083 400F0070 3A005C6A 015E6803
-006865  5C6A0170                HEX     5C6A0170 3A00400F 00003E00 406B
-; --- End data region (46 bytes) ---
-
-006873  01 70             L_006873    ora  ($70,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-883]
-006875  2A                            rol  a               ; A=$0018 X=$0018 Y=$00A0 ; [SP-883]
-006876  07 78                         ora  [$78]           ; A=$0018 X=$0018 Y=$00A0 ; [SP-883]
-006878  22 0F 70 2A                   jsl  >$2A700F        ; A=$0018 X=$0018 Y=$00A0 ; [SP-886]
-00687C  07 40                         ora  [$40]           ; A=$0018 X=$0018 Y=$00A0 ; [SP-886]
-00687E  6B                            rtl                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-883]
-00687F  01 00             L_00687F    ora  ($00,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-883]
-006881  3E 00 00                      rol  !$0000,X        ; -> $0018 ; A=$0018 X=$0018 Y=$00A0 ; [SP-883]
-006884  78                            sei                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-883]
-006885  01 00                         ora  ($00,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-883]
-006887  2E 07 40                      rol  $4007           ; A=$0018 X=$0018 Y=$00A0 ; [SP-883]
-00688A  2B                            pld                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-882]
-00688B  1D 60 0B                      ora  $0B60,X         ; -> $0B78 ; A=$0018 X=$0018 Y=$00A0 ; [SP-882]
-00688E  3D 40 2B                      and  $2B40,X         ; -> $2B58 ; A=$0018 X=$0018 Y=$00A0 ; [SP-882]
-006891  1D 00 2E                      ora  $2E00,X         ; -> $2E18 ; A=$0018 X=$0018 Y=$00A0 ; [SP-882]
-006894  07 00                         ora  [$00]           ; A=$0018 X=$0018 Y=$00A0 ; [SP-882]
-006896  78                            sei                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-882]
-006897  01 44                         ora  ($44,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-882]
-006899  00 28                         brk  #$28            ; A=$0018 X=$0018 Y=$00A0 ; [SP-885]
-
-; --- Data region ---
-00689B  0010007F                HEX     0010007F 03410241 03410241 037F0310
-0068AB  02200140                HEX     02200140 007C0F04 0A040E04 0A040E7C
-0068BB  0F400800                HEX     0F400800 05000270 3F102810 38102810
-; String: "8p?"
-0068CB  38703F00                HEX     38703F00 22000014 00000800 407F0140
-0068DB  20014060                HEX     20014060
-; --- End data region (68 bytes) ---
-
-0068DF  01 40             L_0068DF    ora  ($40,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-920]
-0068E1  20 01 40                      jsr  DrawSprite        ; A=$0018 X=$0018 Y=$00A0 ; [OPT] TAIL_CALL: Tail call: JSR/JSL at $0068E1 followed by RTS ; [SP-922]
-; === End of while loop (counter: X) ===
-
-0068E4  60                            rts                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-920]
-
-; --- Data region ---
-0068E5  01407F01                HEX     01407F01 08015000 20007E07 02050207
-0068F5  02050207                HEX     02050207 7E072004 40020001 781F0814
-006905  081C0814                HEX     081C0814 081C781F 00110004 000460
-; --- End data region (47 bytes) ---
-
-006914  7F 20 50 20       L_006914    adc  >$205020,X      ; -> $205038 ; A=$0018 X=$0018 Y=$00A0 ; [SP-933]
-006918  70 20                         bvs  L_00693A        ; A=$0018 X=$0018 Y=$00A0 ; [SP-933]
-00691A  50 20                         bvc  L_00693C        ; A=$0018 X=$0018 Y=$00A0 ; [SP-933]
-00691C  70 60                         bvs  L_00697E        ; A=$0018 X=$0018 Y=$00A0 ; [SP-933]
-00691E  7F C0 81 D0                   adc  >$D081C0,X      ; -> $D081D8 ; A=$0018 X=$0018 Y=$00A0 ; [SP-933]
-006922  85 D4                         sta  $D4             ; A=$0018 X=$0018 Y=$00A0 ; [SP-933]
-006924  95 DD                         sta  $DD,X           ; -> $00F5 ; A=$0018 X=$0018 Y=$00A0 ; [SP-933]
-006926  D5 D4                         cmp  $D4,X           ; -> $00EC ; A=$0018 X=$0018 Y=$00A0 ; [SP-933]
-006928  95 D0                         sta  $D0,X           ; -> $00E8 ; A=$0018 X=$0018 Y=$00A0 ; [SP-933]
-00692A  85 C0                         sta  $C0             ; A=$0018 X=$0018 Y=$00A0 ; [SP-933]
-00692C  81 00                         sta  ($00,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-933]
-00692E  86 00                         stx  $00             ; A=$0018 X=$0018 Y=$00A0 ; [SP-933]
-006930  C0 96                         cpy  #$96            ; A=$0018 X=$0018 Y=$00A0 ; [SP-933]
-006932  00 D0                         brk  #$D0            ; A=$0018 X=$0018 Y=$00A0 ; [SP-936]
-
-; --- Data region ---
-006934  D600F4D6                HEX     D600F4D6 82D0
-; --- End data region (6 bytes) ---
-
-00693A  D6 00             L_00693A    dec  $00,X           ; -> $0018 ; A=$0018 X=$0018 Y=$00A0 ; [SP-938]
-00693C  C0 96             L_00693C    cpy  #$96            ; A=$0018 X=$0018 Y=$00A0 ; [SP-941]
-00693E  00 00                         brk  #$00            ; A=$0018 X=$0018 Y=$00A0 ; [SP-941]
-
-; --- Data region ---
-006940  86000098                HEX     86000098 0000DA00 C0DA82D0 D88AC0DA
-006950  8200DA00                HEX     8200DA00 00980000 E08000E8 8200EA8A
-006960  C0EEAA00                HEX     C0EEAA00 EA8A00E8 8200E080 008300A0
-006970  8B00A8AB                HEX     8B00A8AB 00BAAB81 A8AB00A0 8B00
-; --- End data region (62 bytes) ---
-
-00697E  00 83             L_00697E    brk  #$83            ; A=$0018 X=$0018 Y=$00A0 ; [SP-980]
-
-; --- Data region ---
-006980  00008C80                HEX     00008C80 00AD00A0 AD81E8AD 85A0AD81
-006990  00AD0000                HEX     00AD0000 8C8000B0 8000B481 00B58540
-0069A0  B79500B5                HEX     B79500B5 8500B481 00B08060
-; --- End data region (44 bytes) ---
-
-0069AC  01 5C             L_0069AC    ora  ($5C,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-989]
-0069AE  0E 56 1A                      asl  $1A56           ; A=$0018 X=$0018 Y=$00A0 ; [SP-989]
-0069B1  55 2A                         eor  $2A,X           ; -> $0042 ; A=$0018 X=$0018 Y=$00A0 ; [SP-989]
-0069B3  7F 3F 4E 1C                   adc  >$1C4E3F,X      ; -> $1C4E57 ; A=$0018 X=$0018 Y=$00A0 ; [SP-989]
-0069B7  04 08                         tsb  $08             ; A=$0018 X=$0018 Y=$00A0 ; [SP-989]
-0069B9  00 0F                         brk  #$0F            ; A=$0018 X=$0018 Y=$00A0 ; [SP-992]
-
-; --- Data region ---
-0069BB  00703A00                HEX     00703A00 586A0054 2A01747F 01387200
-0069CB  10200000                HEX     10200000 1C00406B
-; --- End data region (24 bytes) ---
-
-0069D3  01 60             L_0069D3    ora  ($60,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-1003]
-0069D5  2A                            rol  a               ; A=$0018 X=$0018 Y=$00A0 ; [SP-1003]
-0069D6  03 50                         ora  $50,S           ; A=$0018 X=$0018 Y=$00A0 ; [SP-1003]
-0069D8  2A                            rol  a               ; A=$0018 X=$0018 Y=$00A0 ; [SP-1003]
-0069D9  05 70                         ora  $70             ; A=$0018 X=$0018 Y=$00A0 ; [SP-1003]
-0069DB  7F 07 60 49                   adc  >$496007,X      ; -> $49601F ; A=$0018 X=$0018 Y=$00A0 ; [SP-1003]
-0069DF  03 40                         ora  $40,S           ; A=$0018 X=$0018 Y=$00A0 ; [SP-1003]
-0069E1  00 01                         brk  #$01            ; A=$0018 X=$0018 Y=$00A0 ; [SP-1006]
-
-; --- Data region ---
-0069E3  00700000                HEX     00700000 2E07002B 0D402A15 407F1F00
-0069F3  270E0002                HEX     270E0002 04400338 1D2C352A 557E7F1C
-006A03  39081000                HEX     39081000 0E0060
-; --- End data region (39 bytes) ---
-
-006A0A  75 00             L_006A0A    adc  $00,X           ; -> $0018 ; A=$0018 X=$0018 Y=$00A0 ; [SP-1011]
-006A0C  30 55                         bmi  L_006A63        ; A=$0018 X=$0018 Y=$00A0 ; [SP-1011]
-006A0E  01 28                         ora  ($28,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-1011]
-006A10  55 02                         eor  $02,X           ; -> $001A ; A=$0018 X=$0018 Y=$00A0 ; [SP-1011]
-006A12  78                            sei                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-1011]
-006A13  7F 03 70 64                   adc  >$647003,X      ; -> $64701B ; A=$0018 X=$0018 Y=$00A0 ; [SP-1011]
-006A17  01 20                         ora  ($20,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-1011]
+006814  1D000060                HEX     1D000060 0700001F 00607500 3855033C
+006824  51073855                HEX     51073855 03607500 001F0000 7C000057
+006834  0360550E                HEX     0360550E 70451E60 550E0057 03007C00
+006844  00700300                HEX     00700300 5C0E0057 3A40177A 00573A00
+006854  5C0E0070                HEX     5C0E0070 83400F00 703A005C 6A015E68
+006864  035C6A01                HEX     035C6A01 703A0040 0F00003E 00406B01
+006874  702A0778                HEX     702A0778 220F702A 07406B01 003E0000
+006884  7801002E                HEX     7801002E 07402B1D 600B3D40 2B1D002E
+006894  07007801                HEX     07007801 44002800 10007F03 41024103
+0068A4  41024103                HEX     41024103 7F031002 20014000 7C0F040A
+0068B4  040E040A                HEX     040E040A 040E7C0F 40080005 0002703F
+0068C4  10281038                HEX     10281038 10281038 703F0022 00001400
+0068D4  00080040                HEX     00080040 7F014020 01406001 40200140
+0068E4  6001407F                HEX     6001407F 01080150 0020007E 07020502
+0068F4  07020502                HEX     07020502 077E0720 04400200 01781F08
+006904  14081C08                HEX     14081C08 14081C78 1F001100 04000460
+006914  7F205020                HEX     7F205020 70205020 70607FC0 81D085D4
+006924  95DDD5D4                HEX     95DDD5D4 95D085C0 81008600 C09600D0
+006934  D600F4D6                HEX     D600F4D6 82D0D600 C0960000 86000098
+006944  0000DA00                HEX     0000DA00 C0DA82D0 D88AC0DA 8200DA00
+006954  00980000                HEX     00980000 E08000E8 8200EA8A C0EEAA00
+006964  EA8A00E8                HEX     EA8A00E8 8200E080 008300A0 8B00A8AB
+006974  00BAAB81                HEX     00BAAB81 A8AB00A0 8B000083 00008C80
+006984  00AD00A0                HEX     00AD00A0 AD81E8AD 85A0AD81 00AD0000
+006994  8C8000B0                HEX     8C8000B0 8000B481 00B58540 B79500B5
+0069A4  8500B481                HEX     8500B481 00B08060 015C0E56 1A552A7F
+0069B4  3F4E1C04                HEX     3F4E1C04 08000F00 703A0058 6A00542A
+0069C4  01747F01                HEX     01747F01 38720010 2000001C 00406B01
+0069D4  602A0350                HEX     602A0350 2A05707F 07604903 40000100
+0069E4  7000002E                HEX     7000002E 07002B0D 402A1540 7F1F0027
+0069F4  0E000204                HEX     0E000204 4003381D 2C352A55 7E7F1C39
+006A04  0810000E                HEX     0810000E 00607500 30550128 5502787F
+006A14  03706401                HEX     03706401 20400000 38000057 03405506
+006A24  20550A60                HEX     20550A60 7F0FA013 07000102 C2C2CAD2
+006A34  AAD4AAD5                HEX     AAD4AAD5 AAD4CAD2 C2C2888A 82A8CA82
+006A44  A8D182A8                HEX     A8D182A8 D582A8D1 82A8CA82 888A82A0
+006A54  A888A0A9                HEX     A888A0A9 8AA0C58A A0D58AA0 C58AA0A9
+006A64  8AA0A888                HEX     8AA0A888 00A1A100 A5A90095 AA00D5AA
+006A74  0095AA00                HEX     0095AA00 A5A900A1 A1848581 94A581D4
+006A84  A881D4AA                HEX     A881D4AA 81D4A881 94A58184 85819094
+006A94  84D09485                HEX     84D09485 D0A285D0 AA85D0A2 85D09485
+006AA4  909484C0                HEX     909484C0 D090C0D2 94C08A95 C0AA95C0
+006AB4  8A95C0D2                HEX     8A95C0D2 94C0D090 22777F3E 1C084400
+006AC4  6E017E01                HEX     6E017E01 7C003800 10000801 5C037C03
+006AD4  78017000                HEX     78017000 20001002 38077807 70036001
 ; Interrupt return (RTI)
-006A19  40                            rti                  ; A=$0018 X=$0018 Y=$00A0 ; [SP-1008]
-
-; --- Data region ---
-006A1A  00003800                HEX     00003800 00570340 55062055 0A60
-; --- End data region (14 bytes) ---
-
-006A28  7F 0F A0 13       L_006A28    adc  >$13A00F,X      ; -> $13A027 ; A=$0018 X=$0018 Y=$00A0 ; [SP-1011]
-006A2C  07 00                         ora  [$00]           ; A=$0018 X=$0018 Y=$00A0 ; [SP-1011]
-006A2E  01 02                         ora  ($02,X)         ; A=$0018 X=$0018 Y=$00A0 ; [SP-1011]
-006A30  C2 C2                         rep  #$C2            ; A=$0018 X=$0018 Y=$00A0 ; [SP-1011]
-006A32  CA                            dex                  ; A=$0018 X=$0017 Y=$00A0 ; [SP-1011]
-006A33  D2 AA                         cmp  ($AA)           ; A=$0018 X=$0017 Y=$00A0 ; [SP-1011]
-006A35  D4 AA                         pei  ($AA)           ; A=$0018 X=$0017 Y=$00A0 ; [SP-1013]
-006A37  D5 AA                         cmp  $AA,X           ; -> $00C1 ; A=$0018 X=$0017 Y=$00A0 ; [SP-1013]
-006A39  D4 CA                         pei  ($CA)           ; A=$0018 X=$0017 Y=$00A0 ; [SP-1015]
-006A3B  D2 C2                         cmp  ($C2)           ; A=$0018 X=$0017 Y=$00A0 ; [SP-1015]
-006A3D  C2 88                         rep  #$88            ; A=$0018 X=$0017 Y=$00A0 ; [SP-1015]
-006A3F  8A                            txa                  ; A=$0017 X=$0017 Y=$00A0 ; [SP-1015]
-006A40  82 A8 CA                      brl  $34EB           ; SLOTEXP_$2A8 - Slot expansion ROM offset $2A8 {Slot}
-
-; --- Data region ---
-006A43  82A8D182                HEX     82A8D182 A8D582A8 D182A8CA 82888A82
-; Loop counter: Y=#$A8
-006A53  A0A888A0                HEX     A0A888A0 A98AA0C5 8AA0D58A A0C58AA0
-; --- End data region (32 bytes) ---
-
-006A63  A9 8A             L_006A63    lda  #$8A            ; A=$008A X=$0017 Y=$00A0 ; [SP-1015]
-; Loop counter: Y=#$A8
-006A65  A0 A8                         ldy  #$A8            ; A=$008A X=$0017 Y=$00A8 ; [SP-1015]
-006A67  88                            dey                  ; A=$008A X=$0017 Y=$00A7 ; [SP-1015]
-006A68  00 A1                         brk  #$A1            ; A=$008A X=$0017 Y=$00A7 ; [SP-1018]
-
-; --- Data region ---
-006A6A  A100A5A9                HEX     A100A5A9 0095AA00 D5AA0095 AA00A5A9
-006A7A  00A1A184                HEX     00A1A184 858194A5 81D4A881 D4AA81D4
-006A8A  A88194A5                HEX     A88194A5 81848581 909484D0 9485D0A2
-006A9A  85D0AA85                HEX     85D0AA85 D0A285D0 94859094 84C0D090
-006AAA  C0D294C0                HEX     C0D294C0 8A95C0AA 95C08A95 C0D294C0
-006ABA  D0902277                HEX     D0902277 7F3E1C08 44006E01 7E017C00
-006ACA  38001000                HEX     38001000 08015C03 7C037801 70002000
-006ADA  10023807                HEX     10023807 78077003 60
-; --- End data region (121 bytes) ---
-
-006AE3  01 40             L_006AE3    ora  ($40,X)         ; A=$008A X=$0017 Y=$00A7 ; [SP-1050]
-006AE5  00 20                         brk  #$20            ; A=$008A X=$0017 Y=$00A7 ; [SP-1053]
-
-; --- Data region ---
-006AE7  04700E70                HEX     04700E70 0F60
-; --- End data region (6 bytes) ---
-
-006AED  07 40             L_006AED    ora  [$40]           ; A=$008A X=$0017 Y=$00A7 ; [SP-1051]
-006AEF  03 00                         ora  $00,S           ; A=$008A X=$0017 Y=$00A7 ; [SP-1051]
-006AF1  01 40                         ora  ($40,X)         ; A=$008A X=$0017 Y=$00A7 ; [SP-1051]
-006AF3  08                            php                  ; A=$008A X=$0017 Y=$00A7 ; [SP-1052]
-006AF4  60                            rts                  ; A=$008A X=$0017 Y=$00A7 ; [SP-1050]
-
-; --- Data region ---
-006AF5  1D60                    HEX     1D60
-; --- End data region (2 bytes) ---
-
-006AF7  1F 40 0F 00       L_006AF7    ora  >$000F40,X      ; -> $000F57 ; A=$008A X=$0017 Y=$00A7 ; [SP-1050]
-006AFB  07 00                         ora  [$00]           ; A=$008A X=$0017 Y=$00A7 ; [SP-1047]
-006AFD  02 00                         cop  #$00            ; A=$008A X=$0017 Y=$00A7 ; [SP-1050]
-
-; --- Data region ---
-006AFF  11403B40                HEX     11403B40 3F001F00 0E000408 1C3E7F77
-006B0F  22100038                HEX     22100038 007C007E 016E0144 00200070
-006B1F  0078017C                HEX     0078017C 035C0308 01400060
-; --- End data region (44 bytes) ---
-
-006B2B  01 70             L_006B2B    ora  ($70,X)         ; A=$008A X=$0017 Y=$00A7 ; [SP-1066]
-006B2D  03 78                         ora  $78,S           ; A=$008A X=$0017 Y=$00A7 ; [SP-1066]
-006B2F  07 38                         ora  [$38]           ; A=$008A X=$0017 Y=$00A7 ; [SP-1066]
-006B31  07 10                         ora  [$10]           ; A=$008A X=$0017 Y=$00A7 ; [SP-1066]
-006B33  02 00                         cop  #$00            ; A=$008A X=$0017 Y=$00A7 ; [SP-1069]
-
-; --- Data region ---
-006B35  01400360                HEX     01400360
-; --- End data region (4 bytes) ---
-
-006B39  07 70             L_006B39    ora  [$70]           ; A=$008A X=$0017 Y=$00A7 ; [SP-1069]
-006B3B  0F 70 0E 20                   ora  >$200E70        ; A=$008A X=$0017 Y=$00A7 ; [SP-1069]
-006B3F  04 00                         tsb  $00             ; A=$008A X=$0017 Y=$00A7 ; [SP-1069]
-006B41  02 00                         cop  #$00            ; A=$008A X=$0017 Y=$00A7 ; [SP-1072]
-
-; --- Data region ---
-006B43  07400F60                HEX     07400F60
-; --- End data region (4 bytes) ---
-
-006B47  1F 60 1D 40       L_006B47    ora  >$401D60,X      ; -> $401D77 ; A=$008A X=$0017 Y=$00A7 ; [SP-1072]
-006B4B  08                            php                  ; A=$008A X=$0017 Y=$00A7 ; [SP-1072]
-006B4C  00 04                         brk  #$04            ; A=$008A X=$0017 Y=$00A7 ; [SP-1075]
-
-; --- Data region ---
-006B4E  000E001F                HEX     000E001F 403F403B 00114000 04000001
-006B5E  02000002                HEX     02000002 01000044 00000028 00000010
-006B6E  00007F7F                HEX     00007F7F 7F037F7F 7F030300 1C030300
-006B7E  1C030300                HEX     1C030300 7C030300 7C030300 1C030300
-006B8E  1C030300                HEX     1C030300 7C030300 7C030300 7C030300
-006B9E  7C030300                HEX     7C030300 7C030300 7C030300 7C030300
-006BAE  7C037F7F                HEX     7C037F7F 7F037F7F 7F030008 40000010
-006BBE  20000020                HEX     20000020 10000040 08000000 05000000
-006BCE  0200707F                HEX     0200707F 7F3F707F 7F3F3000 40333000
+006AE4  40002004                HEX     40002004 700E700F 60074003 00014008
+006AF4  601D601F                HEX     601D601F 400F0007 00020011 403B403F
+006B04  001F000E                HEX     001F000E 0004081C 3E7F7722 10003800
+006B14  7C007E01                HEX     7C007E01 6E014400 20007000 78017C03
+006B24  5C030801                HEX     5C030801 40006001 70037807 38071002
+006B34  00014003                HEX     00014003 6007700F 700E2004 00020007
 ; Interrupt return (RTI)
-; String: "@30"
-006BDE  40333000                HEX     40333000 403F3000 403F3000 40333000
+006B44  400F601F                HEX     400F601F 601D4008 0004000E 001F403F
 ; Interrupt return (RTI)
-; String: "@30"
-006BEE  40333000                HEX     40333000 403F3000 403F3000 403F3000
+006B54  403B0011                HEX     403B0011 40000400 00010200 00020100
+006B64  00440000                HEX     00440000 00280000 00100000 7F7F7F03
+006B74  7F7F7F03                HEX     7F7F7F03 03001C03 03001C03 03007C03
+006B84  03007C03                HEX     03007C03 03001C03 03001C03 03007C03
+006B94  03007C03                HEX     03007C03 03007C03 03007C03 03007C03
+006BA4  03007C03                HEX     03007C03 03007C03 03007C03 7F7F7F03
+006BB4  7F7F7F03                HEX     7F7F7F03 00084000 00102000 00201000
+006BC4  00400800                HEX     00400800 00000500 00000200 707F7F3F
+006BD4  707F7F3F                HEX     707F7F3F 30004033 30004033 3000403F
+006BE4  3000403F                HEX     3000403F 30004033 30004033 3000403F
+006BF4  3000403F                HEX     3000403F 3000403F 3000403F 3000403F
+006C04  3000403F                HEX     3000403F 3000403F 3000403F 707F7F3F
+006C14  707F7F3F                HEX     707F7F3F 00021000 00040800 00080400
+006C24  00100200                HEX     00100200 00200100 00400000 7C7F7F0F
+006C34  7C7F7F0F                HEX     7C7F7F0F 0C00700C 0C00700C 0C00700F
+006C44  0C00700F                HEX     0C00700F 0C00700C 0C00700C 0C00700F
+006C54  0C00700F                HEX     0C00700F 0C00700F 0C00700F 0C00700F
+006C64  0C00700F                HEX     0C00700F 0C00700F 0C00700F 7C7F7F0F
+006C74  7C7F7F0F                HEX     7C7F7F0F 00200002 00004000 01000000
+006C84  41000000                HEX     41000000 00220000 00001400 00000008
+006C94  0000407F                HEX     0000407F 7F7F0140 7F7F7F01 4001004E
+006CA4  01400100                HEX     01400100 4E014001 007E0140 01007E01
 ; Interrupt return (RTI)
-; String: "@?0"
-006BFE  403F3000                HEX     403F3000 403F3000 403F3000 403F3000
-; Interrupt return (RTI)
-006C0E  403F707F                HEX     403F707F 7F3F707F 7F3F0002 10000004
-006C1E  08000008                HEX     08000008 04000010 02000020 01000040
-006C2E  00007C7F                HEX     00007C7F 7F0F7C7F 7F0F0C00 700C0C00
-006C3E  700C0C00                HEX     700C0C00 700F0C00 700F0C00 700C0C00
-006C4E  700C0C00                HEX     700C0C00 700F0C00 700F0C00 700F0C00
-006C5E  700F0C00                HEX     700F0C00 700F0C00 700F0C00 700F0C00
-006C6E  700F7C7F                HEX     700F7C7F 7F0F7C7F 7F0F0020 00020000
-; Interrupt return (RTI)
-006C7E  40000100                HEX     40000100 00004100 00000022 00000000
-006C8E  14000000                HEX     14000000 00080000 407F7F7F 01407F7F
-006C9E  7F014001                HEX     7F014001 004E0140 01004E01 4001007E
-006CAE  01400100                HEX     01400100 7E014001 004E0140 01004E01
-; Interrupt return (RTI)
-006CBE  4001007E                HEX     4001007E 01400100 7E014001 007E0140
-006CCE  01007E01                HEX     01007E01 4001007E 01400100 7E014001
-006CDE  007E0140                HEX     007E0140 01007E01 407F7F7F 01407F7F
-006CEE  7F010001                HEX     7F010001 08000002 04000004 02000008
-006CFE  01000050                HEX     01000050 00000020 00007E7F 7F077E7F
-006D0E  7F070600                HEX     7F070600 38060600 38060600 78070600
-006D1E  78070600                HEX     78070600 38060600 38060600 78070600
-006D2E  78070600                HEX     78070600 78070600 78070600 78070600
-006D3E  78070600                HEX     78070600 78070600 78077E7F 7F077E7F
-006D4E  7F070004                HEX     7F070004 20000008 10000010 08000020
-006D5E  04000040                HEX     04000040 02000000 0100787F 7F1F787F
-006D6E  7F1F1800                HEX     7F1F1800 60
-; --- End data region (549 bytes) ---
-
-006D73  19 18 00          L_006D73    ora  !$0018,Y        ; -> $00BF ; A=$008A X=$0017 Y=$00A7 ; [SP-1327]
-006D76  60                            rts                  ; A=$008A X=$0017 Y=$00A7 ; [SP-1325]
-
-; --- Data region ---
-006D77  19180060                HEX     19180060
-; --- End data region (4 bytes) ---
-
-006D7B  1F 18 00 60       L_006D7B    ora  >$600018,X      ; -> $60002F ; A=$008A X=$0017 Y=$00A7 ; [SP-1323]
-006D7F  1F 18 00 60                   ora  >$600018,X      ; -> $60002F ; A=$008A X=$0017 Y=$00A7 ; [SP-1323]
-006D83  19 18 00                      ora  !$0018,Y        ; -> $00BF ; A=$008A X=$0017 Y=$00A7 ; [SP-1323]
-006D86  60                            rts                  ; A=$008A X=$0017 Y=$00A7 ; [SP-1321]
-
-; --- Data region ---
-006D87  19180060                HEX     19180060
-; --- End data region (4 bytes) ---
-
-006D8B  1F 18 00 60       L_006D8B    ora  >$600018,X      ; -> $60002F ; A=$008A X=$0017 Y=$00A7 ; [SP-1319]
-006D8F  1F 18 00 60                   ora  >$600018,X      ; -> $60002F ; A=$008A X=$0017 Y=$00A7 ; [SP-1319]
-006D93  1F 18 00 60                   ora  >$600018,X      ; -> $60002F ; A=$008A X=$0017 Y=$00A7 ; [SP-1319]
-006D97  1F 18 00 60                   ora  >$600018,X      ; -> $60002F ; A=$008A X=$0017 Y=$00A7 ; [SP-1319]
-006D9B  1F 18 00 60                   ora  >$600018,X      ; -> $60002F ; A=$008A X=$0017 Y=$00A7 ; [SP-1319]
-006D9F  1F 18 00 60                   ora  >$600018,X      ; -> $60002F ; A=$008A X=$0017 Y=$00A7 ; [SP-1319]
-006DA3  1F 18 00 60                   ora  >$600018,X      ; -> $60002F ; A=$008A X=$0017 Y=$00A7 ; [SP-1319]
-006DA7  1F 78 7F 7F                   ora  >$7F7F78,X      ; -> $7F7F8F ; A=$008A X=$0017 Y=$00A7 ; [SP-1319]
-006DAB  1F 78 7F 7F                   ora  >$7F7F78,X      ; -> $7F7F8F ; A=$008A X=$0017 Y=$00A7 ; [SP-1319]
-006DAF  1F 00 10 00                   ora  >$001000,X      ; -> $001017 ; A=$008A X=$0017 Y=$00A7 ; [SP-1319]
-006DB3  00 00                         brk  #$00            ; A=$008A X=$0017 Y=$00A7 ; [SP-1322]
-
-; --- Data region ---
-006DB5  20400000                HEX     20400000 40200000 00110000 000A0000
-006DC5  00040060                HEX     00040060
-; --- End data region (20 bytes) ---
-
-006DC9  7F 7F 7F 60       L_006DC9    adc  >$607F7F,X      ; -> $607F96 ; A=$008A X=$0017 Y=$00A7 ; [SP-1347]
-006DCD  7F 7F 7F 60                   adc  >$607F7F,X      ; -> $607F96 ; A=$008A X=$0017 Y=$00A7 ; [SP-1347]
-006DD1  00 00                         brk  #$00            ; A=$008A X=$0017 Y=$00A7 ; [SP-1350]
-
-; --- Data region ---
-006DD3  67600000                HEX     67600000 67600000 7F600000 7F600000
-006DE3  67600000                HEX     67600000 67600000 7F600000 7F600000
-006DF3  7F600000                HEX     7F600000 7F600000 7F600000 7F600000
-006E03  7F600000                HEX     7F600000 7F60
-; --- End data region (54 bytes) ---
-
-006E09  7F 7F 7F 60       L_006E09    adc  >$607F7F,X      ; -> $607F96 ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E0D  7F 7F 7F 03                   adc  >$037F7F,X      ; -> $037F96 ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E11  3F 33 3F 03                   and  >$033F33,X      ; -> $033F4A ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E15  03 3F                         ora  $3F,S           ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E17  33 3F                         and  ($3F,S),Y       ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E19  03 03                         ora  $03,S           ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E1B  03 33                         ora  $33,S           ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E1D  03 03                         ora  $03,S           ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E1F  03 1F                         ora  $1F,S           ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E21  33 1F                         and  ($1F,S),Y       ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E23  03 03                         ora  $03,S           ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E25  03 33                         ora  $33,S           ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E27  03 03                         ora  $03,S           ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E29  3F 3F 1E 3F                   and  >$3F1E3F,X      ; -> $3F1E56 ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E2D  3F 3F 3F 0C                   and  >$0C3F3F,X      ; -> $0C3F56 ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E31  3F 3F 33 1E                   and  >$1E333F,X      ; -> $1E3356 ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E35  33 40                         and  ($40,S),Y       ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E37  31 3F                         and  ($3F),Y         ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E39  33 00                         and  ($00,S),Y       ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E3B  1C 33 1E                      trb  $1E33           ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E3E  33 40                         and  ($40,S),Y       ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E40  31 3F                         and  ($3F),Y         ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E42  33 00                         and  ($00,S),Y       ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E44  1C 33 3F                      trb  $3F33           ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E47  33 40                         and  ($40,S),Y       ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E49  31 3F                         and  ($3F),Y         ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E4B  33 00                         and  ($00,S),Y       ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E4D  1C 33 3F                      trb  $3F33           ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E50  33 40                         and  ($40,S),Y       ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E52  31 3F                         and  ($3F),Y         ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E54  33 00                         and  ($00,S),Y       ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E56  1C 33 33                      trb  $3333           ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E59  33 40                         and  ($40,S),Y       ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E5B  31 0C                         and  ($0C),Y         ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E5D  37 00                         and  [$00],Y         ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E5F  1C 33 33                      trb  $3333           ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E62  33 40                         and  ($40,S),Y       ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E64  31 0C                         and  ($0C),Y         ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E66  37 00                         and  [$00],Y         ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E68  1C 1E 33                      trb  $331E           ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E6B  33 40                         and  ($40,S),Y       ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E6D  35 0C                         and  $0C,X           ; -> $0023 ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E6F  3F 00 1C 1E                   and  >$1E1C00,X      ; -> $1E1C17 ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-006E73  33 33                         and  ($33,S),Y       ; A=$008A X=$0017 Y=$00A7 ; [SP-1362]
-; Interrupt return (RTI)
-006E75  40                            rti                  ; A=$008A X=$0017 Y=$00A7 ; [SP-1359]
-
-; --- Data region ---
-006E76  350C3F00                HEX     350C3F00 1C0C3333 40350C3B 00000C33
-006E86  3340350C                HEX     3340350C 3B00000C 3F3F403B 3F33001C
-006E96  0C3F3F40                HEX     0C3F3F40 3B3F3300 1C0C1E1E 40313F33
-006EA6  001C0C1E                HEX     001C0C1E 1E40313F 33001C18 003C0019
-006EB6  017F0118                HEX     017F0118 0018003C 00240024 002400FE
-006EC6  FF8F8180                HEX     FF8F8180 90FFFF9F D5AA9581 80908180
-006ED6  90DDBB97                HEX     90DDBB97 D58895CD 9993D588 95DDBB95
-006EE6  81809081                HEX     81809081 80908180 90819F90 E1F590B9
-006EF6  D593BDD1                HEX     D593BDD1 97B9D593 E1F59081 9F908180
-006F06  90818090                HEX     90818090 FEFF8FF8 FFBF8480 C0FCFFFF
-006F16  D4AAD584                HEX     D4AAD584 80C08480 C0F4EEDD D4A2D4B4
-006F26  E6CCD4A2                HEX     E6CCD4A2 D4F4EED5 8480C084 80C08480
-006F36  C084FCC0                HEX     C084FCC0 84D7C3E4 D5CEF4C5 DEE4D5CE
-006F46  84D7C384                HEX     84D7C384 FCC08480 C08480C0 F8FFBFE0
-006F56  FFFF8190                HEX     FFFF8190 808082F0 FFFF83D0 AAD58290
-006F66  80808290                HEX     80808290 808082D0 BBF782D0 8AD182D0
-006F76  99B382D0                HEX     99B382D0 8AD182D0 BBD78290 80808290
-006F86  80808290                HEX     80808290 80808290 F0838290 DC8E8290
-006F96  D7BA82D0                HEX     D7BA82D0 97FA8290 D7BA8290 DC8E8290
-006FA6  F0838290                HEX     F0838290 80808290 808082E0 FFFF8180
-006FB6  FFFF87C0                HEX     FFFF87C0 808088C0 FFFF8FC0 AAD58AC0
-006FC6  808088C0                HEX     808088C0 808088C0 EEDD8BC0 AAC48AC0
-006FD6  E6CC89C0                HEX     E6CC89C0 AAC48AC0 EEDD8AC0 808088C0
-006FE6  808088C0                HEX     808088C0 808088C0 C08F88C0 F0BA88C0
-006FF6  DCEA89C0                HEX     DCEA89C0 DEE88BC0 DCEA89C0 F0BA88C0
-007006  C08F88C0                HEX     C08F88C0 808088C0 80808880 FFFF87FC
-007016  FF9F8280                HEX     FF9F8280 A0FEFFBF AAD5AA82 80A08280
-007026  A0BAF7AE                HEX     A0BAF7AE AA91AA9A B3A6AA91 AABAF7AA
-007036  8280A082                HEX     8280A082 80A08280 A082BEA0 C2EBA1F2
-007046  AAA7FAA2                HEX     AAA7FAA2 AFF2AAA7 C2EBA182 BEA08280
-007056  A08280A0                HEX     A08280A0 FCFF9FF0 FFFF8088 808081F8
-007066  FFFF81A8                HEX     FFFF81A8 D5AA8188 80808188 808081E8
-007076  DDBB81A8                HEX     DDBB81A8 C5A881E8 CC9981A8 C5A881E8
-007086  DDAB8188                HEX     DDAB8188 80808188 80808188 80808188
-007096  F8818188                HEX     F8818188 AE8781C8 AB9D81E8 8BBD81C8
-0070A6  AB9D8188                HEX     AB9D8188 AE878188 F8818188 80808188
-0070B6  808081F0                HEX     808081F0 FFFF80C0 FFFF83A0 808084E0
-0070C6  FFFF87A0                HEX     FFFF87A0 D5AA85A0 808084A0 808084A0
-0070D6  F7EE85A0                HEX     F7EE85A0 95A285A0 B3E684A0 95A285A0
-0070E6  F7AE85A0                HEX     F7AE85A0 808084A0 808084A0 808084A0
-0070F6  E08784A0                HEX     E08784A0 B89D84A0 AEF584A0 AFF485A0
-007106  AEF584A0                HEX     AEF584A0 B89D84A0 E08784A0 808084A0
-007116  808084C0                HEX     808084C0 FFFF8300 00000000 00000000
-007126  00000000                HEX     00000000 00000000 00000000 00000000
-007136  00000000                HEX     00000000 00000000 00000000 00000000
-007146  00000000                HEX     00000000 00000000 00000000 00000000
-007156  00000000                HEX     00000000 00000000 00000000 00000000
-007166  00000000                HEX     00000000 00000000 00000000 00000000
-007176  00000000                HEX     00000000 00000000 00000000 00000000
-007186  00000000                HEX     00000000 00000000 00000000 00000000
-007196  00000000                HEX     00000000 00000000 00000000 00000000
-0071A6  00000000                HEX     00000000 00000000 00000000 00000000
-0071B6  00000000                HEX     00000000 00000000 00000000 00000000
-0071C6  00000000                HEX     00000000 00000000 00000000 00000000
-0071D6  00000000                HEX     00000000 00000000 00000000 00000000
-0071E6  00000000                HEX     00000000 00000000 00000000 00000000
-0071F6  00000000                HEX     00000000 00000000 0000
+006CB4  4001004E                HEX     4001004E 01400100 4E014001 007E0140
+006CC4  01007E01                HEX     01007E01 4001007E 01400100 7E014001
+006CD4  007E0140                HEX     007E0140 01007E01 4001007E 01400100
+006CE4  7E01407F                HEX     7E01407F 7F7F0140 7F7F7F01 00010800
+006CF4  00020400                HEX     00020400 00040200 00080100 00500000
+006D04  00200000                HEX     00200000 7E7F7F07 7E7F7F07 06003806
+006D14  06003806                HEX     06003806 06007807 06007807 06003806
+006D24  06003806                HEX     06003806 06007807 06007807 06007807
+006D34  06007807                HEX     06007807 06007807 06007807 06007807
+006D44  06007807                HEX     06007807 7E7F7F07 7E7F7F07 00042000
+006D54  00081000                HEX     00081000 00100800 00200400 00400200
+006D64  00000100                HEX     00000100 787F7F1F 787F7F1F 18006019
+006D74  18006019                HEX     18006019 1800601F 1800601F 18006019
+006D84  18006019                HEX     18006019 1800601F 1800601F 1800601F
+006D94  1800601F                HEX     1800601F 1800601F 1800601F 1800601F
+006DA4  1800601F                HEX     1800601F 787F7F1F 787F7F1F 00100000
+006DB4  00204000                HEX     00204000 00402000 00001100 00000A00
+006DC4  00000400                HEX     00000400 607F7F7F 607F7F7F 60000067
+006DD4  60000067                HEX     60000067 6000007F 6000007F 60000067
+006DE4  60000067                HEX     60000067 6000007F 6000007F 6000007F
+006DF4  6000007F                HEX     6000007F 6000007F 6000007F 6000007F
+006E04  6000007F                HEX     6000007F 607F7F7F 607F7F7F 033F333F
+006E14  03033F33                HEX     03033F33 3F030303 33030303 1F331F03
+006E24  03033303                HEX     03033303 033F3F1E 3F3F3F3F 0C3F3F33
+006E34  1E334031                HEX     1E334031 3F33001C 331E3340 313F3300
+006E44  1C333F33                HEX     1C333F33 40313F33 001C333F 3340313F
+006E54  33001C33                HEX     33001C33 33334031 0C37001C 33333340
+006E64  310C3700                HEX     310C3700 1C1E3333 40350C3F 001C1E33
+006E74  3340350C                HEX     3340350C 3F001C0C 33334035 0C3B0000
+006E84  0C333340                HEX     0C333340 350C3B00 000C3F3F 403B3F33
+006E94  001C0C3F                HEX     001C0C3F 3F403B3F 33001C0C 1E1E4031
+006EA4  3F33001C                HEX     3F33001C 0C1E1E40 313F3300 1C18003C
+006EB4  0019017F                HEX     0019017F 01180018 003C0024 00240024
+006EC4  00FEFF8F                HEX     00FEFF8F 818090FF FF9FD5AA 95818090
+006ED4  818090DD                HEX     818090DD BB97D588 95CD9993 D58895DD
+006EE4  BB958180                HEX     BB958180 90818090 81809081 9F90E1F5
+006EF4  90B9D593                HEX     90B9D593 BDD197B9 D593E1F5 90819F90
+006F04  81809081                HEX     81809081 8090FEFF 8FF8FFBF 8480C0FC
+006F14  FFFFD4AA                HEX     FFFFD4AA D58480C0 8480C0F4 EEDDD4A2
+006F24  D4B4E6CC                HEX     D4B4E6CC D4A2D4F4 EED58480 C08480C0
+006F34  8480C084                HEX     8480C084 FCC084D7 C3E4D5CE F4C5DEE4
+006F44  D5CE84D7                HEX     D5CE84D7 C384FCC0 8480C084 80C0F8FF
+006F54  BFE0FFFF                HEX     BFE0FFFF 81908080 82F0FFFF 83D0AAD5
+006F64  82908080                HEX     82908080 82908080 82D0BBF7 82D08AD1
+006F74  82D099B3                HEX     82D099B3 82D08AD1 82D0BBD7 82908080
+006F84  82908080                HEX     82908080 82908080 8290F083 8290DC8E
+006F94  8290D7BA                HEX     8290D7BA 82D097FA 8290D7BA 8290DC8E
+006FA4  8290F083                HEX     8290F083 82908080 82908080 82E0FFFF
+006FB4  8180FFFF                HEX     8180FFFF 87C08080 88C0FFFF 8FC0AAD5
+006FC4  8AC08080                HEX     8AC08080 88C08080 88C0EEDD 8BC0AAC4
+006FD4  8AC0E6CC                HEX     8AC0E6CC 89C0AAC4 8AC0EEDD 8AC08080
+006FE4  88C08080                HEX     88C08080 88C08080 88C0C08F 88C0F0BA
+006FF4  88C0DCEA                HEX     88C0DCEA 89C0DEE8 8BC0DCEA 89C0F0BA
+007004  88C0C08F                HEX     88C0C08F 88C08080 88C08080 8880FFFF
+007014  87FCFF9F                HEX     87FCFF9F 8280A0FE FFBFAAD5 AA8280A0
+007024  8280A0BA                HEX     8280A0BA F7AEAA91 AA9AB3A6 AA91AABA
+007034  F7AA8280                HEX     F7AA8280 A08280A0 8280A082 BEA0C2EB
+007044  A1F2AAA7                HEX     A1F2AAA7 FAA2AFF2 AAA7C2EB A182BEA0
+007054  8280A082                HEX     8280A082 80A0FCFF 9FF0FFFF 80888080
+007064  81F8FFFF                HEX     81F8FFFF 81A8D5AA 81888080 81888080
+007074  81E8DDBB                HEX     81E8DDBB 81A8C5A8 81E8CC99 81A8C5A8
+007084  81E8DDAB                HEX     81E8DDAB 81888080 81888080 81888080
+007094  8188F881                HEX     8188F881 8188AE87 81C8AB9D 81E88BBD
+0070A4  81C8AB9D                HEX     81C8AB9D 8188AE87 8188F881 81888080
+0070B4  81888080                HEX     81888080 81F0FFFF 80C0FFFF 83A08080
+0070C4  84E0FFFF                HEX     84E0FFFF 87A0D5AA 85A08080 84A08080
+0070D4  84A0F7EE                HEX     84A0F7EE 85A095A2 85A0B3E6 84A095A2
+0070E4  85A0F7AE                HEX     85A0F7AE 85A08080 84A08080 84A08080
+0070F4  84A0E087                HEX     84A0E087 84A0B89D 84A0AEF5 84A0AFF4
+007104  85A0AEF5                HEX     85A0AEF5 84A0B89D 84A0E087 84A08080
+007114  84A08080                HEX     84A08080 84C0FFFF 83000000 00000000
+007124  00000000                HEX     00000000 00000000 00000000 00000000
+007134  00000000                HEX     00000000 00000000 00000000 00000000
+007144  00000000                HEX     00000000 00000000 00000000 00000000
+007154  00000000                HEX     00000000 00000000 00000000 00000000
+007164  00000000                HEX     00000000 00000000 00000000 00000000
+007174  00000000                HEX     00000000 00000000 00000000 00000000
+007184  00000000                HEX     00000000 00000000 00000000 00000000
+007194  00000000                HEX     00000000 00000000 00000000 00000000
+0071A4  00000000                HEX     00000000 00000000 00000000 00000000
+0071B4  00000000                HEX     00000000 00000000 00000000 00000000
+0071C4  00000000                HEX     00000000 00000000 00000000 00000000
+0071D4  00000000                HEX     00000000 00000000 00000000 00000000
+0071E4  00000000                HEX     00000000 00000000 00000000 00000000
+0071F4  00000000                HEX     00000000 00000000 00000000

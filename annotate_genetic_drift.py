@@ -7,6 +7,9 @@ Reads genetic_drift_complete.s and produces genetic_drift_annotated.s with:
 - Section headers for major code regions
 - Inline game-logic comments
 - Data table labels
+
+Supports both legacy (L_00XXXX) and new deasmiigs semantic label prefixes
+(sub_, loc_, func_, loop_, dispatch_, irq_).
 """
 import re
 import sys
@@ -15,150 +18,165 @@ import os
 INPUT = os.path.join(os.path.dirname(__file__), "genetic_drift_complete.s")
 OUTPUT = os.path.join(os.path.dirname(__file__), "genetic_drift_annotated.s")
 
+# Auto-generated label prefixes emitted by deasmiigs
+AUTO_PREFIXES = ["L_", "loc_", "sub_", "func_", "loop_", "dispatch_", "irq_"]
+
 # ============================================================================
 # FUNCTION LABEL RENAMES
-# Maps L_00XXXX -> meaningful name
+# Maps address (6 hex digits) -> meaningful name
+# Works with any auto-generated prefix: L_00XXXX, loc_00XXXX, sub_00XXXX, etc.
 # ============================================================================
-LABEL_RENAMES = {
+LABEL_BY_ADDR = {
     # Relocated block functions
-    "L_00025D": "RWTS_ReadSector",
-    "L_00025E": "RWTS_SyncLoop",
-    "L_00025F": "RWTS_WaitNibble1",
-    "L_000264": "RWTS_CheckD5",
-    "L_000268": "RWTS_WaitNibble2",
-    "L_000272": "RWTS_WaitNibble3",
-    "L_000284": "RWTS_ReadAddr",
-    "L_000288": "RWTS_AddrNibble1",
-    "L_000290": "RWTS_AddrNibble2",
-    "L_0002A1": "RWTS_FoundSector",
-    "L_0002A3": "RWTS_ReadDataLoop",
-    "L_0002D1": "RWTS_DecodeData",
-    "L_000100": "DiskBoot_Setup",
-    "L_000211": "DiskBoot_NibbleDecode",
-    "L_00021B": "DiskBoot_SkipSync",
-    "L_000224": "DiskBoot_StoreNibble",
+    "00025D": "RWTS_ReadSector",
+    "00025E": "RWTS_SyncLoop",
+    "00025F": "RWTS_WaitNibble1",
+    "000264": "RWTS_CheckD5",
+    "000268": "RWTS_WaitNibble2",
+    "000272": "RWTS_WaitNibble3",
+    "000284": "RWTS_ReadAddr",
+    "000288": "RWTS_AddrNibble1",
+    "000290": "RWTS_AddrNibble2",
+    "0002A1": "RWTS_FoundSector",
+    "0002A3": "RWTS_ReadDataLoop",
+    "0002D1": "RWTS_DecodeData",
+    "000100": "DiskBoot_Setup",
+    "000211": "DiskBoot_NibbleDecode",
+    "00021B": "DiskBoot_SkipSync",
+    "000224": "DiskBoot_StoreNibble",
 
     # Main game functions
-    "L_004001": "DrawSprite",
-    "L_0040C0": "DrawSpriteXY",
-    "L_0040E0": "DrawSprite_RowLoop",
-    "L_0040F8": "DrawSprite_ColLoop",
-    "L_00410D": "DrawSprite_NextRow",
-    "L_004115": "DrawSprite_IncCol",
-    "L_00411F": "DrawSprite_Done",
-    "L_004120": "InitHiRes",
-    "L_004128": "InitHiRes_ClearLoop",
-    "L_00413E": "ClearPlayfield",
-    "L_004140": "ClearPF_RowLoop",
-    "L_00414E": "ClearPF_ColLoop",
-    "L_00415B": "SetClipBounds",
-    "L_0042EC": "PrintHexByte",
-    "L_0042FC": "DrawTitleScreen",
-    "L_00437A": "InitGameVarsA",
-    "L_004387": "InitGameVarsB",
-    "L_00439E": "InitGameVarsC",
-    "L_0043B5": "SetupTitle",
-    "L_0043CD": "PerFrameUpdate",
-    "L_0043DD": "PerFrameUpdate_JmpDraw",
-    "L_0043E0": "KeyboardHandler",
-    "L_0043EF": "Key_CheckY",
-    "L_0043F7": "Key_NoKey",
-    "L_0043F8": "Key_CheckJ",
-    "L_004401": "Key_CheckSpace",
-    "L_00440A": "Key_CheckG",
-    "L_004413": "Key_CheckAF",
-    "L_00441C": "Key_4DirFire",
-    "L_004441": "ClearSpriteArea",
-    "L_004455": "ClearSprite_Loop",
-    "L_00446B": "ClearSprite_Down",
-    "L_004476": "ClearSprite_Right",
-    "L_004492": "ClearSprite_Left",
-    "L_004499": "DrawProjectile",
-    "L_0044C4": "DrawHitFlash",
-    "L_0044EF": "DrawHitFlash_B",
-    "L_00450E": "PeriodicGameLogic",
-    "L_00457F": "MoveAllLasers",
-    "L_004641": "MoveLaserUp",
-    "L_00464B": "MoveLaserLeft",
-    "L_004658": "MoveLaserDownRight",
-    "L_004914": "DrawAlienRow",
-    "L_004940": "UpdateAlienAnim",
-    "L_0049C6": "DrawAlienSide",
-    "L_004A2F": "DrawAlienSideB",
-    "L_004A86": "GameOver",
-    "L_004AE0": "AddScore",
-    "L_004B0C": "SelectProjectileType",
-    "L_004B65": "PunishmentRoutine",
-    "L_004C3C": "PlayPunishSound",
-    "L_004C56": "PlayTone",
-    "L_004C71": "PlayToneB",
-    "L_004C99": "LevelCompleteAnim",
-    "L_004D33": "DisplayLevelNum",
-    "L_004D73": "LevelSetup",
-    "L_004D87": "UpdateAlienPositions",
-    "L_004DC4": "UpdateAlienPosB",
-    "L_004DE3": "AlienEvolve",
-    "L_004E15": "AlienEvolve_Inc",  # Not a label, but inline
-    "L_004E38": "AlienHitHandler",
-    "L_004E8B": "AlienHitHandlerB",
-    "L_004EE0": "AlienHitHandlerC",
-    "L_004F35": "PlaySound",
-    "L_004F5B": "CheckSatelliteHits",
-    "L_005227": "SpawnSatellite",
-    "L_00527F": "DrawSatellite",
-    "L_0052A1": "DrawSatelliteB",
-    "L_0052C3": "DrawSatelliteC",
-    "L_0052C9": "DrawSatelliteD",
-    "L_0052CF": "DrawSatelliteE",
-    "L_0052E5": "DrawBase",
-    "L_0052F3": "RedrawScreen",
-    "L_00533B": "RedrawScreenB",
-    "L_005370": "Set4DirAmmo",
-    "L_005376": "Set4DirAmmoB",
-    "L_005381": "Fire4Dir",
-    "L_005591": "DrawAlienRowDir",
-    "L_0055E3": "DrawAlienRowDirB",
-    "L_00560E": "DrawAlienRowDirC",
-    "L_0056C9": "DrawAlienRowDirD",
-    "L_0056E4": "IncreaseDifficulty",
-    "L_0056F3": "LoadDifficultyTables",
+    "004001": "DrawSprite",
+    "0040C0": "DrawSpriteXY",
+    "0040E0": "DrawSprite_RowLoop",
+    "0040F8": "DrawSprite_ColLoop",
+    "00410D": "DrawSprite_NextRow",
+    "004115": "DrawSprite_IncCol",
+    "00411F": "DrawSprite_Done",
+    "004120": "InitHiRes",
+    "004128": "InitHiRes_ClearLoop",
+    "00413E": "ClearPlayfield",
+    "004140": "ClearPF_RowLoop",
+    "00414E": "ClearPF_ColLoop",
+    "00415B": "SetClipBounds",
+    "0042EC": "PrintHexByte",
+    "0042FC": "DrawTitleScreen",
+    "00437A": "InitGameVarsA",
+    "004387": "InitGameVarsB",
+    "00439E": "InitGameVarsC",
+    "0043B5": "SetupTitle",
+    "0043CD": "PerFrameUpdate",
+    "0043DD": "PerFrameUpdate_JmpDraw",
+    "0043E0": "KeyboardHandler",
+    "0043EF": "Key_CheckY",
+    "0043F7": "Key_NoKey",
+    "0043F8": "Key_CheckJ",
+    "004401": "Key_CheckSpace",
+    "00440A": "Key_CheckG",
+    "004413": "Key_CheckAF",
+    "00441C": "Key_4DirFire",
+    "004441": "ClearSpriteArea",
+    "004455": "ClearSprite_Loop",
+    "00446B": "ClearSprite_Down",
+    "004476": "ClearSprite_Right",
+    "004492": "ClearSprite_Left",
+    "004499": "DrawProjectile",
+    "0044C4": "DrawHitFlash",
+    "0044EF": "DrawHitFlash_B",
+    "00450E": "PeriodicGameLogic",
+    "00457F": "MoveAllLasers",
+    "004641": "MoveLaserUp",
+    "00464B": "MoveLaserLeft",
+    "004658": "MoveLaserDownRight",
+    "004914": "DrawAlienRow",
+    "004940": "UpdateAlienAnim",
+    "0049C6": "DrawAlienSide",
+    "004A2F": "DrawAlienSideB",
+    "004A86": "GameOver",
+    "004AE0": "AddScore",
+    "004B0C": "SelectProjectileType",
+    "004B65": "PunishmentRoutine",
+    "004C3C": "PlayPunishSound",
+    "004C56": "PlayTone",
+    "004C71": "PlayToneB",
+    "004C99": "LevelCompleteAnim",
+    "004D33": "DisplayLevelNum",
+    "004D73": "LevelSetup",
+    "004D87": "UpdateAlienPositions",
+    "004DC4": "UpdateAlienPosB",
+    "004DE3": "AlienEvolve",
+    "004E15": "AlienEvolve_Inc",
+    "004E38": "AlienHitHandler",
+    "004E8B": "AlienHitHandlerB",
+    "004EE0": "AlienHitHandlerC",
+    "004F35": "PlaySound",
+    "004F5B": "CheckSatelliteHits",
+    "005227": "SpawnSatellite",
+    "00527F": "DrawSatellite",
+    "0052A1": "DrawSatelliteB",
+    "0052C3": "DrawSatelliteC",
+    "0052C9": "DrawSatelliteD",
+    "0052CF": "DrawSatelliteE",
+    "0052E5": "DrawBase",
+    "0052F3": "RedrawScreen",
+    "00533B": "RedrawScreenB",
+    "005370": "Set4DirAmmo",
+    "005376": "Set4DirAmmoB",
+    "005381": "Fire4Dir",
+    "005591": "DrawAlienRowDir",
+    "0055E3": "DrawAlienRowDirB",
+    "00560E": "DrawAlienRowDirC",
+    "0056C9": "DrawAlienRowDirD",
+    "0056E4": "IncreaseDifficulty",
+    "0056F3": "LoadDifficultyTables",
 
     # Main entry + game flow
-    "L_0057FE": "WaitForReturn",
-    "L_005809": "StartNewGame",
-    "L_005839": "CheckLifeLost",
-    "L_005846": "ContinueAfterDeath",
-    "L_005852": "ClearProjectiles_Loop",
-    "L_005875": "MainGameLoop",
-    "L_005891": "CheckPaddle",
-    "L_00589B": "PaddleDebounce",
-    "L_0058A5": "FireProjectile",
-    "L_0058C3": "AfterFire",
-    "L_0058CB": "CheckLaserHits",
-    "L_005A04": "FrameTimingLoop",
-    "L_005A5A": "LoopBack_MainGame",
+    "0057FE": "WaitForReturn",
+    "005809": "StartNewGame",
+    "005839": "CheckLifeLost",
+    "005846": "ContinueAfterDeath",
+    "005852": "ClearProjectiles_Loop",
+    "005875": "MainGameLoop",
+    "005891": "CheckPaddle",
+    "00589B": "PaddleDebounce",
+    "0058A5": "FireProjectile",
+    "0058C3": "AfterFire",
+    "0058CB": "CheckLaserHits",
+    "005A04": "FrameTimingLoop",
+    "005A5A": "LoopBack_MainGame",
 
     # Input/state
-    "L_005B4F": "InputProcessA",
-    "L_005B62": "InputProcessB",
-    "L_005B6F": "InputProcessC",
-    "L_005B77": "InputProcessD",
+    "005B4F": "InputProcessA",
+    "005B62": "InputProcessB",
+    "005B6F": "InputProcessC",
+    "005B77": "InputProcessD",
 
     # Star/screen
-    "L_005C1C": "UpdateStarTwinkle",
-    "L_005C28": "UpdateStarTwinkleB",
-    "L_005C6C": "StarTwinkleC",
-    "L_005C78": "CheckAllTVs",
+    "005C1C": "UpdateStarTwinkle",
+    "005C28": "UpdateStarTwinkleB",
+    "005C6C": "StarTwinkleC",
+    "005C78": "CheckAllTVs",
 
     # Level complete
-    "L_005CB8": "LevelComplete",
-    "L_005D09": "Victory",
-    "L_005D14": "InitProjectileTables",
-    "L_005D27": "InitProjectileTablesB",
+    "005CB8": "LevelComplete",
+    "005D09": "Victory",
+    "005D14": "InitProjectileTables",
+    "005D27": "InitProjectileTablesB",
 
     # Bootstrap
-    "L_0037EC": "Bootstrap_CopyLoop",
+    "0037EC": "Bootstrap_CopyLoop",
 }
+
+# Build regex pattern that matches any auto-prefix + known address
+_addr_pattern = "|".join(re.escape(a) for a in LABEL_BY_ADDR.keys())
+_prefix_pattern = "|".join(re.escape(p) for p in AUTO_PREFIXES)
+LABEL_RE = re.compile(rf"(?:{_prefix_pattern})({_addr_pattern})\b")
+
+def replace_labels(text):
+    """Replace any auto-generated label (any prefix + known address) with its name."""
+    def _repl(m):
+        return LABEL_BY_ADDR[m.group(1)]
+    return LABEL_RE.sub(_repl, text)
 
 # ============================================================================
 # SECTION HEADERS
@@ -475,12 +493,13 @@ ALIEN_EVOLUTION_COMMENT = """\
 
 
 def annotate():
-    with open(INPUT, "r", encoding="utf-8") as f:
+    with open(INPUT, "r", encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
 
     output = []
     zp_inserted = False
     evolution_comment_inserted = False
+    renames_applied = 0
     i = 0
 
     while i < len(lines):
@@ -491,12 +510,7 @@ def annotate():
         addr_match = re.match(r"^([0-9A-Fa-f]{6})\s", stripped)
         addr = addr_match.group(1).upper() if addr_match else None
 
-        # --- Insert zero page equates after KEY ENTRY POINTS section ---
-        if not zp_inserted and "; ============================================================================" in stripped:
-            # Count consecutive header lines we've seen
-            # Insert ZP equates after the empty line following the memory map closer
-            pass
-
+        # --- Insert zero page equates after header ---
         if not zp_inserted and stripped.strip() == "; Emulation mode (6502)":
             output.append(ZP_EQUATES)
             zp_inserted = True
@@ -506,40 +520,36 @@ def annotate():
             output.append(SECTION_HEADERS[addr])
 
         # --- Insert alien evolution comment before $4DE3 function ---
-        if not evolution_comment_inserted and addr and addr.startswith("004DE3"):
-            # Check if this is the FUNC line
-            pass
         if not evolution_comment_inserted:
             if "; FUNC $004DE3:" in stripped:
                 output.append(ALIEN_EVOLUTION_COMMENT)
                 evolution_comment_inserted = True
 
-        # --- Rename function labels in FUNC comments ---
-        for old_label, new_name in LABEL_RENAMES.items():
-            func_addr = "$00" + old_label[2:]  # L_00XXXX -> $00XXXX
-            if func_addr in stripped and "; FUNC" in stripped:
-                stripped = stripped.replace(func_addr, f"${old_label[2:]} ({new_name})")
-                break
+        # --- Rename FUNC comment addresses ---
+        if "; FUNC $" in stripped:
+            for hex_addr, name in LABEL_BY_ADDR.items():
+                func_ref = f"${hex_addr}"
+                if func_ref in stripped:
+                    stripped = stripped.replace(func_ref, f"${hex_addr} ({name})")
+                    break
 
-        # --- Rename labels in code ---
-        for old_label, new_name in LABEL_RENAMES.items():
-            if old_label in stripped:
-                stripped = stripped.replace(old_label, new_name)
+        # --- Rename auto-generated labels in code (any prefix) ---
+        old = stripped
+        stripped = replace_labels(stripped)
+        if stripped != old:
+            renames_applied += 1
 
         # --- Add data table labels ---
         if addr:
             for table_addr, table_label in DATA_TABLE_LABELS.items():
                 if addr == table_addr.upper():
-                    # Check if this is a data region or code that accesses the table
                     if "HEX" in stripped or "; ---" in stripped:
-                        # Replace the generic data region comment
                         output.append(table_label + "\n")
 
         # --- Add inline annotations ---
         if addr:
             for ann_addr, annotation in INLINE_ANNOTATIONS.items():
                 if addr == ann_addr.upper():
-                    # Append annotation to end of line
                     stripped = stripped + annotation
                     break
 
@@ -558,7 +568,6 @@ def annotate():
             }
             for code, desc in key_annotations.items():
                 if f"#${code}" in stripped.upper() and desc not in stripped:
-                    # Don't add if there's already a keyboard annotation
                     if "; <<<" not in stripped:
                         stripped = stripped + f"  ; key: {desc}"
                     break
@@ -576,7 +585,8 @@ def annotate():
         f.writelines(output)
 
     print(f"Annotated {len(lines)} lines -> {OUTPUT}")
-    print(f"Labels renamed: {len(LABEL_RENAMES)}")
+    print(f"Label addresses known: {len(LABEL_BY_ADDR)}")
+    print(f"Lines with renames: {renames_applied}")
     print(f"Section headers: {len(SECTION_HEADERS)}")
     print(f"Data table labels: {len(DATA_TABLE_LABELS)}")
     print(f"Inline annotations: {len(INLINE_ANNOTATIONS)}")

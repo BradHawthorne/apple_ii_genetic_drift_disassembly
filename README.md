@@ -20,107 +20,147 @@ I was thoroughly amazed, and it felt like finding an old forgotten photo album.
 
 # Apple II Game Reverse Engineering Tools
 
-This directory contains Python tools for extracting and analyzing binary files from Apple II DOS 3.3 disk images (.dsk files). These tools were developed to reverse engineer "Genetic Drift" but can be used for any DOS 3.3 game.
+This directory contains Python tools for extracting, disassembling, and analyzing Apple II binaries from disk images. Originally developed to reverse engineer "Genetic Drift," the toolkit now supports DOS 3.3 and ProDOS disk formats, Applesoft and Integer BASIC detokenization, control-flow-tracing disassembly with self-modifying code detection, automated sprite extraction with PNG rendering, and memory access pattern visualization.
+
+All tools are Python 3.6+ with no external dependencies (Pillow optional for sprite PNG output).
 
 ## Tools Overview
 
 ### 1. `extract_dos33.py` - DOS 3.3 File Extractor
 
-Extracts binary files from Apple II DOS 3.3 disk images without requiring Java or AppleCommander.
+Extracts binary files from Apple II DOS 3.3 disk images (.dsk).
 
 **Usage:**
 ```bash
-# List all files on a disk
-python3 extract_dos33.py disk_image.dsk
-
-# Extract a specific file
-python3 extract_dos33.py disk_image.dsk "FILENAME"
+python3 extract_dos33.py disk_image.dsk              # List catalog
+python3 extract_dos33.py disk_image.dsk "FILENAME"    # Extract file
 ```
 
-**Example:**
-```bash
-$ python3 extract_dos33.py CrossFire_CrossFireTitle_Cyclotron_GeneticDrift_OutPost.dsk
+### 2. `extract_prodos.py` - ProDOS File Extractor
 
-Catalog of CrossFire_CrossFireTitle_Cyclotron_GeneticDrift_OutPost.dsk:
---------------------------------------------------
-  B  52 OUTPOST
-  B  37 CYCLOTRON
-  B  18 CROSSFIRE TITLE
-  B  35 CROSSFIRE
-  B  12 VIPER
-  B  23 INVASION FORCE
-  B  59 GENETIC DRIFT
-
-$ python3 extract_dos33.py CrossFire_CrossFireTitle_Cyclotron_GeneticDrift_OutPost.dsk "GENETIC DRIFT"
-
-Extracted: GENETIC DRIFT
-  Type: Binary
-  Load Address: $37D7
-  Length: 14889 bytes ($3A29)
-  Saved to: genetic_drift.bin
-```
-
-**What it does:**
-- Parses the VTOC (Volume Table of Contents) at Track 17, Sector 0
-- Reads the catalog starting at Track 17, Sector 15
-- Follows Track/Sector lists to reconstruct files
-- For binary files, extracts load address and length from the first sector
-- Outputs raw binary data to a .bin file
-
-### 2. `disasm6502.py` - 6502 Disassembler
-
-Disassembles 6502 machine code into assembly language with annotations.
+Extracts files from Apple II ProDOS disk images (.po and .dsk with sector interleave).
 
 **Usage:**
 ```bash
-python3 disasm6502.py input.bin output.asm [load_address]
-```
-
-**Example:**
-```bash
-$ python3 disasm6502.py genetic_drift.bin genetic_drift.asm 0x37D7
-
-Disassembling genetic_drift.bin
-Load address: $37D7
-Output: genetic_drift.asm
+python3 extract_prodos.py disk.po                     # List all files recursively
+python3 extract_prodos.py disk.po FILENAME             # Extract from root
+python3 extract_prodos.py disk.po /SUBDIR/FILE         # Extract from subdirectory
 ```
 
 **Features:**
+- Supports `.po` (ProDOS-order) and `.dsk` (DOS-order with sector interleave) images
+- All ProDOS storage types: seedling, sapling, tree, and subdirectory
+- Sparse file handling (zero-filled blocks)
+- Recursive directory listing with file types, sizes, and aux types
+- ProDOS date/time decoding
+- Path resolution: `FILENAME`, `/SUBDIR/FILE`, `/VOLUME/SUBDIR/FILE`
+
+### 3. `disasm6502.py` - 6502 Disassembler with Flow Tracing
+
+Disassembles 6502 machine code with control flow graph (CFG) tracing, self-modifying code detection, and semantic label generation.
+
+**Usage:**
+```bash
+python3 disasm6502.py game.bin 0x0800                  # CFG tracing (default)
+python3 disasm6502.py game.bin 0x0800 --linear         # Linear disassembly
+python3 disasm6502.py game.bin 0x0800 --entry 0x0900   # Multiple entry points
+python3 disasm6502.py game.bin 0x0800 --no-smc         # Disable SMC detection
+```
+
+**Features:**
+- **Control flow graph tracing** (default): Follows JSR/JMP/branch targets from entry points; unreachable bytes classified as data
+- **Self-modifying code detection**: Identifies STA/STX/STY instructions that write into code regions, with inline warnings
+- **Semantic labels**: `sub_XXXX` (JSR targets), `jmp_XXXX` (JMP targets), `loc_XXXX` (branches), `dat_XXXX` (data)
+- **Data region output**: `.BYTE` hex directives, `.ASC` for detected strings, `.WORD` for pointer tables
+- **Expanded hardware annotations**: 40+ Apple II I/O addresses including Language Card ($C080-$C08F) and Disk II ($C0E0-$C0EF)
 - All 56 official 6502 opcodes and 13 addressing modes
-- Automatic label generation for branch targets and subroutine calls
-- Apple II hardware address annotations ($C000-$C0FF soft switches)
-- String detection (high-bit ASCII)
-- Illegal opcode detection
-- Cross-reference comments
+- Fallback `--linear` mode for comparison
 
-#### Apple II Hardware Addresses Recognized
+### 4. `detokenize_basic.py` - Applesoft & Integer BASIC Detokenizer
 
-| Address | Name | Description |
-|---------|------|-------------|
-| $C000 | KEYBOARD | Keyboard data (key + $80) |
-| $C010 | KBDSTRB | Clear keyboard strobe |
-| $C030 | SPKR | Speaker toggle |
-| $C050 | TXTCLR | Graphics mode |
-| $C051 | TXTSET | Text mode |
-| $C052 | MIXCLR | Full screen |
-| $C053 | MIXSET | Mixed mode (4 lines text) |
-| $C054 | PAGE1 | Display page 1 |
-| $C055 | PAGE2 | Display page 2 |
-| $C056 | LORES | Lo-res graphics |
-| $C057 | HIRES | Hi-res graphics |
-| $C061 | PB0 | Paddle button 0 |
-| $C062 | PB1 | Paddle button 1 |
+Converts tokenized Apple II BASIC programs back to readable text listings.
+
+**Usage:**
+```bash
+python3 detokenize_basic.py program.bas                # Auto-detect type
+python3 detokenize_basic.py program.bas --applesoft     # Force Applesoft
+python3 detokenize_basic.py program.bas --integer       # Force Integer BASIC
+python3 detokenize_basic.py program.bas --xref          # GOTO/GOSUB cross-reference
+python3 detokenize_basic.py program.bas --hex-dump      # Hex dump alongside listing
+python3 detokenize_basic.py program.bas -o output.txt   # Write to file
+```
+
+**Features:**
+- **Applesoft BASIC**: Complete 107-token table ($80-$EA), string/REM handling, smart keyword spacing
+- **Integer BASIC**: Best-effort decoding with numeric constants, variable names, keyword tokens
+- **Auto-detection**: Heuristic scoring distinguishes Applesoft from Integer BASIC
+- **Cross-reference**: `--xref` builds GOTO/GOSUB target map showing which lines reference which
+- **Hex dump**: `--hex-dump` shows raw bytes alongside the listing
+
+### 5. `extract_sprites.py` - HGR Sprite Extractor & PNG Renderer
+
+Extracts and renders Apple II Hi-Res Graphics (HGR) sprites from binary files with accurate NTSC artifact color emulation.
+
+**Usage:**
+```bash
+# Manual extraction: known offset, width, height
+python3 extract_sprites.py game.bin --offset 0x2070 --width 4 --height 8 --count 7
+
+# Table-driven: pointer tables + width/height tables (common Apple II pattern)
+python3 extract_sprites.py game.bin --ptr-lo 0x1D7C --ptr-hi 0x1E1D \
+        --width-tbl 0x1EBE --height-tbl 0x1F5F --count 20 --base 0x4000
+
+# Auto-detect: scan for potential sprite tables
+python3 extract_sprites.py game.bin --auto --base 0x4000
+
+# Options
+python3 extract_sprites.py game.bin ... --scale 4 --sheet --ascii
+```
+
+**Features:**
+- **HGR color model**: Full NTSC artifact color rendering (purple, green, blue, orange, white, black) with palette bit and adjacency rules
+- **Three extraction modes**: manual (fixed offset), table-driven (lo/hi pointer + width/height tables), auto-detect (scans for pointer table patterns)
+- **PNG output**: Uses Pillow if available, otherwise a pure-Python minimal PNG writer (no dependencies)
+- **Sprite sheets**: `--sheet` combines all sprites into a single image
+- **ASCII preview**: `--ascii` prints terminal-friendly sprite art
+- **Nearest-neighbor scaling**: `--scale N` for crisp pixel-art enlargement
+
+### 6. `memviz.py` - Memory Access Pattern Visualizer
+
+Analyzes a 6502 binary and produces memory access heatmaps showing code regions, data references, I/O accesses, and hot spots.
+
+**Usage:**
+```bash
+python3 memviz.py game.bin 0x4000                      # Linear analysis, text report
+python3 memviz.py game.bin 0x4000 --entry 0x57D7       # Flow-based analysis
+python3 memviz.py game.bin 0x4000 --html report.html   # Interactive HTML heatmap
+python3 memviz.py game.bin 0x4000 --csv data.csv       # CSV export for spreadsheets
+```
+
+**Features:**
+- **Two analysis modes**: linear scan or CFG-based flow tracing from entry point
+- **Per-address tracking**: read count, write count, execution count, callers
+- **Text report**: zero page usage (with pointer pair coalescing), I/O register summary, memory map with hotness, top 20 hot addresses
+- **HTML heatmap**: Self-contained dark-theme page with color-coded grid (blue=code, green=data, red=I/O, yellow=hot), hover tooltips, opacity scaled by access frequency
+- **CSV export**: One row per address for external analysis
+- **Apple II I/O awareness**: 50+ hardware addresses named (keyboard, speaker, graphics, Language Card, Disk II)
+
+### 7. `annotate_genetic_drift.py` - Genetic Drift Annotation Script
+
+Transforms `genetic_drift_complete.s` into `genetic_drift_annotated.s` with meaningful labels, section headers, zero page documentation, and inline game-logic comments.
 
 ## Workflow: Analyzing a New Game
 
 ### Step 1: Extract the Binary
 
 ```bash
-# First, list files to see what's on the disk
+# DOS 3.3 disk
 python3 extract_dos33.py mystery_game.dsk
-
-# Extract the game binary
 python3 extract_dos33.py mystery_game.dsk "GAME NAME"
+
+# ProDOS disk
+python3 extract_prodos.py mystery_game.po
+python3 extract_prodos.py mystery_game.po "GAME.NAME"
 ```
 
 Note the **load address** - this tells you where the code runs in memory.
@@ -128,90 +168,46 @@ Note the **load address** - this tells you where the code runs in memory.
 ### Step 2: Disassemble
 
 ```bash
-# Use the load address from extraction
-python3 disasm6502.py game_name.bin game_name.asm 0xLOAD_ADDR
+# Control flow tracing (recommended)
+python3 disasm6502.py game.bin 0xLOAD_ADDR
+
+# With multiple entry points (for self-relocating binaries)
+python3 disasm6502.py game.bin 0x0800 --entry 0x0800 --entry 0x0900
 ```
 
-### Step 3: Initial Analysis
+### Step 3: Visualize Memory Layout
 
-Look for these key patterns in the disassembly:
-
-**Entry Point:**
-- Usually at the load address
-- Often starts with `CLD` (Clear Decimal) or `SEI` (Set Interrupt Disable)
-- May have a relocation/copy loop if load address differs from execution address
-
-**Graphics Mode Setup:**
-```asm
-LDA $C050   ; TXTCLR - graphics mode
-LDA $C057   ; HIRES - hi-res mode
-LDA $C052   ; MIXCLR - full screen
-LDA $C054   ; PAGE1 - or $C055 for PAGE2
+```bash
+# Generate HTML heatmap showing code/data/I/O regions
+python3 memviz.py game.bin 0xLOAD_ADDR --entry 0xENTRY --html report.html
 ```
 
-**Main Game Loop:**
-- Look for a tight loop with `JMP` back to itself
-- Usually calls multiple subroutines for: input, movement, collision, drawing
+### Step 4: Extract Sprites
 
-**Keyboard Input:**
-```asm
-LDA $C000   ; Read keyboard
-BMI key     ; High bit set = key pressed
-...
-LDA $C010   ; Clear keyboard strobe
+```bash
+# Auto-detect sprite tables
+python3 extract_sprites.py game.bin --auto --base 0xLOAD_ADDR
+
+# Extract known sprites as PNG
+python3 extract_sprites.py game.bin --offset 0x2070 --width 4 --height 8 \
+        --count 7 --scale 4 --sheet --ascii
 ```
 
-**Sound:**
-```asm
-LDA $C030   ; Toggle speaker (or STA, BIT)
-; Usually in a timing loop for pitch control
+### Step 5: Check for BASIC Programs
+
+```bash
+# Detokenize extracted BASIC files
+python3 detokenize_basic.py program.bas --xref
 ```
-
-**Sprite Data:**
-- Look for large blocks of `.BYTE` data
-- Pre-shifted sprites have 7 copies (for 7 pixel positions)
-- Hi-res color bit is bit 7 ($80)
-
-### Step 4: Memory Map Analysis
-
-Create a memory map by identifying:
-
-1. **Zero Page Variables ($00-$FF):**
-   - Pointers (pairs like $00/$01)
-   - Counters and flags
-   - Temporary storage
-
-2. **Game State Tables:**
-   - Position arrays (X, Y for each entity)
-   - Type/state arrays
-   - Velocity/direction tables
-
-3. **Sprite/Shape Tables:**
-   - Look for pointer tables (low bytes, then high bytes)
-   - Width and height tables
-   - Actual bitmap data
-
-### Step 5: Subroutine Mapping
-
-Identify key routines by their characteristics:
-
-| Pattern | Likely Function |
-|---------|-----------------|
-| Reads $C000, checks keys | Input handler |
-| Writes to $2000-$3FFF | Hi-res page 1 drawing |
-| Writes to $4000-$5FFF | Hi-res page 2 drawing |
-| Toggles $C030 in loop | Sound generation |
-| SED...ADC...CLD | BCD score update |
-| Compares coordinates | Collision detection |
 
 ### Step 6: Document Findings
 
 Create an analysis document (like `genetic_drift_analysis.md`) with:
-- Memory map
-- Subroutine table
+- Memory map (use `memviz.py` HTML output as starting point)
+- Subroutine table (use `disasm6502.py` semantic labels)
 - Data structure documentation
 - Game flow diagram
-- Sprite renderings (ASCII art)
+- Sprite renderings (from `extract_sprites.py` PNGs)
 
 ## Tips for Reverse Engineering
 
@@ -351,54 +347,56 @@ For the 14,889-byte Genetic Drift binary, deasmiigs performed control flow graph
 
 5. **Manual polish** — Every major section received hand-written HOW/WHY annotations explaining both the code mechanism and the design rationale behind it (Apple II hardware quirks, game design decisions, historical context).
 
-### Comparison: Linear vs CFG Disassembly
+### Comparison: disasm6502.py vs deasmiigs
 
-| Feature | `disasm6502.py` (linear) | **deasmiigs** (CFG-tracing) |
-|---------|--------------------------|---------------------------|
-| Disassembly method | Sequential byte-by-byte | Control flow graph tracing |
-| Function detection | None (manual) | 74 auto-detected with boundaries |
+| Feature | `disasm6502.py` (Python) | **deasmiigs** (C, Rosetta v2) |
+|---------|--------------------------|-------------------------------|
+| Disassembly method | CFG tracing + linear fallback | CFG tracing + pattern matching |
+| Function detection | JSR-target semantic labels | 74 auto-detected with boundaries |
 | Loop analysis | None | 210 loops with type/nesting/counter |
-| Data vs code | Disassembles everything as code | Detects data regions automatically |
-| Branch targets | Labels generated | Labels + cross-reference graph |
-| Hardware annotation | 13 soft switches | 166 ROM symbols + full soft switch map |
+| Data vs code | CFG-based classification | CFG + opcode density + indexed addressing |
+| SMC detection | Yes (STA/STX/STY into code) | No |
+| Branch targets | Semantic labels (`sub_`, `loc_`, `jmp_`, `dat_`) | Labels + cross-reference graph |
+| Hardware annotation | 40+ soft switches + Language Card + Disk II | 166 ROM symbols + full soft switch map |
 | Pattern recognition | None | 876 idioms (BCD, sprite draw, I/O polling) |
 | Stack analysis | None | Frame sizes, locals, balance checking |
-| Output | .asm text | .s text, JSON IR, HTML xref, validation |
+| Output | .asm text to stdout | .s text, JSON IR, HTML xref, validation |
+| Dependencies | Python 3.6+ only | C compiler, CMake |
 
-Both approaches have value: the linear disassembler is simple, hackable, and produced results in minutes with zero dependencies. The CFG-tracing disassembler provides deeper structural analysis that reveals the program's architecture.
+Both tools now use CFG-based flow tracing. The Python disassembler is simple, hackable, and runs anywhere with zero dependencies. deasmiigs provides deeper structural analysis (loops, patterns, stack frames) for serious reverse engineering.
 
 ### Files in This Repository
 
 | File | Description |
 |------|-------------|
+| **Analysis & Disassembly** | |
 | `genetic_drift_analysis.md` | Scott Schram's comprehensive game analysis (co-written with Claude Code) |
-| `genetic_drift_complete.s` | Raw Rosetta v2 toolchain output (5,277 lines, 74 auto-detected functions) |
-| `genetic_drift_annotated.s` | Hand-annotated version (5,816 lines, 125 named functions, HOW/WHY comments) |
+| `genetic_drift_complete.s` | Rosetta v2 toolchain output (6,774 lines, 74 auto-detected functions, semantic labels) |
+| `genetic_drift_annotated.s` | Hand-annotated version (125+ named functions, HOW/WHY comments) |
+| `genetic_drift_game_binary.bin` | The original 14,889-byte game binary extracted from disk |
+| `Genetic_Drift_Instructions.pdf` | Original game instruction manual |
+| **Tools** | |
+| `extract_dos33.py` | DOS 3.3 file extractor |
+| `extract_prodos.py` | ProDOS file extractor (seedling/sapling/tree, .po and .dsk) |
+| `disasm6502.py` | 6502 disassembler with CFG tracing, SMC detection, semantic labels |
+| `detokenize_basic.py` | Applesoft & Integer BASIC detokenizer with cross-reference |
+| `extract_sprites.py` | HGR sprite extractor with NTSC color rendering and PNG output |
+| `memviz.py` | Memory access pattern visualizer (text, HTML heatmap, CSV) |
 | `annotate_genetic_drift.py` | Annotation script that transforms raw output to annotated version |
-| `extract_dos33.py` | DOS 3.3 file extractor (Scott's original tool) |
-| `disasm6502.py` | Linear 6502 disassembler (Scott's original tool) |
 
 ## Requirements
 
-- **Python tools** (`extract_dos33.py`, `disasm6502.py`): Python 3.6+, no external dependencies
+- **Python tools**: Python 3.6+, no external dependencies required
+- **Optional**: Pillow (PIL) for higher-quality PNG output from `extract_sprites.py` (falls back to pure-Python PNG writer)
 - **Rosetta v2 toolchain** (`deasmiigs`): Built from source (C, CMake). Project Rosetta is currently private; contact the author for access.
 
 ## Limitations
 
 **Python tools:**
-- Only handles DOS 3.3 format (not ProDOS, Pascal, or CP/M)
-- Binary file extraction only (not Applesoft or Integer BASIC tokenized files)
-- Disassembler doesn't trace execution flow (linear disassembly)
-- No support for self-modifying code detection
+- `extract_dos33.py`: DOS 3.3 format only (not Pascal or CP/M)
+- `extract_prodos.py`: ProDOS format only; no Pascal or CP/M support
+- `detokenize_basic.py`: Integer BASIC support is best-effort (complex tokenization scheme)
+- `disasm6502.py`: No 65C02 or 65816 support (6502 only)
 
-**deasmiigs note:**
-- As of v2.1.2, the `--6502-strict` flag correctly treats CPU-incompatible opcodes as data rather than disassembling them as 65816 instructions. The annotated file in this repository was produced before this fix and contains some manual corrections that are now handled automatically.
-
-## Future Enhancements
-
-Potential improvements:
-- ProDOS disk image support
-- Applesoft BASIC detokenizer
-- Execution flow tracing disassembler
-- Automated sprite extraction and PNG rendering
-- Memory access pattern visualization
+**deasmiigs:**
+- As of v2.1.2, the `--6502-strict` flag correctly treats CPU-incompatible opcodes as data rather than disassembling them as 65816 instructions. The `--cpu 6502` flag now fully restricts the instruction set.
