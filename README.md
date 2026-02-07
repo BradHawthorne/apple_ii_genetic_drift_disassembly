@@ -1,402 +1,571 @@
-# Disassembling an Apple II Game using Claude Code
+# Genetic Drift (Broderbund, 1981)
 
-## My game code from 1981
+## Historical Significance
 
-I wrote the game Genetic Drift for the Apple II in 1981 when I was 21 years old.  Ages ago I discarded the Apple II assembly source code, but I've been curious about how I did some things and just had some nostalgia to look it over.
+Genetic Drift was written by **Scott Schram** in 1981, when he was 21 years old, and published by Broderbund Software for the Apple II. It is a single-load action game that fits entirely in ~15KB of 6502 machine code. Schram later wrote about the experience in his article ["My Career as a Game Designer"](https://schram.net/articles/games/).
 
-[Article: My Career as a Game Designer](https://schram.net/articles/games/)
+The game's title is a biology metaphor: aliens "mutate" through six forms when shot, cycling from UFO through Eye, TV, Diamond, and Bowtie shapes. The player's goal is to evolve all 16 aliens into TVs simultaneously --- a deceptively simple objective that requires careful timing and restraint, since overshooting a TV cycles it back to the penalty Diamond state.
 
-## Using Claude Code to disassemble it.
+This disassembly was produced collaboratively by Scott Schram and Claude Code in 2025, starting from the raw disk image with no surviving source code. The original Apple II assembly was discarded decades ago.
 
-I have been playing with Claude Code, and I thought, let's give it an *impossible task*... extract the game binary from an Apple II dsk image and then disassemble and analyze it.
+### Credits
 
-Within a few minutes, it had coded a DOS 3.3 File Extractor, and a 6502 disassembler.
+| Role | Person |
+|------|--------|
+| Designer/Programmer | Scott Schram |
+| Publisher | Broderbund Software |
+| Reverse Engineering | Scott Schram + Claude Code (Rosetta v2 toolchain) |
 
-Working together over about 3 hours, with what I could remember from the structure it helped piece together a partial analysis of the game including the main flow and game loop.
+## Source Disk
 
-It's partial, but has satisfied my curiosity.
+| Property | Value |
+|----------|-------|
+| Disk Image | `Genetic Drift.dsk` (143,360 bytes, DOS 3.3 format) |
+| WOZ Image | `Genetic Drift.woz` (120,320 bytes, WOZ 1.0, by 4am/Passport) |
+| SHA-256 (.dsk) | `805f89516ae3725e591d02cc0594f250fbc9ab74461f1e03faeed1649f24e9a2` |
+| Copy Protection | **Broderbund nibble-encoded** (custom RWTS at $025D) |
+| Filesystem | Standard DOS 3.3 catalog unreadable by cp2 due to protection |
 
-I was thoroughly amazed, and it felt like finding an old forgotten photo album.
+**Why cp2 can't read this disk:** Broderbund used a custom Read/Write Track/Sector (RWTS) routine that encodes nibbles differently from standard DOS 3.3. The game binary contains its own RWTS at $025D in the relocated zero-page block. The binary was extracted using a custom `extract_dos33.py` tool that reads the raw sector data directly.
 
-# Apple II Game Reverse Engineering Tools
+## File Inventory
 
-This directory contains Python tools for extracting, disassembling, and analyzing Apple II binaries from disk images. Originally developed to reverse engineer "Genetic Drift," the toolkit now supports DOS 3.3 and ProDOS disk formats, Applesoft and Integer BASIC detokenization, control-flow-tracing disassembly with self-modifying code detection, automated sprite extraction with PNG rendering, and memory access pattern visualization.
+| File | Type | Size | Load Addr | Description |
+|------|------|------|-----------|-------------|
+| Game Binary | 6502 machine code | 14,889 bytes | $37D7 | Complete game: bootstrap + relocated block + main code |
+| `Genetic_Drift_Instructions.pdf` | Document | ~200KB | --- | Original game manual (scanned) |
 
-All tools are Python 3.6+ with no external dependencies (Pillow optional for sprite PNG output).
+Only one loadable binary exists on the disk. The game is entirely self-contained with no external data files, BASIC loaders, or overlays.
 
-## Tools Overview
+## Boot Sequence
 
-### 1. `extract_dos33.py` - DOS 3.3 File Extractor
-
-Extracts binary files from Apple II DOS 3.3 disk images (.dsk).
-
-**Usage:**
-```bash
-python3 extract_dos33.py disk_image.dsk              # List catalog
-python3 extract_dos33.py disk_image.dsk "FILENAME"    # Extract file
+```
+Power On
+  |
+  v
+DOS 3.3 Boot (tracks 0-2)
+  |
+  v
+RWTS loads game binary to $37D7-$71FF (14,889 bytes)
+  |
+  v
+$37D7: Bootstrap Loader
+  |  STA $C010          ; Clear keyboard strobe
+  |  Copy $3800-$3FFF --> $0000-$07FF  (8 pages)
+  |  JMP $57D7          ; Transfer to main code
+  |
+  v
+$57D7: Main Entry
+  |  CLD                ; Clear decimal mode
+  |  JSR $415B          ; Hardware init
+  |
+  v
+$4120: Graphics Init
+  |  LDA $C050          ; TXTCLR  - enable graphics
+  |  LDA $C057          ; HIRES   - hi-res mode
+  |  LDA $C052          ; MIXCLR  - full screen (no text window)
+  |  (Page 1 only -- no page flipping)
+  |
+  v
+Title Screen --> Wait for RETURN ($8D) --> $5809: Start New Game
 ```
 
-### 2. `extract_prodos.py` - ProDOS File Extractor
+## Memory Map
 
-Extracts files from Apple II ProDOS disk images (.po and .dsk with sector interleave).
+The binary uses a **self-relocating** architecture. It loads as a contiguous block at $37D7, then the bootstrap copies the first 2KB to zero page and the stack area before jumping to the main code at its original load position.
 
-**Usage:**
-```bash
-python3 extract_prodos.py disk.po                     # List all files recursively
-python3 extract_prodos.py disk.po FILENAME             # Extract from root
-python3 extract_prodos.py disk.po /SUBDIR/FILE         # Extract from subdirectory
+```
+$0000-$003F  Zero Page: Game state variables (see table below)
+$0040-$00FF  Zero Page: Sprite pointers, temp calculations
+$0100-$01FF  Stack
+$0200-$07FF  Relocated Block: Custom RWTS, Broderbund intro, RNG
+             (copied from $3800-$3FFF at boot)
+$2000-$3FFF  HGR Page 1: Display memory (192 lines x 40 bytes)
+$37D7-$37FF  Bootstrap Loader (29 bytes, runs once then overwritten by HGR)
+$3800-$3FFF  Source data for relocation (overwritten by HGR page 1)
+$4000-$53FF  Main Game Code: Drawing, collision, game logic
+$5370-$53FF  Position/State Tables: Alien types, coordinates
+$5400-$57CF  Movement, Level Logic, Difficulty Tables
+$57D0-$57D6  Global Variables (direction, temp storage)
+$57D7-$5875  Entry Point, Title Screen, Game Start
+$5875-$5A5A  Main Game Loop
+$5A5D-$5D08  Collision Resolution, Level Complete, Victory
+$5D09-$5D98  Game Over, Score Display
+$5D99-$5FFF  Sprite Pointer Tables (low/high/width/height)
+$6000-$71FF  Sprite Data: Pre-shifted pixel patterns (7 shifts x N sprites)
 ```
 
-**Features:**
-- Supports `.po` (ProDOS-order) and `.dsk` (DOS-order with sector interleave) images
-- All ProDOS storage types: seedling, sapling, tree, and subdirectory
-- Sparse file handling (zero-filled blocks)
-- Recursive directory listing with file types, sizes, and aux types
-- ProDOS date/time decoding
-- Path resolution: `FILENAME`, `/SUBDIR/FILE`, `/VOLUME/SUBDIR/FILE`
+### Zero Page Variables
 
-### 3. `disasm6502.py` - 6502 Disassembler with Flow Tracing
+| Address | Size | Name | Description |
+|---------|------|------|-------------|
+| $00-$01 | 2 | `src_ptr` | Source pointer / general counter |
+| $02-$04 | 3 | `draw_ptr` | Destination pointer / graphics calculation |
+| $0C-$0D | 2 | `score` | Current score (BCD format) |
+| $0E-$0F | 2 | `hiscore` | High score (BCD format) |
+| $10 | 1 | `lives` | Lives remaining |
+| $11 | 1 | `direction` | Current aim direction (0=Up, 1=Right, 2=Down, 3=Left) |
+| $12 | 1 | `loop_idx` | Loop counter (temp) |
+| $19 | 1 | `draw_y` | Y-coordinate for sprite drawing |
+| $2B | 1 | `game_state` | Game state flags |
+| $2C-$2D | 2 | `anim_ctr` | Animation countdown timers |
+| $2E | 1 | `frame_ctr` | Frame timing counter (counts up, wraps to reload from $2F) |
+| $2F | 1 | `frame_reload` | Frame timing reload value (from difficulty table) |
+| $30 | 1 | `difficulty` | Difficulty index (11=easiest, 0=hardest) |
+| $31 | 1 | `diff_step` | Steps until next difficulty increase |
+| $32 | 1 | `fire_rate` | Alien firing rate (from difficulty table) |
+| $34-$36 | 3 | `game_flags` | Game flags ($36 = fire-requested flag) |
+| $3A | 1 | `level` | Level counter (5=Level 1, 0=Victory) |
 
-Disassembles 6502 machine code with control flow graph (CFG) tracing, self-modifying code detection, and semantic label generation.
+## Game Architecture
 
-**Usage:**
-```bash
-python3 disasm6502.py game.bin 0x0800                  # CFG tracing (default)
-python3 disasm6502.py game.bin 0x0800 --linear         # Linear disassembly
-python3 disasm6502.py game.bin 0x0800 --entry 0x0900   # Multiple entry points
-python3 disasm6502.py game.bin 0x0800 --no-smc         # Disable SMC detection
+### Main Game Loop ($5875)
+
+The game loop runs every frame. Each tick processes all game systems in a fixed order:
+
+```
+$5875: MainGameLoop
+  |
+  |-- JSR $457F     MoveAllProjectiles     ; Move 4 laser beams (one per direction)
+  |-- JSR $52F3     RedrawSprites          ; Redraw screen elements
+  |-- JSR $4F5B     CheckSatelliteHits     ; Laser vs satellite collision
+  |-- JSR $5C1C     UpdateStarTwinkle      ; Animated star background
+  |-- JSR $5C78     CheckAllTVs            ; All 16 aliens = TV? --> Level complete!
+  |
+  |-- JSR $43E0     KeyboardHandler        ; Read keys, update direction/$36 flag
+  |-- BIT $C061     CheckPaddleButton      ; Alternate fire input
+  |
+  |-- (if $36 set)
+  |   JSR $58A5     FireProjectile         ; Launch laser in current direction
+  |
+  |-- JSR $4D87     UpdateAlienPositions   ; Move aliens along tracks
+  |
+  |-- Loop X=3..0:
+  |   JSR $58CB     CheckAlienCollisions   ; Laser vs alien hit detection
+  |     |-- HIT: JSR $4E15  AlienEvolve   ; Alien cycles to next form
+  |     |-- HIT: JSR $56E4  DifficultyUp  ; Increment difficulty
+  |
+  |-- $5A04: Frame Timing
+  |   INC $2E                              ; Increment frame counter
+  |   (when wraps) LDA $2F / STA $2E      ; Reload from difficulty-controlled value
+  |   JSR $450E     PeriodicGameLogic      ; Periodic game logic (alien firing, etc.)
+  |
+  +-- JMP $5875     ; Loop forever
 ```
 
-**Features:**
-- **Control flow graph tracing** (default): Follows JSR/JMP/branch targets from entry points; unreachable bytes classified as data
-- **Self-modifying code detection**: Identifies STA/STX/STY instructions that write into code regions, with inline warnings
-- **Semantic labels**: `sub_XXXX` (JSR targets), `jmp_XXXX` (JMP targets), `loc_XXXX` (branches), `dat_XXXX` (data)
-- **Data region output**: `.BYTE` hex directives, `.ASC` for detected strings, `.WORD` for pointer tables
-- **Expanded hardware annotations**: 40+ Apple II I/O addresses including Language Card ($C080-$C08F) and Disk II ($C0E0-$C0EF)
-- All 56 official 6502 opcodes and 13 addressing modes
-- Fallback `--linear` mode for comparison
+### Keyboard Handler ($43E0)
 
-### 4. `detokenize_basic.py` - Applesoft & Integer BASIC Detokenizer
+Direction keys form a diamond pattern matching the screen layout:
 
-Converts tokenized Apple II BASIC programs back to readable text listings.
-
-**Usage:**
-```bash
-python3 detokenize_basic.py program.bas                # Auto-detect type
-python3 detokenize_basic.py program.bas --applesoft     # Force Applesoft
-python3 detokenize_basic.py program.bas --integer       # Force Integer BASIC
-python3 detokenize_basic.py program.bas --xref          # GOTO/GOSUB cross-reference
-python3 detokenize_basic.py program.bas --hex-dump      # Hex dump alongside listing
-python3 detokenize_basic.py program.bas -o output.txt   # Write to file
+```
+         Y ($D9)
+          |
+  G ($C7)-+-J ($CA)
+          |
+       SPACE ($A0)
 ```
 
-**Features:**
-- **Applesoft BASIC**: Complete 107-token table ($80-$EA), string/REM handling, smart keyword spacing
-- **Integer BASIC**: Best-effort decoding with numeric constants, variable names, keyword tokens
-- **Auto-detection**: Heuristic scoring distinguishes Applesoft from Integer BASIC
-- **Cross-reference**: `--xref` builds GOTO/GOSUB target map showing which lines reference which
-- **Hex dump**: `--hex-dump` shows raw bytes alongside the listing
+| Key | ASCII | Action |
+|-----|-------|--------|
+| Y | $D9 | Direction = UP (0) |
+| J | $CA | Direction = RIGHT (1) |
+| SPACE | $A0 | Direction = DOWN (2) |
+| G | $C7 | Direction = LEFT (3) |
+| ESC | $9B | Fire in current direction (sets $36 flag) |
+| A | $C1 | **4-direction simultaneous fire** (limited uses per level, stored at $536F) |
+| F | $C6 | Same as A (alternate key) |
 
-### 5. `extract_sprites.py` - HGR Sprite Extractor & PNG Renderer
+**HOW:** The handler reads $C000 (keyboard data register), strips the high bit, and compares against each key code in sequence. Direction keys write to $11; fire keys set $36.
 
-Extracts and renders Apple II Hi-Res Graphics (HGR) sprites from binary files with accurate NTSC artifact color emulation.
+**WHY:** ESC was the original fire key. Players complained about wearing out the ESC key, so A/F were added as the "super shot" that fires in all 4 directions simultaneously. When uses run out, A/F fall back to single-direction fire like ESC.
 
-**Usage:**
-```bash
-# Manual extraction: known offset, width, height
-python3 extract_sprites.py game.bin --offset 0x2070 --width 4 --height 8 --count 7
+### Firing System ($58A5)
 
-# Table-driven: pointer tables + width/height tables (common Apple II pattern)
-python3 extract_sprites.py game.bin --ptr-lo 0x1D7C --ptr-hi 0x1E1D \
-        --width-tbl 0x1EBE --height-tbl 0x1F5F --count 20 --base 0x4000
+Each direction supports one active projectile at a time. The game tracks 4 simultaneous projectiles in parallel arrays:
 
-# Auto-detect: scan for potential sprite tables
-python3 extract_sprites.py game.bin --auto --base 0x4000
+| Table | Purpose |
+|-------|---------|
+| $5D58,X | Active flag (0=inactive, 1=active) |
+| $5D48,X | X position low byte |
+| $5D4C,X | X position high byte |
+| $5D50,X | Y position |
+| $5D54,X | State (0=none, 2=exploding, 3=hit) |
+| $5D5C-$5D67 | Drawing position copies |
+| $5D68-$5D73 | Base spawn position (projectile origin) |
 
-# Options
-python3 extract_sprites.py game.bin ... --scale 4 --sheet --ascii
+**Projectile speed:** 3 pixels per frame in each axis direction (`ADC #$03` / `SBC #$03` at $45A2-$4615).
+
+**Boundary limits:** UP=Y:0, DOWN=Y:$BF (191), LEFT=X:$17, RIGHT=X:$3E.
+
+### Collision Detection ($58CB-$596E)
+
+Collision is **direction-specific** using simple coordinate threshold checks --- no bounding boxes.
+
+```
+Loop X = 3 down to 0:
+  if projectile not active: skip
+  Branch by direction:
+    X=0 (UP):    hit if projectile Y <= alien Y
+    X=1 (LEFT):  hit if projectile X <= alien X
+    X=2 (DOWN):  hit if projectile Y >= alien Y
+    X=3 (RIGHT): hit if projectile X >= alien X
+  HIT:
+    JSR $44C4    DrawHitFlash
+    JSR $4441    ClearSpriteArea
+    LDA #$01 / JSR $4AE0    AddScore (1 point per hit)
+    Play hit sound
 ```
 
-**Features:**
-- **HGR color model**: Full NTSC artifact color rendering (purple, green, blue, orange, white, black) with palette bit and adjacency rules
-- **Three extraction modes**: manual (fixed offset), table-driven (lo/hi pointer + width/height tables), auto-detect (scans for pointer table patterns)
-- **PNG output**: Uses Pillow if available, otherwise a pure-Python minimal PNG writer (no dependencies)
-- **Sprite sheets**: `--sheet` combines all sprites into a single image
-- **ASCII preview**: `--ascii` prints terminal-friendly sprite art
-- **Nearest-neighbor scaling**: `--scale N` for crisp pixel-art enlargement
+**WHY this works:** Projectiles move in straight lines at 3px/frame. The check is simply "has the projectile reached or passed the target line?" This gives precise feel because at 3px/frame on a 1MHz Apple II, the projectile crosses each pixel position exactly once --- no skipping.
 
-### 6. `memviz.py` - Memory Access Pattern Visualizer
+## Alien Evolution System ("Genetic Drift")
 
-Analyzes a 6502 binary and produces memory access heatmaps showing code regions, data references, I/O accesses, and hot spots.
+The game's title is a biology metaphor. Each alien cycles through 6 forms when hit, stored in the $53B8 table (16 entries, 4 per direction):
 
-**Usage:**
-```bash
-python3 memviz.py game.bin 0x4000                      # Linear analysis, text report
-python3 memviz.py game.bin 0x4000 --entry 0x57D7       # Flow-based analysis
-python3 memviz.py game.bin 0x4000 --html report.html   # Interactive HTML heatmap
-python3 memviz.py game.bin 0x4000 --csv data.csv       # CSV export for spreadsheets
+```
+Hit   Hit   Hit   Hit   Hit   Hit
+UFO ---> Eye1 ---> Eye2 ---> TV ---> Diamond ---> Bowtie --+
+ ^                                                          |
+ +----------------------------------------------------------+
+                         (wraps)
 ```
 
-**Features:**
-- **Two analysis modes**: linear scan or CFG-based flow tracing from entry point
-- **Per-address tracking**: read count, write count, execution count, callers
-- **Text report**: zero page usage (with pointer pair coalescing), I/O register summary, memory map with hotness, top 20 hot addresses
-- **HTML heatmap**: Self-contained dark-theme page with color-coded grid (blue=code, green=data, red=I/O, yellow=hot), hover tooltips, opacity scaled by access frequency
-- **CSV export**: One row per address for external analysis
-- **Apple II I/O awareness**: 50+ hardware addresses named (keyboard, speaker, graphics, Language Card, Disk II)
+### Alien Types
 
-### 7. `annotate_genetic_drift.py` - Genetic Drift Annotation Script
+| Type | Form | Sprite Idx | Address | Strategic Role |
+|------|------|-----------|---------|----------------|
+| 0 | Empty | --- | --- | Initial/cleared |
+| 1 | UFO | $74 | $69AB | Starting form |
+| 2 | Eye (blue) | $35 | $65AA | Intermediate |
+| 3 | Eye (green) | $5F | $6859 | Intermediate |
+| 4 | **TV** | $66 | $6898 | **THE GOAL** |
+| 5 | **Diamond** | $6D | $691F | **PENALTY STATE** |
+| 6 | Bowtie | $7B | $6A30 | One hit from UFO |
 
-Transforms `genetic_drift_complete.s` into `genetic_drift_annotated.s` with meaningful labels, section headers, zero page documentation, and inline game-logic comments.
+### Alien Sprites (ASCII Art)
 
-## Workflow: Analyzing a New Game
+```
+TYPE 1: UFO                    TYPE 2: Eye (Blue)           TYPE 3: Eye (Green)
+      ######                       ##########                   ##########
+######  ##  ######             ######  ##  ######           ######  ##  ######
+##  ##  ##  ##  ####         ######  ##  ##  ######       ######  ##  ##  ######
+##  ##  ##  ##  ##  ##       ######  ##      ##  ######   ######  ##      ##  ######
+##########################   ######  ##  ##  ##  ######   ######  ##  ##  ##  ######
+  ######    ##    ######       ######  ##  ######           ######  ##  ######
+    ##              ##             ##########                   ##########
 
-### Step 1: Extract the Binary
-
-```bash
-# DOS 3.3 disk
-python3 extract_dos33.py mystery_game.dsk
-python3 extract_dos33.py mystery_game.dsk "GAME NAME"
-
-# ProDOS disk
-python3 extract_prodos.py mystery_game.po
-python3 extract_prodos.py mystery_game.po "GAME.NAME"
+TYPE 4: TV (GOAL!)             TYPE 5: Diamond (PENALTY!)   TYPE 6: Bowtie
+  ##      ##                           ####                 ##        ####        ##
+    ##  ##                         ##  ####  ##             ##  ##    ####    ##  ##
+      ##                       ##  ##  ####  ##  ##         ##  ##  ##    ##  ##  ##
+##################             ######  ####  ##  ##  ##     ##  ##  ##  ##  ##  ##  ##
+##          ##  ##               ##  ##  ####  ##  ##       ##  ##  ##    ##  ##  ##
+##          ######                 ##  ####  ##             ##  ##    ####    ##  ##
+##          ##  ##                     ####                 ##        ####        ##
+##          ######
+##################
 ```
 
-Note the **load address** - this tells you where the code runs in memory.
+### Evolution Logic ($4E15-$4E24)
 
-### Step 2: Disassemble
-
-```bash
-# Control flow tracing (recommended)
-python3 disasm6502.py game.bin 0xLOAD_ADDR
-
-# With multiple entry points (for self-relocating binaries)
-python3 disasm6502.py game.bin 0x0800 --entry 0x0800 --entry 0x0900
+```asm
+$4E15: INC $53B8,X    ; Alien evolves to next form
+$4E18: LDA $53B8,X
+$4E1B: CMP #$07       ; Reached type 7?
+$4E1D: BCC done
+$4E1F: LDA #$01       ; Wrap back to UFO (type 1)
+$4E21: STA $53B8,X
 ```
 
-### Step 3: Visualize Memory Layout
+**HOW:** A single `INC` on the type table entry, with a bounds check wrapping 7 back to 1.
 
-```bash
-# Generate HTML heatmap showing code/data/I/O regions
-python3 memviz.py game.bin 0xLOAD_ADDR --entry 0xENTRY --html report.html
+**WHY:** The 6-state cycle creates the core strategic tension. Getting an alien to TV (type 4) takes exactly 3 hits from UFO. But one extra hit pushes it to Diamond, requiring 5 more hits to return to TV. This makes trigger discipline essential.
+
+### Alien Projectile Types (Hearts)
+
+When ALL 4 aliens on a side have become TVs, they begin firing special projectiles:
+
+| Type | Appearance | Action Required | Probability |
+|------|------------|-----------------|-------------|
+| 1 | Normal | Hit or let pass | Default |
+| 2 | **Heart** | **DON'T HIT** --- triggers Diamond penalty | ~94% (when all TVs) |
+| 3 | **Upside-Down Heart** | **MUST HIT** --- missing triggers penalty | ~6% (when all TVs) |
+
+**Selection logic ($4B0C):** Check if all 4 aliens on the firing side are type 4. If yes, call RNG at $0403: random value < $10 (6.25%) = upside-down heart, otherwise regular heart.
+
+### Punishment Routine ($4B65)
+
+When you hit a heart or miss an upside-down heart:
+
+```asm
+$4B65: LDA $57D6        ; Get direction of offending side
+$4B6B: ASL / ASL         ; direction * 4
+$4B70: ADC #$03          ; Start at end of direction's group
+$4B73: TAX
+$4B74: LDY #$03          ; 4 aliens
+$4B76: LDA #$05          ; Type 5 = DIAMOND
+$4B78: STA $53B8,X       ; Transform alien
+$4B7B: DEX / DEY / BPL   ; Loop all 4
 ```
 
-### Step 4: Extract Sprites
+**Effect:** ALL 4 aliens on that side instantly become Diamonds. Each Diamond requires 5 hits to cycle back to TV. One mistake can cost 20 hits of progress.
 
-```bash
-# Auto-detect sprite tables
-python3 extract_sprites.py game.bin --auto --base 0xLOAD_ADDR
+## Satellite System
 
-# Extract known sprites as PNG
-python3 extract_sprites.py game.bin --offset 0x2070 --width 4 --height 8 \
-        --count 7 --scale 4 --sheet --ascii
+Satellites are bonus targets that orbit around the playfield, appearing from Level 3 onward.
+
+### Data Tables
+
+| Address | Purpose |
+|---------|---------|
+| $520E,X | Satellite position (one per direction) |
+| $5212,X | Point value / existence flag (0 = no satellite) |
+| $5221,X | Hits remaining before satellite is destroyed |
+
+**Collision ($4F5B):** When a laser enters the satellite zone (direction-specific boundary), compare laser position against satellite position. Hit within 5 pixels scores points equal to the value at $5212,X and decrements the hit counter at $5221,X.
+
+**Spawning:** `JSR $5227` is called 4 times during level transitions when $3A < 4 (Levels 3-5).
+
+## Level System
+
+Levels count **down** from 5 to 0 using the $3A variable:
+
+| $3A | Level | Features |
+|-----|-------|----------|
+| 5 | Level 1 | 16 UFOs, no satellites |
+| 4 | Level 2 | 16 UFOs, no satellites |
+| 3 | Level 3 | 16 UFOs + 4 satellites |
+| 2 | Level 4 | 16 UFOs + 4 satellites |
+| 1 | Level 5 | 16 UFOs + 4 satellites |
+| 0 | **Victory** | Game complete! |
+
+### Level Completion ($5CB8-$5D08)
+
+Triggered when `JSR $5C78` detects all 16 aliens are type 4 (TV):
+
+```
+$5CB8: LDA #$50 / JSR $4AE0    ; 50-point bonus
+$5CBD: DEC $3A                  ; Advance level
+$5CE9: LDA $3A / BEQ victory   ; $3A = 0 → Victory!
+$5CFC: JSR $5227 (×4)          ; Spawn satellites (if $3A < 4)
+       Reset all aliens to type 1 (UFO)
+       Continue to next level → JMP $5875
 ```
 
-### Step 5: Check for BASIC Programs
+### Life Lost ($5839)
 
-```bash
-# Detokenize extracted BASIC files
-python3 detokenize_basic.py program.bas --xref
+```asm
+$5839: DEC $10          ; Decrement lives
+$583B: BMI game_over    ; If negative → Game Over at $4A86
+       ; Otherwise continue playing
 ```
 
-### Step 6: Document Findings
+Game over at $4A86 checks current score against high score, updates if higher, then restarts at $5809.
 
-Create an analysis document (like `genetic_drift_analysis.md`) with:
-- Memory map (use `memviz.py` HTML output as starting point)
-- Subroutine table (use `disasm6502.py` semantic labels)
-- Data structure documentation
-- Game flow diagram
-- Sprite renderings (from `extract_sprites.py` PNGs)
+## Progressive Difficulty System
 
-## Tips for Reverse Engineering
+The game accelerates as you play, controlled by an index into 8 parallel lookup tables.
 
-### Finding Cheat Codes
-- Search for keyboard reads ($C000) outside the main input handler
-- Look for comparisons to unusual key values
-- Check what happens when matches occur (lives increment, level change, etc.)
+### Key Variables
 
-### Understanding Sprite Systems
-- Find the draw routine (writes to hi-res memory $2000+ or $4000+)
-- Trace back to find sprite pointer tables
-- Width/height usually stored in parallel tables
-- Pre-shifted sprites: 7 copies × height × width bytes each
+| Variable | Role |
+|----------|------|
+| $30 | Difficulty index (11=easiest, 0=hardest) |
+| $31 | Steps until next difficulty increase |
+| $2E | Frame timing counter (counts UP, wraps → reload from $2F) |
+| $2F | Frame timing reload value (set by difficulty table) |
 
-### Identifying Game State
-- Set breakpoints on zero page writes
-- Track what changes when game events occur
-- Lives, score, level often in low zero page ($10-$3F)
+### Difficulty Increase ($56E4)
 
-### Sound Analysis
-- Find all $C030 references
-- Timing loops determine pitch
-- Outer loops determine duration
+Called each time the player hits something:
 
-## File Formats
+```asm
+$56E4: DEC $31          ; Decrement step counter
+$56E6: BNE done         ; Not zero yet → return
+$56E8: LDA $30          ; Load difficulty index
+$56EA: BEQ done         ; Already 0 (max) → return
+$56EC: DEC $30          ; Increase difficulty!
+$56EE: JMP $56F3        ; Reload ALL timing tables
+```
 
-### DOS 3.3 Disk Image (.dsk)
-- 140KB (35 tracks × 16 sectors × 256 bytes)
-- Track 17 contains VTOC and catalog
-- No interleaving in .dsk format (unlike .do or .po)
+### The 12-Entry Lookup Tables ($576C-$57CB)
 
-### Binary File Header
-- Bytes 0-1: Load address (little-endian)
-- Bytes 2-3: Length (little-endian)
-- Bytes 4+: Actual program data
+`$56F3` uses $30 as index into 8 parallel tables:
 
-## Example Analysis: Genetic Drift
+| Index | $2F (Frame) | $32 (Fire Rate) | $31 (Steps) | Effect |
+|-------|-------------|-----------------|-------------|--------|
+| 11 (start) | $E0 | $E0 | $10 | Slowest: ~32 frames/tick, 16 hits to next level |
+| 8 | $E6 | $E7 | $18 | Medium: tighter timing |
+| 4 | $F5 | $F0 | $28 | Fast: noticeably quicker |
+| 0 (max) | $FC | $FC | $FF | Maximum: nearly every frame, never increases again |
 
-See `genetic_drift_analysis.md` for a partial reverse engineering of the 1982 Broderbund game "Genetic Drift" by Scott Schram, published by Broderbund in 1982. Analysis includes:
+**HOW the frame timer works:** Counter $2E counts from the reload value ($2F) up to $FF. When it wraps past $FF, periodic game logic executes (alien firing, movement). Higher $2F values = fewer frames between ticks = faster game.
 
-- Complete memory map and zero page variable documentation
-- All 6 alien sprite types rendered as ASCII art (UFO, Eye1, Eye2, TV, Diamond, Bowtie)
-- Main game loop documented with frame timing
-- Collision detection explained
-- **Cheat code discovered**: Shift-N (caret `^` on Apple II/II+ keyboard) for +3 lives and difficulty reset
-- Progressive difficulty system with 12-level lookup tables
-- Level system (6 waves, satellites appear in later levels)
-- Heart/penalty mechanics (Diamond transformation punishment)
-- Keyboard controls: Y/G/J/Space for direction, ESC for fire, A/F for 4-direction simultaneous fire
+## Scoring System
 
-**Note on Apple II keyboard**: The cheat key `$9E` is the caret character, which on the original Apple II/II+ keyboard is produced by **Shift-N** (not Shift-6 as on modern keyboards).
+### BCD Score ($4AE0)
 
-## Rosetta v2 Toolchain Contribution
+```asm
+$4AE0: SED              ; Set decimal mode (BCD arithmetic)
+$4AE1: CLC
+$4AE2: ADC $0C          ; Add points to score low byte
+$4AE4: STA $0C
+$4AE6: LDA $0D          ; Carry to high byte
+$4AE8: ADC #$00
+$4AEA: STA $0D
+$4AEC: CLD              ; Clear decimal mode
+```
 
-The `genetic_drift_complete.s` and `genetic_drift_annotated.s` files in this repository were produced using Project Rosetta, a cross-platform Apple IIgs/65816 toolchain (v2.1.2). The toolchain's disassembler, **deasmiigs v2.0.0**, was used in 6502 mode to produce a machine-analyzed disassembly that goes far beyond linear disassembly.
+| Action | Points |
+|--------|--------|
+| Hit alien | 1 |
+| Hit satellite | Variable (from $5212,X) |
+| Level complete bonus | 50 |
 
-> **Note:** Project Rosetta is currently a private project under active development. The tools described below are not yet publicly available.
+Score at $0C-$0D, high score at $0E-$0F. Both stored in BCD (Binary-Coded Decimal) so they display directly without conversion.
 
-### What is Project Rosetta?
+## Sprite System
 
-Project Rosetta is a round-trip toolchain for the Apple IIgs and 65816 family:
+### Pre-Shifted Architecture
+
+All sprites are stored with **7 pre-shifted copies**, the standard Apple II optimization for fast horizontal positioning. Each copy is shifted 1 pixel right from the previous, covering all 7 bit positions within a byte.
+
+**HOW:** The sprite pointer tables at $5D7C (low) / $5E1D (high) / $5EBE (width) / $5F5F (height) are indexed by sprite number. `DrawSpriteXY` at $40C0 takes position in $02/$04 and sprite index in A.
+
+**WHY pre-shifting:** Apple II HGR memory packs 7 pixels per byte (bit 7 is a color flag). To draw a sprite at an arbitrary X position, you'd need to shift every byte at runtime --- expensive on a 1MHz 6502. Pre-computing all 7 shifts trades 7x memory for zero runtime shift cost.
+
+### Color Control
+
+Bit 7 ($80) in each sprite byte selects the color palette:
+- Bit 7 = 0: Green/Violet (group 1)
+- Bit 7 = 1: Orange/Blue (group 2)
+
+The directional arrows at $6070-$6085 all have bit 7 set (orange/blue), making them visually distinct from the aliens.
+
+## Sound System
+
+Sound is produced by toggling the speaker at $C030, with timing loops controlling pitch:
+
+| Location | Method | Context |
+|----------|--------|---------|
+| $3E60 | `LDX $C030` | Broderbund intro |
+| $45F6 | `STA $C030` | Projectile fire |
+| $4C6B, $4C86, $4D0C | `BIT $C030` in timing loops | Tonal sound effects |
+| $4F43, $4F53 | `STA $C030` | Satellite hit |
+| $5B73 | `BIT $C030` with X countdown | General sound effect |
+
+**HOW:** The 6502 toggling `$C030` at different intervals produces different frequencies. Tighter loops = higher pitch. The `InputProcessC` routine at $5B6F uses a counted `DEX/BNE` loop to generate tones, with the loop count in A controlling pitch.
+
+## The Cheat Code
+
+### Shift-N ($9E) During Level Completion Animation
+
+**When:** During the level completion animation (big TV sweep), press **Shift-N**.
+
+**Location:** $4CEF-$4D02 inside the `SUB_4C99` animation routine.
+
+```asm
+$4CEF: LDA $C000        ; Read keyboard
+$4CF2: CMP #$9E         ; Shift-N? (caret ^ on Apple II keyboard)
+$4CF4: BNE skip
+$4CF6: LDA $C010        ; Clear keyboard strobe
+$4CF9: LDA #$0B
+$4CFB: STA $30          ; Reset difficulty to EASIEST (index 11)
+$4CFD: LDA #$03
+$4CFF: CLC
+$4D00: ADC $10          ; Add 3 to lives
+$4D02: STA $10
+```
+
+**Two effects:**
+1. **+3 lives** added to current count
+2. **Difficulty reset** to index 11 (easiest), undoing all accumulated speed increases
+
+**Why Shift-N?** On the Apple II/II+ keyboard, Shift-N produces the caret character (`^`), which generates key code $9E. This is different from modern keyboards where caret is Shift-6. The key was chosen because it's easy to reach, doesn't conflict with game controls (Y/G/J/Space/ESC/A/F), and obscure enough that players wouldn't find it by accident.
+
+**Can be activated multiple times** during a single animation! Scott Schram confirms this was a developer testing feature that shipped with the game.
+
+## Technical Notes
+
+### Self-Relocating Binary
+
+The unusual load address ($37D7) places the game binary so that:
+1. The first section ($3800-$3FFF) overlaps with HGR page 1 ($2000-$3FFF)
+2. The bootstrap copies this to $0000-$07FF before HGR is activated
+3. The main code ($4000+) sits safely above HGR page 1
+
+This is a Broderbund packaging technique --- the $3800-$3EFF region contains the Broderbund logo intro and the "BR0DERBUND" string (note: zero, not 'O').
+
+### No Page Flipping
+
+Unlike many Apple II action games, Genetic Drift uses **only HGR page 1** ($2000-$3FFF). There is no double-buffering. All drawing is done directly to the visible screen. The game avoids flicker through careful draw ordering: clear old positions, draw new positions, with sprites small enough that the tear is imperceptible at 1MHz.
+
+### Custom RWTS ($025D)
+
+The relocated block at $0000-$07FF contains Broderbund's custom RWTS (Read/Write Track/Sector) routine, which handles the non-standard nibble encoding used for copy protection. This is why standard DOS 3.3 tools and cp2 cannot read the disk image.
+
+### Random Number Generator ($0403)
+
+Located in the relocated block, this RNG is called throughout the game for:
+- Alien projectile type selection (heart probability)
+- Satellite spawn positions
+- Star twinkle patterns
+- Timing variations
+
+### Compact Design
+
+At 14,889 bytes, Genetic Drift is remarkably compact:
+- ~5KB of sprite data (pre-shifted, 7 copies each)
+- ~1KB of lookup tables (difficulty, positions, pointers)
+- ~8KB of game logic code
+- ~1KB bootstrap + relocated block
+
+74 subroutines, 210 identified loops, 876 pattern matches detected by the disassembler.
+
+## Repository Contents
+
+| File / Directory | Description |
+|------|-------------|
+| **[`genetic_drift_source.s`](genetic_drift_source.s)** | **Reconstructed source code** --- the primary artifact. 4,275 lines of fully annotated 6502 assembly with named variables, HOW/WHY comments for every function, documented data tables, and a complete memory map. This is the recovered source code. |
+| `disassembly/genetic_drift_annotated.s` | Raw machine-generated disassembly (7,064 lines) with auto-detected functions and register state tracking |
+| `disassembly/genetic_drift_complete.s` | Raw disassembly with register state tracking |
+| `analysis/game_mechanics.md` | Complete game mechanics documentation (difficulty curves, satellite system, alien evolution, cheat code) |
+| `analysis/genetic_drift_analysis.md` | Technical analysis of binary structure and systems |
+| `extracted/genetic_drift_game_binary.bin` | Raw game binary (14,889 bytes, load at $37D7) |
+| `graphics/` | 32 extracted sprite PNGs with manifest |
+| `Genetic_Drift_Instructions.pdf` | Scanned original game manual |
+| `tools/` | Python reverse-engineering toolkit (9 scripts) |
+
+## Reverse-Engineering Tools
+
+The binary was extracted and analyzed using the Python tools in `tools/`:
 
 | Tool | Purpose |
 |------|---------|
-| **deasmiigs** | Decompiler/disassembler with CFG analysis, pattern matching, and AI assist |
-| **asmiigs** | Assembler (MPW/ORCA-M syntax) |
-| **linkiigs** | Linker (OMF v2.1 output) |
-| **reziigs** | Resource compiler |
-| **romiigs** | ROM explorer GUI (Python/PySide6) for ROM archaeology and AI-assisted annotation |
-| **rosetta-lsp** | Language server for IDE integration |
-
-### What deasmiigs Detected Automatically
-
-For the 14,889-byte Genetic Drift binary, deasmiigs performed control flow graph (CFG) tracing and produced these automated analyses:
-
-| Analysis | Result |
-|----------|--------|
-| **Functions** | 74 auto-detected (vs ~30 found manually) |
-| **Loops** | 210 detected with type classification (194 while, 7 counted, 9 other) |
-| **Nesting** | Max nesting depth of 62 levels identified |
-| **Pattern matches** | 876 code idioms recognized (BCD arithmetic, keyboard polling, sprite draw, etc.) |
-| **Optimization hints** | 32 suggestions (peephole, redundant loads, strength reduction, tail calls) |
-| **Call sites** | 39 analyzed with parameter inference |
-| **Stack frames** | 71 functions with frame size, locals, and saved register analysis |
-| **Cross-references** | Full call graph and data reference tracking |
-| **Hardware context** | Subsystem detection: keyboard, video mode, joystick, speaker, disk I/O |
-| **Data regions** | Automatic detection of non-code data (tables, sprite bitmaps) |
-
-### deasmiigs Capabilities
-
-**CPU targets:** 6502, 65C02, 65816, 65GS832 (custom Apple IIgs extended mode)
-
-**Analysis passes:**
-- Control flow graph (CFG) construction with basic block identification
-- Loop detection and classification (while, do-while, counted, infinite) with iteration variable tracking
-- Constant propagation through register/memory state tracking
-- Type inference for memory locations (byte, word, pointer, array, struct)
-- Switch/case detection (jump tables, CMP chains, computed jumps)
-- Stack depth analysis with balance verification
-- I/O pattern sequence detection (video mode setup, language card bank switching)
-- Apple II ROM symbol lookup (166 symbols: Monitor, Applesoft, DOS vectors)
-
-**Output formats:**
-- Raw disassembly, annotated disassembly, or pseudocode
-- Cross-reference reports (JSON, HTML)
-- Intermediate representation (IR) as JSON for external tooling
-- Validation output for round-trip verification
-
-**Apple II / IIgs specific features:**
-- `--apple2-rom` — Injects 166 Apple II ROM entry point symbols (Monitor, Applesoft, I/O)
-- `--prodos8` — Detects ProDOS 8 MLI calls with parameter block analysis
-- `--dos33` — Detects DOS 3.3 entry points and file manager calls
-- `--6502-strict` — Treats CPU-incompatible opcodes as data (sprite tables, lookup tables correctly detected)
-- Full soft switch annotation ($C000-$C0FF) with subsystem classification
-
-**AI-assisted analysis (optional, via Ollama):**
-- `--ai-name` — AI-generated meaningful function names
-- `--ai-describe` — AI-generated function descriptions
-
-### How the Annotated Disassembly Was Produced
-
-1. **Binary splitting** — A Python script (`split_binary.py`) identified the self-relocating structure and split the binary into 3 segments: bootstrap ($37D7), relocated ($0000), and main ($4000).
-
-2. **Automated disassembly** — Each segment was disassembled with deasmiigs:
-   ```bash
-   deasmiigs --cpu 6502 --format binary --load 0x37D7 --entry 0x37D7 \
-             --apple2-rom gd_bootstrap.bin -o gd_bootstrap.s
-   deasmiigs --cpu 6502 --format binary --load 0x0000 --entry 0x0000 \
-             --apple2-rom gd_relocated.bin -o gd_relocated.s
-   deasmiigs --cpu 6502 --format binary --load 0x4000 --entry 0x4000 \
-             --apple2-rom gd_main.bin -o gd_main.s
-   ```
-
-3. **Segment merge** — The three disassemblies were merged into `genetic_drift_complete.s` (5,277 lines) with a unified memory map header.
-
-4. **Automated annotation** — A Python script (`annotate_genetic_drift.py`) applied 125 label renames, 21 section headers, zero page equates, and data table labels using Scott Schram's `genetic_drift_analysis.md` as the knowledge base.
-
-5. **Manual polish** — Every major section received hand-written HOW/WHY annotations explaining both the code mechanism and the design rationale behind it (Apple II hardware quirks, game design decisions, historical context).
-
-### Comparison: disasm6502.py vs deasmiigs
-
-| Feature | `disasm6502.py` (Python) | **deasmiigs** (C, Rosetta v2) |
-|---------|--------------------------|-------------------------------|
-| Disassembly method | CFG tracing + linear fallback | CFG tracing + pattern matching |
-| Function detection | JSR-target semantic labels | 74 auto-detected with boundaries |
-| Loop analysis | None | 210 loops with type/nesting/counter |
-| Data vs code | CFG-based classification | CFG + opcode density + indexed addressing |
-| SMC detection | Yes (STA/STX/STY into code) | No |
-| Branch targets | Semantic labels (`sub_`, `loc_`, `jmp_`, `dat_`) | Labels + cross-reference graph |
-| Hardware annotation | 40+ soft switches + Language Card + Disk II | 166 ROM symbols + full soft switch map |
-| Pattern recognition | None | 876 idioms (BCD, sprite draw, I/O polling) |
-| Stack analysis | None | Frame sizes, locals, balance checking |
-| Output | .asm text to stdout | .s text, JSON IR, HTML xref, validation |
-| Dependencies | Python 3.6+ only | C compiler, CMake |
-
-Both tools now use CFG-based flow tracing. The Python disassembler is simple, hackable, and runs anywhere with zero dependencies. deasmiigs provides deeper structural analysis (loops, patterns, stack frames) for serious reverse engineering.
-
-### Files in This Repository
-
-| File | Description |
-|------|-------------|
-| **Analysis & Disassembly** | |
-| `genetic_drift_analysis.md` | Scott Schram's comprehensive game analysis (co-written with Claude Code) |
-| `genetic_drift_complete.s` | Rosetta v2 toolchain output (6,774 lines, 74 auto-detected functions, semantic labels) |
-| `genetic_drift_annotated.s` | Hand-annotated version (125+ named functions, HOW/WHY comments) |
-| `genetic_drift_game_binary.bin` | The original 14,889-byte game binary extracted from disk |
-| `Genetic_Drift_Instructions.pdf` | Original game instruction manual |
-| **Tools** | |
-| `extract_dos33.py` | DOS 3.3 file extractor |
-| `extract_prodos.py` | ProDOS file extractor (seedling/sapling/tree, .po and .dsk) |
+| `extract_dos33.py` | DOS 3.3 file extractor (bypasses copy protection by reading raw sectors) |
 | `disasm6502.py` | 6502 disassembler with CFG tracing, SMC detection, semantic labels |
-| `detokenize_basic.py` | Applesoft & Integer BASIC detokenizer with cross-reference |
-| `extract_sprites.py` | HGR sprite extractor with NTSC color rendering and PNG output |
-| `memviz.py` | Memory access pattern visualizer (text, HTML heatmap, CSV) |
-| `annotate_genetic_drift.py` | Annotation script that transforms raw output to annotated version |
+| `extract_sprites.py` | HGR sprite extractor with pre-shift detection |
+| `memviz.py` | Memory access pattern visualization |
+| `annotate_genetic_drift_final.py` | Transforms raw disassembly into the reconstructed source file |
+| `extract_sound.py` | Apple II sound data extraction and WAV conversion |
+| `detokenize_basic.py` | Applesoft/Integer BASIC program listing |
+| `extract_prodos.py` | ProDOS file extractor |
+| `annotate_genetic_drift.py` | Earlier annotation script (superseded by `_final` version) |
 
-## Requirements
+The annotated disassembly was produced using `deasmiigs` (Rosetta v2 decompiler) with `--cpu 6502 --format binary --load $37D7 --entry $37D7 --apple2-rom --trace --auto-symbols --annotated`, then transformed into the reconstructed source by `annotate_genetic_drift_final.py`.
 
-- **Python tools**: Python 3.6+, no external dependencies required
-- **Optional**: Pillow (PIL) for higher-quality PNG output from `extract_sprites.py` (falls back to pure-Python PNG writer)
-- **Rosetta v2 toolchain** (`deasmiigs`): Built from source (C, CMake). Project Rosetta is currently private; contact the author for access.
+## Strategic Summary
 
-## Limitations
+The genius of Genetic Drift is the asymmetry between progress and punishment:
 
-**Python tools:**
-- `extract_dos33.py`: DOS 3.3 format only (not Pascal or CP/M)
-- `extract_prodos.py`: ProDOS format only; no Pascal or CP/M support
-- `detokenize_basic.py`: Integer BASIC support is best-effort (complex tokenization scheme)
-- `disasm6502.py`: No 65C02 or 65816 support (6502 only)
+- **3 hits** to evolve an alien from UFO to TV
+- **5 hits** to recover from TV→Diamond back to TV (through Bowtie→UFO→Eye1→Eye2→TV)
+- **1 mistake** (hitting a heart) transforms an entire side of 4 aliens to Diamonds = **20 hits** of lost progress
+- Hearts only appear when you're *almost done* (all 4 aliens on a side are TVs)
+- The game gets *faster* as you score, so mistakes compound
 
-**deasmiigs:**
-- As of v2.1.2, the `--6502-strict` flag correctly treats CPU-incompatible opcodes as data rather than disassembling them as 65816 instructions. The `--cpu 6502` flag now fully restricts the instruction set.
+This creates escalating tension: the closer you are to completing a level, the more dangerous the game becomes. Perfect play requires knowing when to stop shooting.
+
+---
+*Reverse-engineered by Scott Schram and Claude Code using the Rosetta v2 toolchain.*
+*Based on the collaborative 2025 disassembly of the original 1981 Apple II binary.*
