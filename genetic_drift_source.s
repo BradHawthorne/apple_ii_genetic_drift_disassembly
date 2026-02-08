@@ -204,7 +204,7 @@ temp          EQU $3C      ; Temporary work variable
 0037F9  C5 04                         cmp  sprite_calc
 0037FB  D0 EF                         bne  Bootstrap_CopyLoop
 
-0037FD  4C D7 57                      jmp  $57D7
+0037FD  4C D7 57                      jmp  $57D7  ; GameInit
 ; ── Zero Page / Interrupt Vectors / Disk Bootstrap Data ─────────
 ; The first $200 bytes contain zero-page game variables (see EQU
 ; block above) and 6502 interrupt vectors. Much of this region is
@@ -286,7 +286,7 @@ temp          EQU $3C      ; Temporary work variable
 00022F  A6 2B                         ldx  slot_x16
 000231  20 5D 02                      jsr  RWTS_ReadSector
 000234  20 D1 02                      jsr  RWTS_DecodeData
-000237  4C 00 88                      jmp  $8800
+000237  4C 00 88                      jmp  $8800  ; DiskIO
 
 00023A  00000000                HEX     00000000 00000000 00000000 00000000
 00024A  00000000                HEX     00000000 00000000 00000000 00000000
@@ -598,7 +598,7 @@ temp          EQU $3C      ; Temporary work variable
 0006AD  07A401E6                HEX     07A401E6 01B90007 2000074C A20600BD
 0006BD  88C060                  HEX     88C060
 
-0006C0  20 E0 20                      jsr  $20E0
+0006C0  20 E0 20                      jsr  $20E0  ; HGR2Clear
 0006C3  D0 20                         bne  loc_0006E5
 0006C5  C0 20                         cpy  #$20
 0006C7  B0 20                         bcs  $06E9
@@ -850,10 +850,10 @@ temp          EQU $3C      ; Temporary work variable
 0042EF  4A                            lsr  a
 0042F0  4A                            lsr  a
 0042F1  29 0F                         and  #$0F
-0042F3  20 16 04                      jsr  $0416
+0042F3  20 16 04                      jsr  $0416  ; DrawSprite
 0042F6  68                            pla
 0042F7  29 0F                         and  #$0F
-0042F9  4C 16 04                      jmp  $0416
+0042F9  4C 16 04                      jmp  $0416  ; DrawSprite
 ; ── DrawTitleScreen ───────────────────────────────────────────────
 ; HOW: Displays the title screen with animated elements. Enters a loop
 ;      that draws the title graphics, animates twinkling stars, and
@@ -866,55 +866,55 @@ temp          EQU $3C      ; Temporary work variable
 004300  A9 08                         lda  #$08
 004302  85 04                         sta  sprite_calc
 004304  A9 0F                         lda  #$0F
-004306  20 16 04                      jsr  $0416
+004306  20 16 04                      jsr  $0416  ; DrawSprite
 004309  A9 01                         lda  #$01
 00430B  85 02                         sta  col_ctr
 00430D  A9 10                         lda  #$10
 00430F  85 04                         sta  sprite_calc
 004311  A9 10                         lda  #$10
-004313  20 16 04                      jsr  $0416
+004313  20 16 04                      jsr  $0416  ; DrawSprite
 004316  A9 01                         lda  #$01
 004318  85 02                         sta  col_ctr
 00431A  A9 A7                         lda  #$A7
 00431C  85 04                         sta  sprite_calc
 00431E  A9 15                         lda  #$15
-004320  20 16 04                      jsr  $0416
+004320  20 16 04                      jsr  $0416  ; DrawSprite
 004323  A9 01                         lda  #$01
 004325  85 02                         sta  col_ctr
 004327  A9 AF                         lda  #$AF
 004329  85 04                         sta  sprite_calc
 00432B  A9 12                         lda  #$12
-00432D  20 16 04                      jsr  $0416
+00432D  20 16 04                      jsr  $0416  ; DrawSprite
 004330  A9 01                         lda  #$01
 004332  85 02                         sta  col_ctr
 004334  A9 B7                         lda  #$B7
 004336  85 04                         sta  sprite_calc
 004338  A9 13                         lda  #$13
-00433A  20 16 04                      jsr  $0416
+00433A  20 16 04                      jsr  $0416  ; DrawSprite
 00433D  A9 01                         lda  #$01
 00433F  85 02                         sta  col_ctr
 004341  A9 4C                         lda  #$4C
 004343  85 04                         sta  sprite_calc
 004345  A9 0A                         lda  #$0A
-004347  20 16 04                      jsr  $0416
+004347  20 16 04                      jsr  $0416  ; DrawSprite
 00434A  A9 02                         lda  #$02
 00434C  85 02                         sta  col_ctr
 00434E  A9 64                         lda  #$64
 004350  85 04                         sta  sprite_calc
 004352  A9 14                         lda  #$14
-004354  20 16 04                      jsr  $0416
+004354  20 16 04                      jsr  $0416  ; DrawSprite
 004357  A9 01                         lda  #$01
 004359  85 02                         sta  col_ctr
 00435B  A9 6C                         lda  #$6C
 00435D  85 04                         sta  sprite_calc
 00435F  A9 0A                         lda  #$0A
-004361  20 16 04                      jsr  $0416
+004361  20 16 04                      jsr  $0416  ; DrawSprite
 004364  A9 01                         lda  #$01
 004366  85 02                         sta  col_ctr
 004368  A9 84                         lda  #$84
 00436A  85 04                         sta  sprite_calc
 00436C  A9 19                         lda  #$19
-00436E  20 16 04                      jsr  $0416
+00436E  20 16 04                      jsr  $0416  ; DrawSprite
 004371  20 87 43                      jsr  InitGameVarsB
 004374  20 9E 43                      jsr  InitGameVarsC
 004377  4C CD 43                      jmp  PerFrameUpdate
@@ -931,7 +931,7 @@ temp          EQU $3C      ; Temporary work variable
 00437E  A9 17                         lda  #$17
 004380  85 02                         sta  col_ctr
 004382  A9 18                         lda  #$18
-004384  4C 16 04                      jmp  $0416
+004384  4C 16 04                      jmp  $0416  ; DrawSprite
 ; ── ResetTimers ───────────────────────────────────────────────────
 ; HOW: Initializes the frame timing counters and animation variables
 ;      to their starting values for the current difficulty level.
@@ -949,7 +949,7 @@ temp          EQU $3C      ; Temporary work variable
 004396  20 EC 42                      jsr  PrintHexByte
 
 004399  A9 00                         lda  #$00
-00439B  4C 16 04                      jmp  $0416
+00439B  4C 16 04                      jmp  $0416  ; DrawSprite
 ; ── ResetGameVarsC ────────────────────────────────────────────────
 ; HOW: Additional game variable initialization.
 ; WHY: Part of the cascaded initialization sequence at game start.
@@ -965,7 +965,7 @@ temp          EQU $3C      ; Temporary work variable
 0043AD  20 EC 42                      jsr  PrintHexByte
 
 0043B0  A9 00                         lda  #$00
-0043B2  4C 16 04                      jmp  $0416
+0043B2  4C 16 04                      jmp  $0416  ; DrawSprite
 ; ── TitleSetup ────────────────────────────────────────────────────
 ; HOW: Initializes the title screen display — draws the game title,
 ;      Broderbund logo, copyright text, and initial star field.
@@ -995,7 +995,7 @@ temp          EQU $3C      ; Temporary work variable
 0043D7  C9 0A                         cmp  #$0A
 0043D9  90 02                         bcc  PerFrameUpdate_JmpDraw
 0043DB  A9 09                         lda  #$09
-0043DD  4C 16 04          PerFrameUpdate_JmpDraw  jmp  $0416
+0043DD  4C 16 04          PerFrameUpdate_JmpDraw  jmp  $0416  ; DrawSprite
 ; ── KeyboardHandler ───────────────────────────────────────────────
 ; HOW: Reads the Apple II keyboard register ($C000). Compares against:
 ;      Y ($D9) → direction = 0 (UP)     J ($CA) → direction = 1 (RIGHT)
@@ -1107,7 +1107,7 @@ temp          EQU $3C      ; Temporary work variable
 ; WHY: Visual representation of the player's shot moving across
 ;      the playfield.
 
-004499  20 EF 44                      jsr  $44EF
+004499  20 EF 44                      jsr  $44EF  ; LoadProjectileState
 00449C  A6 19                         ldx  draw_y
 00449E  A5 1A                         lda  draw_y_hi
 0044A0  D0 0F                         bne  $44B1
@@ -1124,13 +1124,13 @@ temp          EQU $3C      ; Temporary work variable
 0044BA  BD D3 48                      lda  $48D3,X
 0044BD  18                loc_0044BD  clc
 0044BE  6D 09 45                      adc  $4509
-0044C1  4C 62 04                      jmp  $0462
+0044C1  4C 62 04                      jmp  $0462  ; EraseSprite
 ; ── DrawHitFlash ──────────────────────────────────────────────────
 ; HOW: Draws a brief flash/explosion sprite at the point of impact
 ;      when a projectile hits an alien or satellite.
 ; WHY: Visual feedback confirming a successful hit.
 
-0044C4  20 EF 44                      jsr  $44EF
+0044C4  20 EF 44                      jsr  $44EF  ; LoadProjectileState
 0044C7  A6 19                         ldx  draw_y
 0044C9  A5 1A                         lda  draw_y_hi
 0044CB  D0 0F                         bne  $44DC
@@ -1148,7 +1148,12 @@ temp          EQU $3C      ; Temporary work variable
 0044E8  18                loc_0044E8  clc
 0044E9  6D 09 45                      adc  $4509
 0044EC  4C C0 40                      jmp  DrawSpriteXY
-
+; ── LoadProjectileState ───────────────────────────────────────────
+; HOW: Loads projectile rendering parameters from the state tables
+;      indexed by X. Copies Y position, Y high byte, sprite index,
+;      and sprite height into the corresponding draw registers.
+; WHY: Centralizes the table-to-register transfer for projectile
+;      drawing, used by both the draw and erase paths.
 
 0044EF  BD 48 5D                      lda  $5D48,X
 0044F2  85 19                         sta  draw_y
@@ -1526,7 +1531,7 @@ temp          EQU $3C      ; Temporary work variable
 00499E  A9 00                         lda  #$00
 0049A0  E5 26                         sbc  delta_y_hi
 0049A2  85 26                         sta  delta_y_hi
-0049A4  4C AF 49                      jmp  $49AF
+0049A4  4C AF 49                      jmp  $49AF  ; BresenhamLineInit
 0049A7  A9 01                         lda  #$01
 0049A9  85 21                         sta  step_y
 0049AB  A9 00                         lda  #$00
@@ -1708,9 +1713,9 @@ temp          EQU $3C      ; Temporary work variable
 004AC3  A9 25                         lda  #$25
 004AC5  20 C0 40                      jsr  DrawSpriteXY
 
-004AC8  4C D0 4A                      jmp  $4AD0
+004AC8  4C D0 4A                      jmp  $4AD0  ; UpdateStarTwinkle
 004ACB  A9 25                         lda  #$25
-004ACD  20 62 04                      jsr  $0462
+004ACD  20 62 04                      jsr  $0462  ; EraseSprite
 004AD0  20 28 5C                      jsr  UpdateStarTwinkleB
 004AD3  A9 40                         lda  #$40
 004AD5  20 6C 5C                      jsr  StarTwinkleC
@@ -1780,7 +1785,7 @@ temp          EQU $3C      ; Temporary work variable
 004B20  88                            dey
 004B21  10 F5                         bpl  $4B18
 
-004B23  20 03 04                      jsr  $0403
+004B23  20 03 04                      jsr  $0403  ; RandomByte
 004B26  C9 10                         cmp  #$10
 004B28  B0 05                         bcs  loc_004B2F
 004B2A  A9 03                         lda  #$03
@@ -1831,14 +1836,14 @@ temp          EQU $3C      ; Temporary work variable
 
 004B7F  AE D6 57                      ldx  $57D6
 004B82  D0 03                         bne  loc_004B87
-004B84  4C C5 54                      jmp  $54C5
+004B84  4C C5 54                      jmp  $54C5  ; AnimateSatelliteDown
 004B87  E0 01             loc_004B87  cpx  #$01
 004B89  D0 03                         bne  loc_004B8E
-004B8B  4C 61 54                      jmp  $5461
+004B8B  4C 61 54                      jmp  $5461  ; AnimateSatelliteLeft
 004B8E  E0 02             loc_004B8E  cpx  #$02
 004B90  D0 03                         bne  $4B95
-004B92  4C 29 55                      jmp  $5529
-004B95  4C FD 53                      jmp  $53FD
+004B92  4C 29 55                      jmp  $5529  ; AnimateSatelliteRight
+004B95  4C FD 53                      jmp  $53FD  ; AnimateSatelliteUp
 
 004B98  A9 03                         lda  #$03
 004B9A  8D F8 53                      sta  $53F8
@@ -1942,7 +1947,7 @@ temp          EQU $3C      ; Temporary work variable
 
 004C43  C9 03             loc_004C43  cmp  #$03
 004C45  D0 03                         bne  loc_004C4A
-004C47  4C 98 4B                      jmp  $4B98
+004C47  4C 98 4B                      jmp  $4B98  ; UpdateAlienOrbit
 
 004C4A  C9 01             loc_004C4A  cmp  #$01
 004C4C  D0 03                         bne  loc_004C51
@@ -2084,7 +2089,7 @@ temp          EQU $3C      ; Temporary work variable
 004D37  A9 75                         lda  #$75
 004D39  85 04                         sta  sprite_calc
 004D3B  A9 97                         lda  #$97
-004D3D  20 16 04                      jsr  $0416
+004D3D  20 16 04                      jsr  $0416  ; DrawSprite
 004D40  A9 77                         lda  #$77
 004D42  85 19                         sta  draw_y
 004D44  A9 75                         lda  #$75
@@ -2099,13 +2104,13 @@ temp          EQU $3C      ; Temporary work variable
 004D57  A9 82                         lda  #$82
 004D59  85 04                         sta  sprite_calc
 004D5B  A9 98                         lda  #$98
-004D5D  20 16 04                      jsr  $0416
+004D5D  20 16 04                      jsr  $0416  ; DrawSprite
 004D60  A9 1A                         lda  #$1A
 004D62  85 02                         sta  col_ctr
 004D64  A9 75                         lda  #$75
 004D66  85 04                         sta  sprite_calc
 004D68  A9 99                         lda  #$99
-004D6A  20 16 04                      jsr  $0416
+004D6A  20 16 04                      jsr  $0416  ; DrawSprite
 004D6D  60                            rts
 
 004D6E  00665F35                HEX     00665F35 74
@@ -2152,11 +2157,11 @@ temp          EQU $3C      ; Temporary work variable
 004D9C  E0 01                         cpx  #$01
 004D9E  F0 0C                         beq  $4DAC
 004DA0  20 E3 4D                      jsr  AlienEvolve
-004DA3  4C B5 4D                      jmp  $4DB5
+004DA3  4C B5 4D                      jmp  $4DB5  ; UpdateAlienPositions
 004DA6  20 8B 4E                      jsr  AlienHitHandlerB
-004DA9  4C B5 4D                      jmp  $4DB5
+004DA9  4C B5 4D                      jmp  $4DB5  ; UpdateAlienPositions
 004DAC  20 38 4E                      jsr  AlienHitHandler
-004DAF  4C B5 4D                      jmp  $4DB5
+004DAF  4C B5 4D                      jmp  $4DB5  ; UpdateAlienPositions
 004DB2  20 E0 4E                      jsr  AlienHitHandlerC
 004DB5  CE BB 4D                      dec  $4DBB
 004DB8  10 D2                         bpl  $4D8C
@@ -2196,7 +2201,7 @@ temp          EQU $3C      ; Temporary work variable
 004DE3  AD 64 5D                      lda  $5D64
 004DE6  C9 0A                         cmp  #$0A
 004DE8  B0 4D                         bcs  $4E37
-004DEA  20 0E 56                      jsr  $560E
+004DEA  20 0E 56                      jsr  $560E  ; CheckAlienDirection
 004DED  F0 48                         beq  $4E37
 004DEF  8E BC 4D                      stx  $4DBC
 004DF2  20 C4 4D                      jsr  UpdateAlienPosB
@@ -2247,7 +2252,7 @@ temp          EQU $3C      ; Temporary work variable
 
 004E38  AD 61 5D                      lda  $5D61
 004E3B  F0 4D                         beq  $4E8A
-004E3D  20 0E 56                      jsr  $560E
+004E3D  20 0E 56                      jsr  $560E  ; CheckAlienDirection
 004E40  8E BC 4D                      stx  $4DBC
 004E43  F0 45                         beq  $4E8A
 004E45  20 C4 4D                      jsr  UpdateAlienPosB
@@ -2284,7 +2289,7 @@ temp          EQU $3C      ; Temporary work variable
 004E8B  AD 66 5D                      lda  $5D66
 004E8E  C9 B4                         cmp  #$B4
 004E90  90 4D                         bcc  $4EDF
-004E92  20 0E 56                      jsr  $560E
+004E92  20 0E 56                      jsr  $560E  ; CheckAlienDirection
 004E95  F0 48                         beq  $4EDF
 004E97  8E BC 4D                      stx  $4DBC
 004E9A  20 C4 4D                      jsr  UpdateAlienPosB
@@ -2321,7 +2326,7 @@ temp          EQU $3C      ; Temporary work variable
 004EE0  AD 5F 5D                      lda  $5D5F
 004EE3  C9 46                         cmp  #$46
 004EE5  B0 4D                         bcs  $4F34
-004EE7  20 0E 56                      jsr  $560E
+004EE7  20 0E 56                      jsr  $560E  ; CheckAlienDirection
 004EEA  F0 48                         beq  $4F34
 004EEC  8E BC 4D                      stx  $4DBC
 004EEF  20 C4 4D                      jsr  UpdateAlienPosB
@@ -2464,13 +2469,13 @@ temp          EQU $3C      ; Temporary work variable
 004FD4  AE 01 50                      ldx  $5001
 004FD7  DE 21 52                      dec  $5221,X
 004FDA  D0 14                         bne  loc_004FF0
-004FDC  20 C9 52                      jsr  $52C9
+004FDC  20 C9 52                      jsr  $52C9  ; EraseSatellite
 004FDF  AE 01 50                      ldx  $5001
 004FE2  DE 12 52                      dec  $5212,X
 004FE5  BD 12 52                      lda  $5212,X
 004FE8  9D 21 52                      sta  $5221,X
 004FEB  F0 03                         beq  loc_004FF0
-004FED  20 C3 52                      jsr  $52C3
+004FED  20 C3 52                      jsr  $52C3  ; DrawSatellite
 004FF0  CE 01 50          loc_004FF0  dec  $5001
 004FF3  10 AA                         bpl  loc_004F9F
 
@@ -2570,14 +2575,14 @@ temp          EQU $3C      ; Temporary work variable
 00523B  C9 02                         cmp  #$02
 00523D  D0 0A                         bne  $5249
 00523F  A9 04                         lda  #$04
-005241  4C 4B 52                      jmp  $524B
+005241  4C 4B 52                      jmp  $524B  ; SpawnSatellite
 005244  A9 02                         lda  #$02
-005246  4C 4B 52                      jmp  $524B
+005246  4C 4B 52                      jmp  $524B  ; SpawnSatellite
 005249  A9 06                         lda  #$06
 00524B  9D 12 52                      sta  $5212,X
 00524E  9D 21 52                      sta  $5221,X
 
-005251  20 03 04          loc_005251  jsr  $0403
+005251  20 03 04          loc_005251  jsr  $0403  ; RandomByte
 005254  C9 F0                         cmp  #$F0
 005256  B0 F9                         bcs  loc_005251
 
@@ -2622,7 +2627,7 @@ temp          EQU $3C      ; Temporary work variable
 005297  BD D3 48                      lda  $48D3,X
 00529A  18                            clc
 00529B  6D 7E 52                      adc  $527E
-00529E  4C 16 04                      jmp  $0416
+00529E  4C 16 04                      jmp  $0416  ; DrawSprite
 
 
 0052A1  8D 7E 52          DrawSatelliteB  sta  $527E
@@ -2652,13 +2657,24 @@ temp          EQU $3C      ; Temporary work variable
 ;      the path, satellite movement is fast and the orbit shape can be
 ;      any arbitrary curve the tables define — not just simple math.
 
-0052C3  20 CF 52                      jsr  $52CF
+0052C3  20 CF 52                      jsr  $52CF  ; LoadSatelliteData
 0052C6  4C 7F 52                      jmp  DrawSatellite
+; ── EraseSatellite ────────────────────────────────────────────────
+; HOW: Calls LoadSatelliteData to look up the satellite's screen
+;      coordinates and sprite, then erases it via XOR draw.
+; WHY: Paired with DrawSatellite — erase old position, then redraw
+;      at new position to animate satellite orbit movement.
 
-
-0052C9  20 CF 52                      jsr  $52CF
+0052C9  20 CF 52                      jsr  $52CF  ; LoadSatelliteData
 0052CC  4C A1 52                      jmp  DrawSatelliteB
-
+; ── LoadSatelliteData ─────────────────────────────────────────────
+; HOW: Reads the satellite's orbit index from $520E,X. Uses it to
+;      look up X/Y coordinates from the 256-entry orbit path tables
+;      at $5002 (Y) and $5102 (X). Selects sprite by hit points
+;      via the $521A mapping table.
+; WHY: Centralizes the orbit-to-screen coordinate conversion.
+;      Both DrawSatellite and EraseSatellite call this to avoid
+;      duplicating the table lookup logic.
 
 0052CF  BD 0E 52                      lda  $520E,X
 0052D2  A8                            tay
@@ -2716,18 +2732,18 @@ temp          EQU $3C      ; Temporary work variable
 
 005316  DD 37 53                      cmp  $5337,X
 005319  D0 09                         bne  $5324
-00531B  20 3B 53                      jsr  $533B
+00531B  20 3B 53                      jsr  $533B  ; SpawnEnemyProjectile
 00531E  AE F0 52                      ldx  $52F0
 005321  4C 2A 53                      jmp  $532A
 005324  CA                            dex
 005325  10 EF                         bpl  $5316
 
 005327  AE F0 52                      ldx  $52F0
-00532A  20 C9 52                      jsr  $52C9
+00532A  20 C9 52                      jsr  $52C9  ; EraseSatellite
 
 00532D  AE F0 52                      ldx  $52F0
 005330  DE 0E 52                      dec  $520E,X
-005333  20 C3 52                      jsr  $52C3
+005333  20 C3 52                      jsr  $52C3  ; DrawSatellite
 
 005336  60                            rts
 ; ── Satellite Corner Transition Points ───────────────────────────
@@ -2737,7 +2753,13 @@ temp          EQU $3C      ; Temporary work variable
 ; that corner toward the player.
 
 005337  96D61656                HEX     96D61656
-
+; ── SpawnEnemyProjectile ──────────────────────────────────────────
+; HOW: Checks if the enemy projectile slot ($5D54,X) is empty.
+;      If so, activates it and initializes position from the corner
+;      spawn tables ($5362/$5366/$536A). Triggers a sound effect.
+; WHY: Enemies shoot from the corners of the playfield toward the
+;      center where the player sits. The spawn tables pre-define
+;      the starting positions so corner shots converge naturally.
 
 00533B  BD 54 5D                      lda  $5D54,X
 00533E  D0 21                         bne  $5361
@@ -2769,7 +2791,11 @@ temp          EQU $3C      ; Temporary work variable
 005370  A9 03                         lda  #$03
 005372  8D 6F 53                      sta  $536F
 005375  60                            rts
-
+; ── Inc4DirAmmo ───────────────────────────────────────────────────
+; HOW: Increments the 4-direction fire ammo counter at $536F.
+;      Clamps at $FF to prevent rollover.
+; WHY: Rewards the player with additional super shots as difficulty
+;      increases, compensating for the faster game speed.
 
 005376  EE 6F 53                      inc  $536F
 005379  D0 05                         bne  $5380
@@ -2868,7 +2894,7 @@ temp          EQU $3C      ; Temporary work variable
 005451  BD C4 53                      lda  $53C4,X
 005454  AA                            tax
 005455  BD D6 53                      lda  $53D6,X
-005458  20 16 04                      jsr  $0416
+005458  20 16 04                      jsr  $0416  ; DrawSprite
 00545B  CE F8 53          loc_00545B  dec  $53F8
 00545E  10 C3                         bpl  $5423
 
@@ -2916,7 +2942,7 @@ temp          EQU $3C      ; Temporary work variable
 0054B5  BD BC 53                      lda  $53BC,X
 0054B8  AA                            tax
 0054B9  BD DD 53                      lda  $53DD,X
-0054BC  20 16 04                      jsr  $0416
+0054BC  20 16 04                      jsr  $0416  ; DrawSprite
 0054BF  CE F8 53          loc_0054BF  dec  $53F8
 0054C2  10 C3                         bpl  $5487
 
@@ -3041,7 +3067,7 @@ temp          EQU $3C      ; Temporary work variable
 0055A7  AA                            tax
 0055A8  BD 54 5D                      lda  $5D54,X
 0055AB  D0 32                         bne  $55DF
-0055AD  20 0E 56                      jsr  $560E
+0055AD  20 0E 56                      jsr  $560E  ; CheckAlienDirection
 0055B0  F0 2D                         beq  $55DF
 0055B2  E6 2C                         inc  timer_lo
 0055B4  D0 29                         bne  $55DF
@@ -3063,7 +3089,7 @@ temp          EQU $3C      ; Temporary work variable
 0055CF  88                            dey
 0055D0  10 F7                         bpl  $55C9
 
-0055D2  20 03 04                      jsr  $0403
+0055D2  20 03 04                      jsr  $0403  ; RandomByte
 0055D5  C9 80                         cmp  #$80
 0055D7  B0 06                         bcs  $55DF
 0055D9  AE 8F 55          loc_0055D9  ldx  $558F
@@ -3087,17 +3113,24 @@ temp          EQU $3C      ; Temporary work variable
 0055F5  10 08                         bpl  $55FF
 0055F7  A9 03                         lda  #$03
 0055F9  8D E2 55                      sta  $55E2
-0055FC  4C FD 53                      jmp  $53FD
+0055FC  4C FD 53                      jmp  $53FD  ; AnimateSatelliteUp
 
 0055FF  D0 03                         bne  loc_005604
-005601  4C C5 54                      jmp  $54C5
+005601  4C C5 54                      jmp  $54C5  ; AnimateSatelliteDown
 
 005604  C9 01             loc_005604  cmp  #$01
 005606  D0 03                         bne  $560B
-005608  4C 61 54                      jmp  $5461
+005608  4C 61 54                      jmp  $5461  ; AnimateSatelliteLeft
 
-00560B  4C 29 55                      jmp  $5529
-
+00560B  4C 29 55                      jmp  $5529  ; AnimateSatelliteRight
+; ── CheckAlienDirection ───────────────────────────────────────────
+; HOW: Compares the alien's Y position against reference values to
+;      determine which edge of the playfield it occupies. Branches
+;      to direction-specific handlers ($569E, $564C, $5675) for
+;      UP, RIGHT, and DOWN; falls through for LEFT.
+; WHY: Each direction has unique coordinate math for positioning
+;      aliens along its respective screen edge. This router dispatches
+;      to the correct variant based on the alien's current orbit position.
 
 00560E  E0 01                         cpx  #$01
 005610  D0 03                         bne  $5615
@@ -3195,7 +3228,7 @@ temp          EQU $3C      ; Temporary work variable
 ;      ($0403) to add slight positional variation to each alien's draw
 ;      position, giving the left-edge aliens a wobble effect.
 
-0056C9  20 03 04          DrawAlienRowDirD  jsr  $0403
+0056C9  20 03 04          DrawAlienRowDirD  jsr  $0403  ; RandomByte
 0056CC  29 03                         and  #$03
 0056CE  AA                            tax
 0056CF  BD 54 5D                      lda  $5D54,X
@@ -3267,11 +3300,11 @@ temp          EQU $3C      ; Temporary work variable
 00571A  8D D2 57                      sta  $57D2
 00571D  BD C0 57                      lda  $57C0,X
 005720  85 31                         sta  diff_steps
-005722  20 76 53                      jsr  $5376
+005722  20 76 53                      jsr  $5376  ; Inc4DirAmmo
 
-005725  20 76 53                      jsr  $5376
+005725  20 76 53                      jsr  $5376  ; Inc4DirAmmo
 
-005728  20 76 53                      jsr  $5376
+005728  20 76 53                      jsr  $5376  ; Inc4DirAmmo
 
 00572B  A5 30                         lda  difficulty
 00572D  4A                            lsr  a
@@ -3438,7 +3471,7 @@ temp          EQU $3C      ; Temporary work variable
 
 00582C  20 70 53                      jsr  Set4DirAmmo
 
-00582F  20 77 5B                      jsr  $5B77
+00582F  20 77 5B                      jsr  $5B77  ; InputWaitKey
 005832  A9 05                         lda  #$05
 005834  85 35                         sta  sat_counter
 005836  20 E5 52                      jsr  DrawBase
@@ -3545,8 +3578,8 @@ temp          EQU $3C      ; Temporary work variable
 0058D1  F0 08                         beq  $58DB
 0058D3  BD 54 5D                      lda  $5D54,X
 0058D6  F0 03                         beq  $58DB
-0058D8  4C DE 58                      jmp  $58DE
-0058DB  4C 6E 59                      jmp  $596E
+0058D8  4C DE 58                      jmp  $58DE  ; CheckSatelliteHits
+0058DB  4C 6E 59                      jmp  $596E  ; ProcessLaserHit
 0058DE  E0 03                         cpx  #$03
 0058E0  F0 31                         beq  $5913
 0058E2  E0 02                         cpx  #$02
@@ -3556,22 +3589,22 @@ temp          EQU $3C      ; Temporary work variable
 0058EA  BD 64 5D                      lda  $5D64,X
 0058ED  DD 50 5D                      cmp  $5D50,X
 0058F0  90 2C                         bcc  $591E
-0058F2  4C 6E 59                      jmp  $596E
+0058F2  4C 6E 59                      jmp  $596E  ; ProcessLaserHit
 0058F5  BD 60 5D                      lda  $5D60,X
 0058F8  DD 4C 5D                      cmp  $5D4C,X
 0058FB  90 71                         bcc  $596E
 0058FD  BD 5C 5D                      lda  $5D5C,X
 005900  DD 48 5D                      cmp  $5D48,X
 005903  90 69                         bcc  $596E
-005905  4C 1E 59                      jmp  $591E
+005905  4C 1E 59                      jmp  $591E  ; DrawLaserProjectile
 005908  BD 64 5D                      lda  $5D64,X
 00590B  DD 50 5D                      cmp  $5D50,X
 00590E  B0 0E                         bcs  $591E
-005910  4C 6E 59                      jmp  $596E
+005910  4C 6E 59                      jmp  $596E  ; ProcessLaserHit
 005913  BD 5C 5D                      lda  $5D5C,X
 005916  DD 48 5D                      cmp  $5D48,X
 005919  90 03                         bcc  $591E
-00591B  4C 6E 59                      jmp  $596E
+00591B  4C 6E 59                      jmp  $596E  ; ProcessLaserHit
 00591E  20 C4 44                      jsr  DrawHitFlash
 
 005921  AE D6 57                      ldx  $57D6
@@ -3584,7 +3617,7 @@ temp          EQU $3C      ; Temporary work variable
 005931  20 65 4B                      jsr  PunishmentRoutine
 
 005934  AE D6 57                      ldx  $57D6
-005937  4C 54 59                      jmp  $5954
+005937  4C 54 59                      jmp  $5954  ; LaserExplosion
 00593A  C9 03                         cmp  #$03
 00593C  D0 16                         bne  $5954
 00593E  AE D6 57                      ldx  $57D6
@@ -3625,17 +3658,17 @@ temp          EQU $3C      ; Temporary work variable
 00598B  F0 08                         beq  $5995
 00598D  BD 64 5D                      lda  $5D64,X
 005990  F0 23                         beq  $59B5
-005992  4C C2 59                      jmp  $59C2
+005992  4C C2 59                      jmp  $59C2  ; CheckLaserLoop
 005995  BD 5C 5D                      lda  $5D5C,X
 005998  C9 16                         cmp  #$16
 00599A  BD 60 5D                      lda  $5D60,X
 00599D  E9 01                         sbc  #$01
 00599F  B0 14                         bcs  $59B5
-0059A1  4C C2 59                      jmp  $59C2
+0059A1  4C C2 59                      jmp  $59C2  ; CheckLaserLoop
 0059A4  BD 64 5D                      lda  $5D64,X
 0059A7  C9 BF                         cmp  #$BF
 0059A9  F0 0A                         beq  $59B5
-0059AB  4C C2 59                      jmp  $59C2
+0059AB  4C C2 59                      jmp  $59C2  ; CheckLaserLoop
 0059AE  BD 5C 5D                      lda  $5D5C,X
 0059B1  C9 3E                         cmp  #$3E
 0059B3  D0 0D                         bne  $59C2
@@ -3707,14 +3740,14 @@ temp          EQU $3C      ; Temporary work variable
 005A3A  BD 48 5D                      lda  $5D48,X
 005A3D  C9 9B                         cmp  #$9B
 005A3F  90 15                         bcc  loc_005A56
-005A41  4C 5D 5A                      jmp  $5A5D
+005A41  4C 5D 5A                      jmp  $5A5D  ; HandleAlienHit
 005A44  BD 48 5D                      lda  $5D48,X
 005A47  C9 B6                         cmp  #$B6
 005A49  90 03                         bcc  $5A4E
 005A4B  4C 56 5A                      jmp  loc_005A56
 005A4E  BD 4C 5D                      lda  $5D4C,X
 005A51  D0 03                         bne  loc_005A56
-005A53  4C 5D 5A                      jmp  $5A5D
+005A53  4C 5D 5A                      jmp  $5A5D  ; HandleAlienHit
 
 005A56  C6 12             loc_005A56  dec  loop_idx
 005A58  10 B9                         bpl  loc_005A13
@@ -3806,7 +3839,7 @@ temp          EQU $3C      ; Temporary work variable
 005AF2  29 03                         and  #$03
 005AF4  18                            clc
 005AF5  69 26                         adc  #$26
-005AF7  20 16 04                      jsr  $0416
+005AF7  20 16 04                      jsr  $0416  ; DrawSprite
 005AFA  20 1C 5C                      jsr  UpdateStarTwinkle
 005AFD  A0 80                         ldy  #$80
 005AFF  A9 F2                         lda  #$F2
@@ -3835,7 +3868,7 @@ temp          EQU $3C      ; Temporary work variable
 005B28  A9 17                         lda  #$17
 005B2A  85 02                         sta  col_ctr
 005B2C  A9 90                         lda  #$90
-005B2E  20 16 04                      jsr  $0416
+005B2E  20 16 04                      jsr  $0416  ; DrawSprite
 005B31  4C 39 58                      jmp  CheckLifeLost
 
 005B34  A9 00                         lda  #$00
@@ -3863,17 +3896,23 @@ temp          EQU $3C      ; Temporary work variable
 005B5B  8A                            txa
 005B5C  18                            clc
 005B5D  69 0B                         adc  #$0B
-005B5F  4C 62 04                      jmp  $0462
+005B5F  4C 62 04                      jmp  $0462  ; EraseSprite
 
 
 005B62  98                InputProcessB  tya
-005B63  20 6F 5B                      jsr  $5B6F
+005B63  20 6F 5B                      jsr  $5B6F  ; SoundClick
 005B66  49 FF                         eor  #$FF
-005B68  20 6F 5B                      jsr  $5B6F
+005B68  20 6F 5B                      jsr  $5B6F  ; SoundClick
 005B6B  88                            dey
 005B6C  D0 F4                         bne  InputProcessB
 
 005B6E  60                            rts
+; ── SoundClick ────────────────────────────────────────────────────
+; HOW: Transfers A to X, executes a DEX countdown loop for timing,
+;      then toggles the speaker at $C030. The initial A value controls
+;      the pitch — higher = longer delay = lower pitch.
+; WHY: Simple single-click sound effect used for UI feedback,
+;      button presses, and minor game events.
 
 005B6F  AA                            tax
 
@@ -3882,10 +3921,18 @@ temp          EQU $3C      ; Temporary work variable
 
 005B73  2C 30 C0                      bit  SPKR            ; SPKR - Speaker toggle
 005B76  60                            rts
+; ── InputWaitKey ──────────────────────────────────────────────────
+; HOW: Loops reading RandomByte ($0403) to advance the PRNG state
+;      while waiting for a valid keyboard input. Filters key codes
+;      to the expected range before returning.
+; WHY: Blocking wait for player input during the title screen and
+;      game-over screen. The PRNG calls while waiting ensure the
+;      random seed depends on human timing — a classic 8-bit trick
+;      to seed randomness from user input lag.
 
 005B77  A2 1F                         ldx  #$1F
 
-005B79  20 03 04                      jsr  $0403
+005B79  20 03 04                      jsr  $0403  ; RandomByte
 005B7C  29 1F                         and  #$1F
 005B7E  18                            clc
 005B7F  69 01                         adc  #$01
@@ -3896,7 +3943,7 @@ temp          EQU $3C      ; Temporary work variable
 005B86  69 08                         adc  #$08
 005B88  9D B4 5B                      sta  $5BB4,X
 
-005B8B  20 03 04          loc_005B8B  jsr  $0403
+005B8B  20 03 04          loc_005B8B  jsr  $0403  ; RandomByte
 005B8E  C9 C0                         cmp  #$C0
 005B90  B0 F9                         bcs  loc_005B8B
 
@@ -3911,7 +3958,7 @@ temp          EQU $3C      ; Temporary work variable
 005BA4  C9 16                         cmp  #$16
 005BA6  B0 D1                         bcs  $5B79
 
-005BA8  20 03 04          loc_005BA8  jsr  $0403
+005BA8  20 03 04          loc_005BA8  jsr  $0403  ; RandomByte
 005BAB  29 07                         and  #$07
 005BAD  9D F4 5B                      sta  $5BF4,X
 005BB0  CA                            dex
@@ -4008,7 +4055,7 @@ temp          EQU $3C      ; Temporary work variable
 005C82  CA                loc_005C82  dex
 005C83  10 F5                         bpl  loc_005C7A
 
-005C85  20 27 5D                      jsr  $5D27
+005C85  20 27 5D                      jsr  $5D27  ; DrawBaseCenter
 005C88  20 14 5D                      jsr  InitProjectileTables
 005C8B  A9 03                         lda  #$03
 005C8D  8D 13 5D                      sta  $5D13
@@ -4023,7 +4070,7 @@ temp          EQU $3C      ; Temporary work variable
 005CA0  9D 54 5D                      sta  $5D54,X
 005CA3  BD 12 52          loc_005CA3  lda  $5212,X
 005CA6  F0 0B                         beq  loc_005CB3
-005CA8  20 C9 52                      jsr  $52C9
+005CA8  20 C9 52                      jsr  $52C9  ; EraseSatellite
 
 005CAB  AE 13 5D                      ldx  $5D13
 005CAE  A9 00                         lda  #$00
@@ -4114,7 +4161,12 @@ temp          EQU $3C      ; Temporary work variable
 005D21  18                            clc
 005D22  69 0B                         adc  #$0B
 005D24  4C C0 40                      jmp  DrawSpriteXY
-
+; ── DrawBaseCenter ────────────────────────────────────────────────
+; HOW: Loads sprite index $56 (the player's base), sets col_ctr to
+;      $17 and sprite_calc to $18 (the center of the playfield),
+;      then jumps to DrawSpriteXY.
+; WHY: The player's base is always at the exact center of the screen.
+;      Hardcoded coordinates keep the drawing fast and the logic simple.
 
 005D27  A9 56                         lda  #$56
 005D29  85 04                         sta  sprite_calc
