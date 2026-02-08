@@ -522,37 +522,41 @@ At 14,889 bytes, Genetic Drift is remarkably compact:
 
 74 subroutines, 210 identified loops, 876 pattern matches detected by the disassembler.
 
-## Repository Contents
 
-| File / Directory | Description |
+## Recovered Source Code
+
+The main deliverable is `genetic_drift_source.s` — a clean, annotated reconstruction of Scott Schram's original assembly source. This is not a raw disassembly; it reads like hand-written source code with named variables, section headers, and design commentary.
+
+| Metric | Count |
+|--------|-------|
+| Named zero-page variables | 59 |
+| Annotated functions | 67 |
+| Documented data tables | 28 |
+| Labeled subroutine calls | 32 |
+| Machine noise remaining | 0 |
+
+## Artifacts
+
+| File | Description |
 |------|-------------|
-| **[`genetic_drift_source.s`](genetic_drift_source.s)** | **Reconstructed source code** --- the primary artifact. 4,275 lines of fully annotated 6502 assembly with named variables, HOW/WHY comments for every function, documented data tables, and a complete memory map. This is the recovered source code. |
-| `disassembly/genetic_drift_annotated.s` | Raw machine-generated disassembly (7,064 lines) with auto-detected functions and register state tracking |
+| `genetic_drift_source.s` | **Recovered source code** — clean annotated assembly |
+| `disassembly/genetic_drift_annotated.s` | Raw deasmiigs machine output (input to transformation) |
 | `disassembly/genetic_drift_complete.s` | Raw disassembly with register state tracking |
-| `analysis/game_mechanics.md` | Complete game mechanics documentation (difficulty curves, satellite system, alien evolution, cheat code) |
-| `analysis/genetic_drift_analysis.md` | Technical analysis of binary structure and systems |
-| `extracted/genetic_drift_game_binary.bin` | Raw game binary (14,889 bytes, load at $37D7) |
-| `graphics/` | 32 extracted sprite PNGs with manifest |
+| `analysis/game_mechanics.md` | Complete game mechanics documentation |
+| `analysis/genetic_drift_analysis.md` | Deep analysis of game architecture |
+| `graphics/sprite_*.png` | All 32 extracted sprites |
+| `extracted/genetic_drift_game_binary.bin` | Raw game binary (14,889 bytes) |
 | `Genetic_Drift_Instructions.pdf` | Scanned original game manual |
-| `tools/` | Python reverse-engineering toolkit (9 scripts) |
 
-## Reverse-Engineering Tools
-
-The binary was extracted and analyzed using the Python tools in `tools/`:
+## Tools
 
 | Tool | Purpose |
 |------|---------|
-| `extract_dos33.py` | DOS 3.3 file extractor (bypasses copy protection by reading raw sectors) |
-| `disasm6502.py` | 6502 disassembler with CFG tracing, SMC detection, semantic labels |
-| `extract_sprites.py` | HGR sprite extractor with pre-shift detection |
-| `memviz.py` | Memory access pattern visualization |
-| `annotate_genetic_drift_final.py` | Transforms raw disassembly into the reconstructed source file |
-| `extract_sound.py` | Apple II sound data extraction and WAV conversion |
-| `detokenize_basic.py` | Applesoft/Integer BASIC program listing |
-| `extract_prodos.py` | ProDOS file extractor |
-| `annotate_genetic_drift.py` | Earlier annotation script (superseded by `_final` version) |
-
-The annotated disassembly was produced using `deasmiigs` (Rosetta v2 decompiler) with `--cpu 6502 --format binary --load $37D7 --entry $37D7 --apple2-rom --trace --auto-symbols --annotated`, then transformed into the reconstructed source by `annotate_genetic_drift_final.py`.
+| `tools/annotate_genetic_drift_final.py` | Source recovery — transforms machine output to clean annotated assembly |
+| `tools/disasm6502.py` | 6502 disassembler with CFG tracing, SMC detection, semantic labels |
+| `tools/extract_dos33.py` | DOS 3.3 file extractor (bypasses copy protection by reading raw sectors) |
+| `tools/extract_sprites.py` | HGR sprite extractor with pre-shift detection |
+| `tools/memviz.py` | Memory access pattern visualization |
 
 ## Strategic Summary
 

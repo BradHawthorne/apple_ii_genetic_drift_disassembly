@@ -60,6 +60,19 @@
 - The game's biology metaphor (aliens "evolving" through mutation) was unusual
   for its era -- most action games had purely martial themes.
 
+## Source Recovery (Iterations 1-6)
+
+The recovered source file (`genetic_drift_source.s`) went through 6 quality iterations:
+
+1. Initial transformation: strip machine noise, inject EQU block, named variables
+2. Add function annotations (67 routines with HOW/WHY comments)
+3. Document all data tables (28), add section headers
+4. Label subroutine calls (32 named jsr/jmp targets)
+5. Fix residual noise (A=comp@, !src_lo syntax, tautological soft-switch comments)
+6. Fix data regions (encrypted disk bootstrap, crosshatch sprite data as HEX blocks)
+
+Final stats: 59 named variables, 67 functions, 28 data tables, 32 call labels, 0 noise.
+
 ## Future Work (Status)
 
 - [DONE] Decode the satellite appearance timing formula.
@@ -68,11 +81,14 @@
 - [DONE] Map the complete difficulty progression curve from the lookup tables.
   -> 12 levels, 8 parameters each, 328 hits to max. Full table with formulas
      in `analysis/game_mechanics.md`.
+- [DONE] Recover clean annotated source code from machine disassembly.
+  -> 6 iteration passes. See `genetic_drift_source.s`.
 - [BLOCKED] Verify all 32 sprite labels against actual in-game appearance (requires emulator).
 - [BLOCKED] Compare the Broderbund RWTS to other Broderbund titles (requires those disk images).
 
 ## Analysis Artifacts
 
+- `genetic_drift_source.s` -- Recovered annotated source code (the main deliverable)
 - `analysis/game_mechanics.md` -- Complete game mechanics documentation:
   satellite system, difficulty curve, level progression, cheat code analysis,
   frame timing, scoring breakdown

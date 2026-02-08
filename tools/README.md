@@ -1,4 +1,29 @@
-# Genetic Drift -- Extraction Tools
+# Genetic Drift -- Tools
+
+## Source Recovery
+
+The primary deliverable (`genetic_drift_source.s`) is produced by `tools/annotate_genetic_drift_final.py`, which transforms raw deasmiigs machine output into clean annotated 6502 assembly.
+
+### Command
+
+```bash
+python tools/annotate_genetic_drift_final.py
+```
+
+**Input:** `disassembly/genetic_drift_annotated.s` (7,064 lines of raw machine output)
+**Output:** `genetic_drift_source.s` (clean annotated source)
+
+### What It Does
+
+1. Strips all machine analysis noise (register liveness, stack annotations, optimization hints)
+2. Replaces 59 raw hex addresses with named zero-page equates
+3. Injects HOW/WHY block comments before 67 functions
+4. Documents 28 data tables with structure and purpose
+5. Labels 32 subroutine calls with descriptive names
+6. Converts misinterpreted instructions in data regions to HEX blocks
+7. Replaces tautological soft-switch comments with meaningful descriptions
+
+---
 
 ## Sprite Extraction
 

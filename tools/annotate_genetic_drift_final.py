@@ -54,6 +54,8 @@ ZERO_PAGE = {
     0x11: ("direction",    "Aim direction: 0=UP 1=RIGHT 2=DOWN 3=LEFT"),
     0x12: ("loop_idx",     "Temporary loop counter"),
     0x13: ("sprite_idx",   "Current sprite table index"),
+    0x14: ("save_x",       "Register save: X preserved across calls"),
+    0x15: ("save_y",       "Register save: Y preserved across calls"),
     0x16: ("draw_mask",    "HGR byte mask for sprite blitting"),
     0x17: ("draw_col",     "HGR column byte index"),
     0x19: ("draw_y",       "Y coordinate for draw operations"),
@@ -65,6 +67,7 @@ ZERO_PAGE = {
     0x1F: ("step_x_lo",    "Line-draw step X, low (signed)"),
     0x20: ("step_x_hi",    "Line-draw step X, high (signed)"),
     0x21: ("step_y",       "Line-draw step Y increment"),
+    0x22: ("step_y_hi",    "Line-draw step Y, high byte (sign extension)"),
     0x23: ("delta_x",      "Absolute delta X for line drawing"),
     0x24: ("delta_x_hi",   "Delta X, high byte"),
     0x25: ("delta_y",      "Absolute delta Y for line drawing"),
@@ -81,9 +84,12 @@ ZERO_PAGE = {
     0x30: ("difficulty",   "Difficulty: 11=easiest, 0=hardest"),
     0x31: ("diff_steps",   "Hits remaining until next difficulty increase"),
     0x32: ("fire_rate",    "Alien fire rate from difficulty table"),
+    0x33: ("star_idx",     "Star twinkle animation index (cycles 0-31)"),
     0x34: ("game_flag",    "Game state flag"),
     0x35: ("sat_counter",  "Satellite counter"),
     0x36: ("fire_req",     "Fire requested (set by ESC key)"),
+    0x38: ("snd_pitch1",   "Sound effect inner loop counter (pitch)"),
+    0x39: ("snd_pitch2",   "Sound effect second half pitch"),
     0x3A: ("level",        "Level: 5=Lv1, 4=Lv2, 3=Lv3, 2=Lv4, 1=Lv5, 0=Victory"),
     0x3C: ("temp",         "Temporary work variable"),
     0x3D: ("disk_chk",     "RWTS disk checksum / temp"),
@@ -96,6 +102,59 @@ SOFT_SWITCHES = {
     0xC050: "TXTCLR",   0xC051: "TXTSET",   0xC052: "MIXCLR",
     0xC053: "MIXSET",   0xC054: "TXTPAGE1", 0xC055: "TXTPAGE2",
     0xC056: "LORES",    0xC057: "HIRES",
+    0xC061: "BUTN0",    0xC062: "BUTN1",
+}
+
+# Replace deasmiigs tautological soft-switch comments with meaningful ones
+SOFT_SWITCH_COMMENTS = {
+    "KBDSTRB - Clear keyboard strobe":   "Clear keyboard strobe",
+    "TXTCLR - Enable graphics mode":     "Graphics mode on (soft switch)",
+    "HIRES - Hi-res graphics mode":      "Hi-res mode on (soft switch)",
+    "MIXCLR - Full screen graphics":     "Full-screen (no text window)",
+    "SPKR - Speaker toggle":            "Toggle speaker (click)",
+    "BUTN0 - Button 0 / Open Apple":    "Read Open Apple button",
+    "BUTN1 - Button 1 / Closed Apple":  "Read Closed Apple button",
+    "KBD - Read keyboard":              "Read keyboard",
+    "KBD - Keyboard data / 80STORE off": "Read keyboard (high bit = key pressed)",
+}
+
+# ── Subroutine Call Labels ───────────────────────────────────────────
+# Short names appended as inline comments to bare jsr/jmp $XXXX calls.
+# These are routines that don't have labels in the disassembly output.
+
+CALL_LABELS = {
+    0x0403: "RandomByte",
+    0x0416: "DrawSprite",
+    0x0462: "EraseSprite",
+    0x20E0: "HGR2Clear",           # Apple II ROM: clear HGR page 2
+    0x44EF: "LoadProjectileState",
+    0x49AF: "BresenhamLineInit",
+    0x4AD0: "UpdateStarTwinkle",
+    0x4B98: "UpdateAlienOrbit",
+    0x4CEF: "CheatCheck",
+    0x4DB5: "UpdateAlienPositions",
+    0x524B: "SpawnSatellite",
+    0x52C3: "DrawSatellite",
+    0x52C9: "EraseSatellite",
+    0x52CF: "LoadSatelliteData",
+    0x533B: "SpawnEnemyProjectile",
+    0x5376: "Inc4DirAmmo",
+    0x53FD: "AnimateSatelliteUp",
+    0x5461: "AnimateSatelliteLeft",
+    0x54C5: "AnimateSatelliteDown",
+    0x5529: "AnimateSatelliteRight",
+    0x560E: "CheckAlienDirection",
+    0x57D7: "GameInit",
+    0x58DE: "CheckSatelliteHits",
+    0x591E: "DrawLaserProjectile",
+    0x5954: "LaserExplosion",
+    0x596E: "ProcessLaserHit",
+    0x59C2: "CheckLaserLoop",
+    0x5A5D: "HandleAlienHit",
+    0x5B6F: "SoundClick",
+    0x5B77: "InputWaitKey",
+    0x5D27: "DrawBaseCenter",
+    0x8800: "DiskIO",
 }
 
 # ── Function Annotations ─────────────────────────────────────────────
@@ -132,6 +191,36 @@ FUNCTIONS = {
 ; WHY: Apple II floppy disks cannot store arbitrary bytes — values below
 ;      $96 are invalid on disk. The 6-and-2 encoding packs 8-bit values
 ;      into disk-safe nibbles, which this routine reverses."""),
+
+    # ── Relocated: PRNG ──
+    0x000403: ("RandomByte", """\
+; HOW: Pseudorandom number generator using zero page ($00-$01) as
+;      state. Combines ROL, EOR, and ROR operations on the 16-bit
+;      seed, then increments and adds to produce the next value.
+;      Returns random byte in A.""", """\
+; WHY: Drives all randomized behavior — satellite spawn timing,
+;      alien fire targeting, star twinkle positions. The algorithm
+;      is compact (under 20 bytes) and fast for a 1 MHz 6502."""),
+
+    # ── Relocated: Sprite Draw ──
+    0x000416: ("DrawSprite", """\
+; HOW: Takes sprite index in A, draws it at the current col_ctr/
+;      sprite_calc position. Looks up sprite data pointer from the
+;      tables at $5D7C (low) and $5E1D (high), width from $5EBE,
+;      and height from $5F5F. Draws row by row using ORA to merge
+;      sprite pixels with the existing screen content.""", """\
+; WHY: Central rendering primitive — called 30+ times throughout
+;      the code for all game objects. Kept in relocated low memory
+;      ($0416) because page-zero addressing makes the inner loop
+;      faster than equivalent code in the $4000+ range."""),
+
+    0x000462: ("EraseSprite", """\
+; HOW: Same structure as DrawSprite but uses XOR (EOR) instead of
+;      ORA to erase the sprite from the screen. A second XOR of the
+;      same data restores the original background pixels.""", """\
+; WHY: XOR erase is the standard technique for fast sprite removal
+;      on the Apple II HGR screen — no need to save/restore the
+;      background, and it's a single pass through the sprite data."""),
 
     # ── Graphics: Sprite Engine ──
     0x0040C0: ("DrawSpriteXY", """\
@@ -232,6 +321,14 @@ FUNCTIONS = {
 ; WHY: Before redrawing a sprite at a new position, the old image must
 ;      be cleared. No page flipping means manual erase-then-draw."""),
 
+    # ── Projectile State Loader ──
+    0x0044EF: ("LoadProjectileState", """\
+; HOW: Loads projectile rendering parameters from the state tables
+;      indexed by X. Copies Y position, Y high byte, sprite index,
+;      and sprite height into the corresponding draw registers.""", """\
+; WHY: Centralizes the table-to-register transfer for projectile
+;      drawing, used by both the draw and erase paths."""),
+
     # ── Projectile Drawing ──
     0x004499: ("DrawProjectile", """\
 ; HOW: Draws the player's laser projectile sprite at its current
@@ -295,6 +392,21 @@ FUNCTIONS = {
 ;      math with separate delta/step/accumulator variables gives sub-pixel
 ;      precision without floating point. The Bresenham approach guarantees
 ;      every pixel position along the path is visited exactly once."""),
+
+    0x0049C6: ("BresenhamLineStep", """\
+; HOW: Bresenham's line algorithm inner loop. Initializes the error
+;      accumulator to half the major axis distance (delta_x >> 1),
+;      then iterates line_ctr_lo/hi times. Each iteration:
+;        1. Adds delta_y to the accumulator (accum_lo/accum_hi)
+;        2. If accumulator >= delta_x, subtracts delta_x and steps
+;           along the minor axis (Y direction via step_y)
+;        3. Always steps along the major axis (X direction via step_x)
+;      The 16-bit math handles screen-spanning distances accurately.""", """\
+; WHY: Classic integer-only line drawing — fast and exact. No division
+;      or floating point needed, which matters at 1 MHz. Used to compute
+;      alien orbital paths and projectile trajectories. The algorithm
+;      dates to 1962 (Jack Bresenham, IBM) and was the standard approach
+;      for line drawing in the 8-bit era."""),
 
     # ── Game Over ──
     0x004A86: ("GameOver", """\
@@ -475,6 +587,21 @@ FUNCTIONS = {
 ;      the path, satellite movement is fast and the orbit shape can be
 ;      any arbitrary curve the tables define — not just simple math."""),
 
+    0x0052C9: ("EraseSatellite", """\
+; HOW: Calls LoadSatelliteData to look up the satellite's screen
+;      coordinates and sprite, then erases it via XOR draw.""", """\
+; WHY: Paired with DrawSatellite — erase old position, then redraw
+;      at new position to animate satellite orbit movement."""),
+
+    0x0052CF: ("LoadSatelliteData", """\
+; HOW: Reads the satellite's orbit index from $520E,X. Uses it to
+;      look up X/Y coordinates from the 256-entry orbit path tables
+;      at $5002 (Y) and $5102 (X). Selects sprite by hit points
+;      via the $521A mapping table.""", """\
+; WHY: Centralizes the orbit-to-screen coordinate conversion.
+;      Both DrawSatellite and EraseSatellite call this to avoid
+;      duplicating the table lookup logic."""),
+
     0x0052E5: ("DrawBase_ClearSatellites", """\
 ; HOW: Draws the player's base sprite at the center of the playfield,
 ;      then loops through all 4 satellite slots, setting $5212,X to zero
@@ -494,6 +621,15 @@ FUNCTIONS = {
 ;      time consistent regardless of satellite count. Movement speed is
 ;      controlled by the difficulty table via $52F2."""),
 
+    # ── Enemy Projectile Spawning ──
+    0x00533B: ("SpawnEnemyProjectile", """\
+; HOW: Checks if the enemy projectile slot ($5D54,X) is empty.
+;      If so, activates it and initializes position from the corner
+;      spawn tables ($5362/$5366/$536A). Triggers a sound effect.""", """\
+; WHY: Enemies shoot from the corners of the playfield toward the
+;      center where the player sits. The spawn tables pre-define
+;      the starting positions so corner shots converge naturally."""),
+
     # ── 4-Direction Fire ──
     0x005370: ("Set4DirAmmo", """\
 ; HOW: Loads the initial 4-direction fire ammo value (3 uses) and stores
@@ -501,11 +637,40 @@ FUNCTIONS = {
 ; WHY: Grants the player 3 uses of the 4-direction "super shot" at game
 ;      start. Additional uses are granted with each difficulty increase."""),
 
+    0x005376: ("Inc4DirAmmo", """\
+; HOW: Increments the 4-direction fire ammo counter at $536F.
+;      Clamps at $FF to prevent rollover.""", """\
+; WHY: Rewards the player with additional super shots as difficulty
+;      increases, compensating for the faster game speed."""),
+
     # ── Alien Drawing (Direction-Specific) ──
     0x005591: ("DrawAlienRowDir", """\
-; HOW: Direction-specific alien row drawing routine. Handles the
-;      coordinate transformation needed to draw aliens orbiting from
-;      different directions.""", ""),
+; HOW: Draws one row of 4 aliens for direction A (UP). Uses self-modifying
+;      code to patch the sprite table offset, then calls DrawSprite for each
+;      alien whose type is non-zero (alive). Iterates X = 3..0.""", """\
+; WHY: Four variants of this routine exist — one per direction (A through D).
+;      Each applies the correct coordinate transformation for its edge of
+;      the playfield. The UP variant is the base; B/C/D mirror and rotate."""),
+
+    0x0055E3: ("DrawAlienRowDirB", """\
+; HOW: Direction B (RIGHT) variant of DrawAlienRowDir. Self-modifies
+;      the table offset at $55E1, then draws 4 aliens along the right
+;      edge of the playfield.""", ""),
+
+    0x0056C9: ("DrawAlienRowDirD", """\
+; HOW: Direction D (LEFT) variant of DrawAlienRowDir. Calls RandomByte
+;      ($0403) to add slight positional variation to each alien's draw
+;      position, giving the left-edge aliens a wobble effect.""", ""),
+
+    # ── Alien Direction Router ──
+    0x00560E: ("CheckAlienDirection", """\
+; HOW: Compares the alien's Y position against reference values to
+;      determine which edge of the playfield it occupies. Branches
+;      to direction-specific handlers ($569E, $564C, $5675) for
+;      UP, RIGHT, and DOWN; falls through for LEFT.""", """\
+; WHY: Each direction has unique coordinate math for positioning
+;      aliens along its respective screen edge. This router dispatches
+;      to the correct variant based on the alien's current orbit position."""),
 
     # ── Difficulty System ──
     0x0056E4: ("IncreaseDifficulty", """\
@@ -617,6 +782,31 @@ FUNCTIONS = {
 ;      levels — the cumulative speed increase carries over, making each
 ;      successive level harder even though aliens reset to UFOs."""),
 
+    # ── Sound Effects ──
+    0x005B6F: ("SoundClick", """\
+; HOW: Transfers A to X, executes a DEX countdown loop for timing,
+;      then toggles the speaker at $C030. The initial A value controls
+;      the pitch — higher = longer delay = lower pitch.""", """\
+; WHY: Simple single-click sound effect used for UI feedback,
+;      button presses, and minor game events."""),
+
+    0x005B77: ("InputWaitKey", """\
+; HOW: Loops reading RandomByte ($0403) to advance the PRNG state
+;      while waiting for a valid keyboard input. Filters key codes
+;      to the expected range before returning.""", """\
+; WHY: Blocking wait for player input during the title screen and
+;      game-over screen. The PRNG calls while waiting ensure the
+;      random seed depends on human timing — a classic 8-bit trick
+;      to seed randomness from user input lag."""),
+
+    # ── Base Drawing ──
+    0x005D27: ("DrawBaseCenter", """\
+; HOW: Loads sprite index $56 (the player's base), sets col_ctr to
+;      $17 and sprite_calc to $18 (the center of the playfield),
+;      then jumps to DrawSpriteXY.""", """\
+; WHY: The player's base is always at the exact center of the screen.
+;      Hardcoded coordinates keep the drawing fast and the logic simple."""),
+
     # ── Projectile State Init ──
     0x005D14: ("InitProjectileTables", """\
 ; HOW: Zeroes out all projectile state arrays at $5D48-$5D73. Clears
@@ -635,7 +825,18 @@ DATA_TABLES = {
 ; block above) and 6502 interrupt vectors. Much of this region is
 ; initialized with Broderbund's nibble-encoded disk bootstrap data
 ; that is partially encrypted — the HEX blocks below are the raw
-; byte values as they appear in the binary.""",
+; byte values as they appear in the binary.
+;
+; NOTE: Some byte patterns in this region were misinterpreted by
+; the disassembler as 6502 instructions. All data in $0000-$025C
+; should be read as raw bytes, not executable code. The actual
+; RWTS disk code begins at $025D.""",
+
+    0x4000: """\
+; ── Crosshatch Pattern / Sprite Alignment Data ─────────────────
+; Repeating byte patterns ($49/$24/$12) that form the crosshatch
+; HGR display pattern used during screen initialization. These
+; bytes are data, not executable code.""",
 
     0x416C: """\
 ; ── HGR Line Address Table (Low Bytes) ───────────────────────────
@@ -650,6 +851,21 @@ DATA_TABLES = {
 ; ── HGR Line Address Table (High Bytes) ──────────────────────────
 ; 192 entries matching the low-byte table above.
 ; Together they give the full 16-bit HGR address for each scanline.""",
+
+    0x4692: """\
+; ── HGR Pixel Bitmask Table ──────────────────────────────────────
+; 280 entries indexed by X pixel coordinate (0-279).
+; Each byte is the single-bit mask for that pixel's position within
+; its HGR byte: $01, $02, $04, $08, $10, $20, $40, then repeats.
+; Apple II HGR packs 7 pixels per byte (bit 7 is the color bit).
+; This table eliminates runtime shift calculations.""",
+
+    0x47AA: """\
+; ── HGR Column Byte Table ────────────────────────────────────────
+; 280 entries indexed by X pixel coordinate (0-279).
+; Returns the byte offset within the HGR row for that pixel.
+; Pixel 0-6 → byte 0, pixel 7-13 → byte 1, etc. (column = X / 7).
+; Used together with the bitmask table to locate any pixel.""",
 
     0x5002: """\
 ; ── Satellite Orbit Path: Y Coordinates ──────────────────────────
@@ -871,6 +1087,9 @@ FILE_HEADER = """\
 ;                   $025D   Custom RWTS (Broderbund disk reader)
 ;                   $02D1   Nibble data decoder
 ;                   $03CC+  Broderbund splash screen code
+;                   $0403   Pseudorandom number generator
+;                   $0416   DrawSprite — render sprite by index
+;                   $0462   EraseSprite — XOR-erase sprite by index
 ;                   $0700   HGR scanline address lookup tables
 ;   $0800-$1FFF   (DOS 3.3 / free memory)
 ;   $2000-$3FFF   HGR Page 1 — the visible screen
@@ -888,7 +1107,7 @@ FILE_HEADER = """\
 ;                   $5227   Satellite spawning
 ;                   $52F3   Screen redraw / satellite movement
 ;                   $5370   4-direction fire ammo
-;                   $53B8   Alien type table (16 aliens)
+;                   $53B8   Alien type tables (4 dirs × 4 aliens)
 ;                   $56E4   Difficulty increase
 ;                   $56F3   Load difficulty tables
 ;                   $576C   Difficulty lookup tables (8 × 12)
@@ -940,14 +1159,27 @@ FILE_HEADER = """\
 
 # Patterns to strip from individual lines (appended machine annotations)
 NOISE_PATTERNS_INLINE = [
-    # Register liveness: ; A=$0000 X=$0003 Y=[stk] etc.
-    re.compile(r'\s*;\s*A=[\[$].*$'),
+    # Register liveness: ; A=$0000 X=$0003 Y=[stk] ; A=comp@$4006 Y=A etc.
+    re.compile(r'\s*;\s*A=[\[$c].*$'),
+    # Register operations: ; A=A^$24, ; A=A-$01 X=$0002 Y=$0001, ; A=A X=$0003
+    re.compile(r'\s*;\s*A=A[\s^&|+\-].*$'),
     # Stack pointer: ; [SP-86]
     re.compile(r'\s*;\s*\[SP[-+]\d+\].*$'),
     # Optimization hints: ; [OPT] REDUNDANT_LOAD: ...
     re.compile(r'\s*;\s*\[OPT\].*$'),
+    # Pointer resolution: ; -> $089A (may have trailing noise)
+    re.compile(r'\s*;\s*->\s*\$[0-9A-Fa-f]+.*$'),
+    # Call site annotations: ; Call $0020E0(A, X, Y) or ; Call $004D73(A)
+    re.compile(r'\s*;\s*Call \$[0-9A-Fa-f]+\([^)]*\).*$'),
+    # Hardware I/O tags: {Video} <video_mode_read> or {Keyboard} <keyboard_strobe>
+    # These can appear mid-comment with trailing content
+    re.compile(r'\s*\{(Video|Keyboard|Speaker|Joystick|Disk)\}\s*<[a-z_]+>.*$'),
+    # I/O register comments: ; $C08C - Unknown I/O register <slot_io>
+    re.compile(r'\s*;\s*\$C0[0-9A-Fa-f]{2}\s*-\s*(Unknown )?I/O register\s*<[a-z_]+>.*$'),
     # Key comment (keep the useful part before machine noise)
     re.compile(r'\s*;\s*key:\s+\w+\s*$'),
+    # Disassembler warnings appended to instruction lines
+    re.compile(r'\s*;\s*WARNING:.*$'),
 ]
 
 # Full lines to remove entirely
@@ -1086,6 +1318,40 @@ NOISE_LINE_PATTERNS = [
     re.compile(r'^;\s*CROSS-REFERENCE REPORT'),
     re.compile(r'^;\s*HARDWARE CONTEXT'),
     re.compile(r'^;\s*I/O Access Pattern'),
+    # Call graph entries: ;   $0040C0: 10 caller(s)
+    re.compile(r'^;\s*\$[0-9A-Fa-f]{6,8}:\s+\d+\s+caller'),
+    re.compile(r'^;\s*Call graph:'),
+    # Analysis summary lines
+    re.compile(r'^;\s*Functions:\s*\d+'),
+    re.compile(r'^;\s*Loops:\s*$'),
+    re.compile(r'^;\s*Pattern summary:'),
+    re.compile(r'^;\s*GS/OS calls:\s*\d+'),
+    # Resolved jump table sections
+    re.compile(r'^;\s*===\s*Resolved Jump Tables'),
+    re.compile(r'^;\s*Jump Table at \$'),
+    re.compile(r'^;\s*Dispatch code at \$'),
+    re.compile(r'^;\s*\[\s*\d+\]\s*\$[0-9A-Fa-f]+'),
+    # End of loop markers
+    re.compile(r'^;\s*===\s*End of loop'),
+    # False string detection
+    re.compile(r'^;\s*String:\s*"'),
+    # Hardware access count lines: ;   Keyboard : 7
+    re.compile(r'^;\s*(Keyboard|Speaker|Joystick|Video|Disk)\s*:\s*\d+'),
+    re.compile(r'^;\s*-\s*Speaker toggle'),
+    # Disassembler warnings (any WARNING: from deasmiigs)
+    re.compile(r'^;\s*WARNING:\s'),
+    # Duplicate section markers (machine-generated --- style)
+    re.compile(r'^;\s*---\s*(HGR|Data|Sprite|Jump)\s'),
+    # Hardware I/O pattern annotations on their own lines
+    re.compile(r'^;\s*--\s*(video_mode|keyboard|hw_|speaker)'),
+    re.compile(r'^;\s*\$[0-9A-Fa-f]+:\s*(video_mode|text_mode|keyboard|speaker|joystick|disk_)\w*\s*-'),
+    # Machine-generated ALL CAPS section headers: ; SOME NAME ($XXXX)
+    # These are superseded by our injected ── FunctionName ── headers
+    re.compile(r'^;\s*[A-Z][A-Z ]{3,}\(\$[0-9A-Fa-f]{4}\)'),
+    # Misleading opcode mnemonics on data bytes (disassembler artifacts):
+    # "Interrupt return (RTI)" when $40 appears in sprite/table data
+    # "Block move (MVN)" when $54 appears in data
+    re.compile(r'^;\s*(Interrupt return|Block move|Break|Wait for interrupt|Co-processor)\s*\('),
 ]
 
 def is_noise_line(line):
@@ -1102,6 +1368,16 @@ def clean_inline_noise(line):
     """Remove machine annotations appended to instruction lines."""
     for pat in NOISE_PATTERNS_INLINE:
         line = pat.sub('', line)
+    # Fix mangled S0_ slot I/O labels: S0_score_lo,X → $C08C,X; S0_$0C,X → $C08C,X
+    line = re.sub(r'S0_score_lo,X', '$C08C,X', line)
+    line = re.sub(r'S0_\$0C,X', '$C08C,X', line)
+    line = re.sub(r'S0_[A-Za-z_$][A-Za-z0-9_$]*', '$C080', line)  # generic fallback
+    # Fix forced-absolute prefix: !src_lo → $0000 (absolute addressing of ZP)
+    line = re.sub(r'!(\w+)', lambda m: '$' + format(
+        next((a for a, (n, _) in ZERO_PAGE.items() if n == m.group(1)), 0), '04X'), line)
+    # Replace tautological soft-switch comments with meaningful ones
+    for old_comment, new_comment in SOFT_SWITCH_COMMENTS.items():
+        line = line.replace(old_comment, new_comment)
     return line.rstrip()
 
 def build_zp_replacement_map():
@@ -1129,6 +1405,10 @@ def replace_zp_addresses(line, zp_map):
     code_part = parts[0]
     comment_part = ';' + parts[1] if len(parts) > 1 else ''
 
+    # Strip forced-absolute prefix: "lda  !$0000" → "lda  $0000"
+    # deasmiigs uses ! to indicate absolute addressing of zero-page addresses
+    code_part = re.sub(r'!\$', '$', code_part)
+
     for addr, name, hex2, hex4 in zp_map:
         # Replace $XX in operand position (e.g., "lda  $30" → "lda  difficulty")
         # Match after instruction mnemonic, handle various addressing modes:
@@ -1140,7 +1420,7 @@ def replace_zp_addresses(line, zp_map):
         # Also avoid replacing inside addresses or hex byte columns
         old = code_part
         # Find instruction portion (after the hex bytes, in the mnemonic area)
-        m = re.match(r'^([0-9A-Fa-f]{6}\s+[0-9A-Fa-f ]{20,24})(.*)', code_part)
+        m = re.match(r'^([0-9A-Fa-f]{6}\s+[0-9A-Fa-f ]{8,30})(.*)', code_part)
         if m:
             prefix = m.group(1)  # address + hex bytes
             instr = m.group(2)   # mnemonic + operand
@@ -1159,6 +1439,21 @@ def replace_zp_addresses(line, zp_map):
             code_part = prefix + instr
 
     return code_part + comment_part
+
+
+def add_call_labels(line):
+    """Append subroutine name comments to bare jsr/jmp instructions."""
+    # Match: "addr  bytes  jsr  $XXXX" or "jmp  $XXXX" without existing comment
+    if ';' in line:
+        return line  # already has a comment, don't double up
+    m = re.search(r'\b(jsr|jmp)\s+\$([0-9A-Fa-f]{4})\s*$', line, re.IGNORECASE)
+    if m:
+        target = int(m.group(2), 16)
+        if target in CALL_LABELS:
+            line = line.rstrip() + '                    ; ' + CALL_LABELS[target]
+            # Clean up excessive whitespace before the comment
+            line = re.sub(r'\s{4,};', '  ;', line)
+    return line
 
 
 def get_address_from_line(line):
@@ -1187,12 +1482,22 @@ def should_inject_before(addr, line=None):
     if addr in DATA_TABLES:
         injections.append(DATA_TABLES[addr])
 
-    # For HEX data lines, check if any data table addresses fall within this line's range
+    # For HEX data lines, check if any function or data table addresses
+    # fall within this line's address range
     if line and 'HEX' in line:
         m = re.match(r'^[0-9A-Fa-f]{6}\s+[0-9A-Fa-f]+\s+HEX\s+(.*)', line)
         if m:
             hex_data = m.group(1).replace(' ', '')
             end_addr = addr + len(hex_data) // 2
+            for func_addr in sorted(FUNCTIONS.keys()):
+                if func_addr != addr and addr < func_addr < end_addr:
+                    name, how, why = FUNCTIONS[func_addr]
+                    block = []
+                    block.append(f"; ── {name} ──" + "─" * max(1, 60 - len(name)))
+                    block.append(how)
+                    if why:
+                        block.append(why)
+                    injections.extend(block)
             for table_addr in sorted(DATA_TABLES.keys()):
                 if table_addr != addr and addr < table_addr < end_addr:
                     injections.append(DATA_TABLES[table_addr])
@@ -1321,6 +1626,18 @@ def transform(input_path, output_path):
         # Check for address and inject function/data annotations
         addr = get_address_from_line(line)
         if addr is not None:
+            # Convert fake instructions in data-only regions to HEX blocks.
+            # The $0000-$025C region is disk bootstrap data, and $4000-$4007
+            # is crosshatch sprite data — the disassembler misinterprets
+            # some byte patterns as 6502 opcodes.
+            is_data_region = (addr < 0x025D) or (0x4000 <= addr <= 0x4007)
+            if is_data_region and 'HEX' not in line:
+                # Extract hex bytes from the line and convert to HEX format
+                m = re.match(r'^([0-9A-Fa-f]{6})\s+([0-9A-Fa-f ]+?)\s{2,}', line)
+                if m:
+                    hex_bytes = m.group(2).replace(' ', '')
+                    line = f'{m.group(1)}  {hex_bytes:<24s}HEX     {hex_bytes}'
+
             injections = should_inject_before(addr, line)
             if injections:
                 output.append("")
@@ -1331,6 +1648,7 @@ def transform(input_path, output_path):
         # Replace zero-page addresses with names
         if addr is not None:
             line = replace_zp_addresses(line, zp_map)
+            line = add_call_labels(line)
 
         # Collapse excessive blank lines
         if not line.strip():
@@ -1341,6 +1659,43 @@ def transform(input_path, output_path):
             consecutive_blanks = 0
 
         output.append(line)
+
+    # Post-process: remove orphaned machine description blocks that appear
+    # immediately before our injected ; ── FunctionName ── headers.
+    # These are machine-generated descriptions that are now redundant.
+    cleaned = []
+    i = 0
+    seen_first_header = False
+    while i < len(output):
+        # Look for our injected function headers
+        if output[i].startswith('; ── ') and '──' in output[i][5:] and seen_first_header:
+            # Walk backwards through cleaned[] to remove preceding comment
+            # and blank lines that are orphaned machine descriptions.
+            # Stop at code lines, HEX lines, or our own annotations.
+            while cleaned:
+                last = cleaned[-1].strip()
+                if not last:  # blank line — continue walking back
+                    cleaned.pop()
+                    continue
+                # Only remove comment lines that look like machine descriptions
+                # Protect our own annotations (── headers, ═══ separators, HOW/WHY, →)
+                if (last.startswith(';') and
+                    not last.startswith('; ── ') and
+                    not last.startswith('; ═') and
+                    not last.startswith('; HOW:') and
+                    not last.startswith('; WHY:') and
+                    not last.startswith('; →') and
+                    not last.startswith(';   Level') and
+                    not last.startswith('; Total') and
+                    not last.startswith('; Indexed')):
+                    cleaned.pop()
+                    continue
+                break
+        if output[i].startswith('; ── ') and '──' in output[i][5:]:
+            seen_first_header = True
+        cleaned.append(output[i])
+        i += 1
+    output = cleaned
 
     # Write output
     with open(output_path, 'w', encoding='utf-8') as f:
