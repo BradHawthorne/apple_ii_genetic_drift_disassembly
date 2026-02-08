@@ -202,18 +202,6 @@ temp          EQU $3C      ; Temporary work variable
 0037FB  D0 EF                         bne  Bootstrap_CopyLoop
 
 0037FD  4C D7 57                      jmp  $57D7
-
-; SEGMENT: Relocated Code Block ($0000-$07FF)
-; This 2048-byte block is copied from $3800-$3FFF to $0000-$07FF by the
-; bootstrap. It contains:
-;   - Zero page variables and interrupt vectors
-;   - Custom RWTS (Read/Write Track/Sector) disk I/O routines that read
-;     Broderbund's nibble-encoded disk format directly via slot I/O ($C08C,X)
-;   - Broderbund splash screen display code
-;   - HGR screen line address lookup tables ($0700-$07FF)
-
-
-
 ; ── Zero Page / Interrupt Vectors / Disk Bootstrap Data ─────────
 ; The first $200 bytes contain zero-page game variables (see EQU
 ; block above) and 6502 interrupt vectors. Much of this region is
@@ -300,14 +288,6 @@ temp          EQU $3C      ; Temporary work variable
 00023A  00000000                HEX     00000000 00000000 00000000 00000000
 00024A  00000000                HEX     00000000 00000000 00000000 00000000
 00025A  000000                  HEX     000000
-
-
-; CUSTOM RWTS - READ SECTOR ($025D)
-; Broderbund's custom disk read routine. Searches for sectors with
-; the non-standard prologue D5 AA B5 (instead of standard D5 AA 96).
-; This is the copy protection - standard disk utilities can't read these.
-; Reads nibbles directly via $C08C,X (disk data latch).
-
 ; ── RWTS_ReadSector ───────────────────────────────────────────────
 ; HOW: Reads one sector of Broderbund nibble-encoded disk data.
 ;      Accesses the disk controller directly via slot I/O at $C08C,X.
@@ -386,7 +366,7 @@ temp          EQU $3C      ; Temporary work variable
 0002B3  D0 EE                         bne  RWTS_ReadDataLoop
 
 
-0002B5  84 3C             loc_0002B5  sty  $3C
+0002B5  84 3C             loc_0002B5  sty  temp
 
 0002B7  BC 8C C0          loc_0002B7  ldy  $C08C,X
 0002BA  10 FB                         bpl  loc_0002B7
@@ -405,8 +385,6 @@ temp          EQU $3C      ; Temporary work variable
 0002CE  D0 8D                         bne  RWTS_ReadSector
 
 0002D0  60                            rts
-
-
 ; ── RWTS_DecodeData ───────────────────────────────────────────────
 ; HOW: Decodes the raw nibble data read by RWTS_ReadSector.
 ;      Converts 6-and-2 encoded nibbles back to the original byte values,
@@ -662,9 +640,6 @@ temp          EQU $3C      ; Temporary work variable
 004098  10080402                HEX     10080402 41201008 7F7F7F7F 7F7F7F7F
 0040A8  7F7F7F7F                HEX     7F7F7F7F 7F7F7F7F 7F7F7F7F 7F7F7F7F
 0040B8  7F7F7F7F                HEX     7F7F7F7F 7F7F7F7F
-
-
-
 ; ── DrawSpriteXY ──────────────────────────────────────────────────
 ; HOW: Core sprite rendering engine. Takes sprite index in A, screen
 ;      position in col_ctr/sprite_calc. Looks up sprite data pointer,
@@ -729,13 +704,6 @@ temp          EQU $3C      ; Temporary work variable
 00411D  90 C1                         bcc  DrawSprite_RowLoop
 
 00411F  60                            rts
-
-
-; INIT HI-RES ($4120)
-; Clears HGR page 1 ($2000-$3FFF), then enables graphics mode:
-;   $C050 = TXTCLR (graphics), $C057 = HIRES, $C052 = MIXCLR (full screen)
-; No page flipping - this game uses page 1 only.
-
 ; ── InitHiRes ─────────────────────────────────────────────────────
 ; HOW: Enables full-screen hi-res graphics on page 1 by reading soft
 ;      switches: TXTCLR ($C050), HIRES ($C057), MIXCLR ($C052).
@@ -762,9 +730,6 @@ temp          EQU $3C      ; Temporary work variable
 004137  AD 57 C0                      lda  HIRES           ; HIRES - Hi-res graphics mode
 00413A  AD 52 C0                      lda  MIXCLR          ; MIXCLR - Full screen graphics
 00413D  60                            rts
-
-
-
 ; ── ClearPlayfield ────────────────────────────────────────────────
 ; HOW: Fills the playfield area of HGR page 1 with black (zero bytes).
 ;      Uses a tight loop writing 0 to consecutive HGR addresses.
@@ -790,9 +755,6 @@ temp          EQU $3C      ; Temporary work variable
 004158  90 E6                         bcc  ClearPF_RowLoop
 
 00415A  60                            rts
-
-
-
 ; ── SetClipBounds ─────────────────────────────────────────────────
 ; HOW: Sets the sprite clipping rectangle by storing boundary values
 ;      into clip_top, clip_bot, clip_left, clip_right.
@@ -809,8 +771,6 @@ temp          EQU $3C      ; Temporary work variable
 004167  A9 C0                         lda  #$C0
 004169  85 09                         sta  clip_bot
 00416B  60                            rts
-
-
 ; ── HGR Line Address Table (Low Bytes) ───────────────────────────
 ; 192 entries: one per scanline row (0-191).
 ; Each entry is the low byte of the HGR memory address for that row.
@@ -831,7 +791,6 @@ temp          EQU $3C      ; Temporary work variable
 0041FC  50505050                HEX     50505050 50505050 D0D0D0D0 D0D0D0D0
 00420C  50505050                HEX     50505050 50505050 D0D0D0D0 D0D0D0D0
 00421C  50505050                HEX     50505050 50505050 D0D0D0D0 D0D0D0D0
-
 ; ── HGR Line Address Table (High Bytes) ──────────────────────────
 ; 192 entries matching the low-byte table above.
 ; Together they give the full 16-bit HGR address for each scanline.
@@ -848,9 +807,6 @@ temp          EQU $3C      ; Temporary work variable
 0042BC  2125292D                HEX     2125292D 3135393D 2125292D 3135393D
 0042CC  22262A2E                HEX     22262A2E 32363A3E 22262A2E 32363A3E
 0042DC  23272B2F                HEX     23272B2F 33373B3F 23272B2F 33373B3F
-
-
-
 ; ── PrintHexByte ──────────────────────────────────────────────────
 ; HOW: Draws a single BCD digit on screen as a sprite. Takes the digit
 ;      value in A, looks up the corresponding numeral sprite, and calls
@@ -869,9 +825,6 @@ temp          EQU $3C      ; Temporary work variable
 0042F6  68                            pla
 0042F7  29 0F                         and  #$0F
 0042F9  4C 16 04                      jmp  $0416
-
-
-
 ; ── DrawTitleScreen ───────────────────────────────────────────────
 ; HOW: Displays the title screen with animated elements. Enters a loop
 ;      that draws the title graphics, animates twinkling stars, and
@@ -936,9 +889,6 @@ temp          EQU $3C      ; Temporary work variable
 004371  20 87 43                      jsr  InitGameVarsB
 004374  20 9E 43                      jsr  InitGameVarsC
 004377  4C CD 43                      jmp  PerFrameUpdate
-
-
-
 ; ── ResetAlienState ───────────────────────────────────────────────
 ; HOW: Resets alien animation and position state after a player death.
 ;      Preserves score, lives, level, and difficulty — only resets the
@@ -953,9 +903,6 @@ temp          EQU $3C      ; Temporary work variable
 004380  85 02                         sta  col_ctr
 004382  A9 18                         lda  #$18
 004384  4C 16 04                      jmp  $0416
-
-
-
 ; ── ResetTimers ───────────────────────────────────────────────────
 ; HOW: Initializes the frame timing counters and animation variables
 ;      to their starting values for the current difficulty level.
@@ -974,9 +921,6 @@ temp          EQU $3C      ; Temporary work variable
 
 004399  A9 00                         lda  #$00
 00439B  4C 16 04                      jmp  $0416
-
-
-
 ; ── ResetGameVarsC ────────────────────────────────────────────────
 ; HOW: Additional game variable initialization.
 ; WHY: Part of the cascaded initialization sequence at game start.
@@ -993,9 +937,6 @@ temp          EQU $3C      ; Temporary work variable
 
 0043B0  A9 00                         lda  #$00
 0043B2  4C 16 04                      jmp  $0416
-
-
-
 ; ── TitleSetup ────────────────────────────────────────────────────
 ; HOW: Initializes the title screen display — draws the game title,
 ;      Broderbund logo, copyright text, and initial star field.
@@ -1026,16 +967,6 @@ temp          EQU $3C      ; Temporary work variable
 0043D9  90 02                         bcc  PerFrameUpdate_JmpDraw
 0043DB  A9 09                         lda  #$09
 0043DD  4C 16 04          PerFrameUpdate_JmpDraw  jmp  $0416
-
-
-; KEYBOARD HANDLER ($43E0)
-; Direction keys set $11 (current direction):
-;   Y ($D9) = UP (0)      J ($CA) = RIGHT (1)
-;   SPACE ($A0) = DOWN (2) G ($C7) = LEFT (3)
-; Fire keys:
-;   ESC ($9B) = Fire in current direction (sets $36 flag)
-;   A ($C1) / F ($C6) = 4-direction simultaneous fire (limited ammo)
-
 ; ── KeyboardHandler ───────────────────────────────────────────────
 ; HOW: Reads the Apple II keyboard register ($C000). Compares against:
 ;      Y ($D9) → direction = 0 (UP)     J ($CA) → direction = 1 (RIGHT)
@@ -1086,9 +1017,6 @@ temp          EQU $3C      ; Temporary work variable
 00441F  BD3C5D85                HEX     BD3C5D85 02BD445D 85048A18 691A4C62
 00442F  04BD3C5D                HEX     04BD3C5D 8502BD44 5D85048A 18691A4C
 00443F  C040                    HEX     C040
-
-
-
 ; ── EraseSpriteArea ───────────────────────────────────────────────
 ; HOW: Erases a sprite from the screen by writing black (AND mask) over
 ;      the sprite's bounding rectangle in HGR memory.
@@ -1127,7 +1055,7 @@ temp          EQU $3C      ; Temporary work variable
 004476  A0 09             ClearSprite_Right  ldy  #$09
 004478  A9 17                         lda  #$17
 
-00447A  85 05             loc_00447A  sta  $05
+00447A  85 05             loc_00447A  sta  sprite_h
 00447C  A2 60                         ldx  #$60
 00447E  BD 6C 41                      lda  $416C,X
 004481  85 06                         sta  hgr_lo
@@ -1135,7 +1063,7 @@ temp          EQU $3C      ; Temporary work variable
 004486  85 07                         sta  hgr_hi
 004488  A9 00                         lda  #$00
 
-00448A  91 06             irq_00448A  sta  ($06),Y
+00448A  91 06             irq_00448A  sta  (hgr_lo),Y
 00448C  C8                            iny
 00448D  C4 05                         cpy  sprite_h
 00448F  D0 F9                         bne  irq_00448A
@@ -1144,9 +1072,6 @@ temp          EQU $3C      ; Temporary work variable
 004492  A0 1A             ClearSprite_Left  ldy  #$1A
 004494  A5 0B                         lda  clip_right
 004496  4C 7A 44                      jmp  loc_00447A
-
-
-
 ; ── DrawProjectile ────────────────────────────────────────────────
 ; HOW: Draws the player's laser projectile sprite at its current
 ;      screen position.
@@ -1171,9 +1096,6 @@ temp          EQU $3C      ; Temporary work variable
 0044BD  18                loc_0044BD  clc
 0044BE  6D 09 45                      adc  $4509
 0044C1  4C 62 04                      jmp  $0462
-
-
-
 ; ── DrawHitFlash ──────────────────────────────────────────────────
 ; HOW: Draws a brief flash/explosion sprite at the point of impact
 ;      when a projectile hits an alien or satellite.
@@ -1212,9 +1134,6 @@ temp          EQU $3C      ; Temporary work variable
 004508  60                            rts
 
 004509  001E1E82                HEX     001E1E82 89
-
-
-
 ; ── PeriodicGameLogic ─────────────────────────────────────────────
 ; HOW: Called when the frame timer ($2E) wraps past $FF. Handles
 ;      alien firing, enemy projectile spawning, and other game events
@@ -1227,7 +1146,7 @@ temp          EQU $3C      ; Temporary work variable
 00450E  A2 03                         ldx  #$03
 004510  86 12                         stx  loop_idx
 
-004512  A6 12             loc_004512  ldx  $12
+004512  A6 12             loc_004512  ldx  loop_idx
 004514  BD 54 5D                      lda  $5D54,X
 004517  F0 61                         beq  loc_00457A
 004519  20 C4 44                      jsr  DrawHitFlash
@@ -1274,19 +1193,10 @@ temp          EQU $3C      ; Temporary work variable
 004574  9D 4C 5D                      sta  $5D4C,X
 004577  20 99 44          loc_004577  jsr  DrawProjectile
 
-00457A  C6 12             loc_00457A  dec  $12
+00457A  C6 12             loc_00457A  dec  loop_idx
 00457C  10 94                         bpl  loc_004512
 
 00457E  60                            rts
-
-
-; MOVE ALL LASERS ($457F)
-; Moves all 4 laser beams (one per direction):
-;   UP (dir 0):    Y -= 3 pixels
-;   LEFT (dir 1):  X -= 3 pixels
-;   DOWN (dir 2):  Y += 3 pixels
-;   RIGHT (dir 3): X += 3 pixels
-
 ; ── MoveAllProjectiles ────────────────────────────────────────────
 ; HOW: Loops through all 4 projectile slots (X=3..0). For each active
 ;      projectile, reads its direction and moves it 3 pixels per frame:
@@ -1300,7 +1210,7 @@ temp          EQU $3C      ; Temporary work variable
 00457F  A2 03                         ldx  #$03
 004581  86 12                         stx  loop_idx
 
-004583  A6 12             loc_004583  ldx  $12
+004583  A6 12             loc_004583  ldx  loop_idx
 004585  BD 58 5D                      lda  $5D58,X
 004588  F0 6F                         beq  loc_0045F9
 00458A  E0 03                         cpx  #$03
@@ -1317,7 +1227,7 @@ temp          EQU $3C      ; Temporary work variable
 0045A0  B0 02                         bcs  irq_0045A4
 0045A2  A9 00                         lda  #$00
 
-0045A4  85 1E             irq_0045A4  sta  $1E
+0045A4  85 1E             irq_0045A4  sta  target_y
 0045A6  9D 64 5D                      sta  $5D64,X
 0045A9  BD 5C 5D                      lda  $5D5C,X
 0045AC  85 19                         sta  draw_y
@@ -1359,7 +1269,7 @@ temp          EQU $3C      ; Temporary work variable
 0045F3  20 40 49          loc_0045F3  jsr  UpdateAlienAnim
 0045F6  8D 30 C0                      sta  SPKR            ; SPKR - Speaker toggle
 
-0045F9  C6 12             loc_0045F9  dec  $12
+0045F9  C6 12             loc_0045F9  dec  loop_idx
 0045FB  10 86                         bpl  loc_004583
 
 0045FD  60                            rts
@@ -1394,9 +1304,6 @@ temp          EQU $3C      ; Temporary work variable
 004639  85 1D                         sta  target_x_hi
 00463B  9D 60 5D                      sta  $5D60,X
 00463E  4C EC 45                      jmp  loc_0045EC
-
-
-
 ; ── StoreLaserState_Up ────────────────────────────────────────────
 ; HOW: Stores laser projectile state for the UP direction.
 
@@ -1412,9 +1319,6 @@ temp          EQU $3C      ; Temporary work variable
 004654  60                            rts
 
 004655  000000                  HEX     000000
-
-
-
 ; ── SetupAlienDraw ────────────────────────────────────────────────
 ; HOW: Prepares drawing parameters for alien sprites. Calculates the
 ;      HGR screen address from the alien's position, loads the correct
@@ -1424,8 +1328,8 @@ temp          EQU $3C      ; Temporary work variable
 ;      the coordinate-to-screen-address conversion.
 
 004658  85 13                         sta  sprite_idx
-00465A  86 14                         stx  $14
-00465C  84 15                         sty  $15
+00465A  86 14                         stx  save_x
+00465C  84 15                         sty  save_y
 00465E  A6 04                         ldx  sprite_calc
 004660  BD 6C 41                      lda  $416C,X
 004663  85 06                         sta  hgr_lo
@@ -1439,16 +1343,16 @@ temp          EQU $3C      ; Temporary work variable
 004675  BD AA 47                      lda  $47AA,X
 004678  85 17                         sta  draw_col
 00467A  A5 13                         lda  sprite_idx
-00467C  A6 14                         ldx  $14
-00467E  A4 15                         ldy  $15
+00467C  A6 14                         ldx  save_x
+00467E  A4 15                         ldy  save_y
 004680  60                            rts
 004681  BD 8B 47          loc_004681  lda  $478B,X
 004684  85 16                         sta  draw_mask
 004686  BD AD 48                      lda  $48AD,X
 004689  85 17                         sta  draw_col
 00468B  A5 13                         lda  sprite_idx
-00468D  A6 14                         ldx  $14
-00468F  A4 15                         ldy  $15
+00468D  A6 14                         ldx  save_x
+00468F  A4 15                         ldy  save_y
 004691  60                            rts
 
 004692  01020408                HEX     01020408 10204001 02040810 20400102
@@ -1495,9 +1399,6 @@ temp          EQU $3C      ; Temporary work variable
 0048F2  00050000                HEX     00050000 00000000 00000000 00000000
 004902  00000000                HEX     00000000 00000000 00000000 00000000
 004912  0006                    HEX     0006
-
-
-
 ; ── DrawAlienRow ──────────────────────────────────────────────────
 ; HOW: Draws one row of alien pixels. Saves A/Y on stack, checks the
 ;      current scanline position, ORs sprite bytes into HGR memory,
@@ -1525,9 +1426,6 @@ temp          EQU $3C      ; Temporary work variable
 
 00492C  48984820                HEX     48984820 5846A417 A51649FF 31069106
 00493C  68A86860                HEX     68A86860
-
-
-
 ; ── UpdateAlienAnim ───────────────────────────────────────────────
 ; HOW: Advances the alien animation by computing the next position
 ;      along its movement path using 16-bit fixed-point arithmetic.
@@ -1578,11 +1476,11 @@ temp          EQU $3C      ; Temporary work variable
 004987  85 1F                         sta  step_x_lo
 004989  A9 00                         lda  #$00
 00498B  85 20                         sta  step_x_hi
-00498D  A5 26             loc_00498D  lda  $26
+00498D  A5 26             loc_00498D  lda  delta_y_hi
 00498F  10 16                         bpl  $49A7
 004991  A9 FF                         lda  #$FF
 004993  85 21                         sta  step_y
-004995  85 22                         sta  $22
+004995  85 22                         sta  step_y_hi
 004997  38                            sec
 004998  A9 00                         lda  #$00
 00499A  E5 25                         sbc  delta_y
@@ -1594,7 +1492,7 @@ temp          EQU $3C      ; Temporary work variable
 0049A7  A9 01                         lda  #$01
 0049A9  85 21                         sta  step_y
 0049AB  A9 00                         lda  #$00
-0049AD  85 22                         sta  $22
+0049AD  85 22                         sta  step_y_hi
 0049AF  A5 23                         lda  delta_x
 0049B1  C5 25                         cmp  delta_y
 0049B3  A5 24                         lda  delta_x_hi
@@ -1656,7 +1554,7 @@ temp          EQU $3C      ; Temporary work variable
 004A1A  4C 20 4A                      jmp  loc_004A20
 004A1D  20 14 49                      jsr  DrawAlienRow
 
-004A20  A5 29             loc_004A20  lda  $29
+004A20  A5 29             loc_004A20  lda  line_ctr_lo
 004A22  D0 02                         bne  $4A26
 004A24  C6 2A                         dec  line_ctr_hi
 004A26  C6 29                         dec  line_ctr_lo
@@ -1715,11 +1613,6 @@ temp          EQU $3C      ; Temporary work variable
 004A83  D0 B8                         bne  loc_004A3D
 
 004A85  60                            rts
-
-
-; GAME OVER ($4A86)
-; Checks high score, displays game over screen, then restarts.
-
 ; ── GameOver ──────────────────────────────────────────────────────
 ; HOW: Compares current score ($0C-$0D) against high score ($0E-$0F).
 ;      If current score is higher, copies it to the high score bytes.
@@ -1735,7 +1628,7 @@ temp          EQU $3C      ; Temporary work variable
 004A8E  A5 0C                         lda  score_lo
 004A90  C5 0E                         cmp  hiscore_lo
 004A92  90 0B                         bcc  loc_004A9F
-004A94  A5 0C             loc_004A94  lda  $0C
+004A94  A5 0C             loc_004A94  lda  score_lo
 004A96  85 0E                         sta  hiscore_lo
 004A98  A5 0D                         lda  score_hi
 004A9A  85 0F                         sta  hiscore_hi
@@ -1745,7 +1638,7 @@ temp          EQU $3C      ; Temporary work variable
 004AA1  85 12                         sta  loop_idx
 004AA3  85 11                         sta  direction
 
-004AA5  E6 12             loc_004AA5  inc  $12
+004AA5  E6 12             loc_004AA5  inc  loop_idx
 004AA7  A5 12                         lda  loop_idx
 004AA9  C9 50                         cmp  #$50
 004AAB  D0 0A                         bne  loc_004AB7
@@ -1774,11 +1667,6 @@ temp          EQU $3C      ; Temporary work variable
 004ADD  D0 C6                         bne  loc_004AA5
 
 004ADF  60                            rts
-
-
-; ADD SCORE ($4AE0)
-; Adds A to BCD score at $0C-$0D. Updates high score at $0E-$0F.
-
 ; ── AddScore ──────────────────────────────────────────────────────
 ; HOW: Adds points to the current score using BCD arithmetic.
 ;      SED (set decimal mode), CLC, ADC score_lo, STA score_lo,
@@ -1812,9 +1700,6 @@ temp          EQU $3C      ; Temporary work variable
 004B03  8D 67 5B                      sta  $5B67
 004B06  20 62 5B                      jsr  InputProcessB
 004B09  4C 87 43                      jmp  InitGameVarsB
-
-
-
 ; ── SelectProjectileType ──────────────────────────────────────────
 ; HOW: Determines what type of projectile an alien fires. Checks if all
 ;      4 aliens on the firing side are type 4 (TV). If yes, calls the
@@ -1865,14 +1750,6 @@ temp          EQU $3C      ; Temporary work variable
 004B55  4C 62 5B                      jmp  InputProcessB
 
 004B58  A900A950                HEX     A900A950 00010000 105EAC5E 00
-
-
-; PUNISHMENT ROUTINE ($4B65)
-; Called when: hitting a heart OR missing an upside-down heart.
-; Transforms ALL 4 aliens on the affected side to DIAMONDS (type 5).
-; This is devastating - you need 5 more hits per alien to cycle back to TV!
-; Input: $57D6 = direction (0=UP, 1=LEFT, 2=DOWN, 3=RIGHT)
-
 ; ── PunishmentRoutine ─────────────────────────────────────────────
 ; HOW: When a heart mistake occurs (hitting a regular heart or missing
 ;      an upside-down heart), sets ALL 4 aliens on the offending side
@@ -2001,9 +1878,6 @@ temp          EQU $3C      ; Temporary work variable
 004C39  10 DD                         bpl  $4C18
 
 004C3B  60                            rts
-
-
-
 ; ── PlayPunishSound ───────────────────────────────────────────────
 ; HOW: Generates a harsh buzzing tone by toggling the Apple II speaker
 ;      ($C030) in a tight timing loop with specific pitch parameters.
@@ -2026,9 +1900,6 @@ temp          EQU $3C      ; Temporary work variable
 
 
 004C54  0000                    HEX     0000
-
-
-
 ; ── PlayTone ──────────────────────────────────────────────────────
 ; HOW: General-purpose tone generator. Toggles the speaker ($C030) in
 ;      a counted loop; the loop count determines pitch. Higher count =
@@ -2063,12 +1934,6 @@ temp          EQU $3C      ; Temporary work variable
 004C89  4C A1 52                      jmp  DrawSatelliteB
 
 004C8C  000060C0                HEX     000060C0 C0000051 01A5A501 00
-
-
-; LEVEL COMPLETE ANIMATION ($4C99)
-; The big TV sweeps around collecting aliens.
-; CHEAT CODE CHECK at $4CEF: Shift-N ($9E) = +3 lives + reset difficulty
-
 ; ── LevelCompleteAnim ─────────────────────────────────────────────
 ; HOW: Plays the level completion animation — a large TV sprite sweeps
 ;      around the screen. During the animation, checks the keyboard at
@@ -2156,9 +2021,6 @@ temp          EQU $3C      ; Temporary work variable
 004D31  60                            rts
 
 004D32  00                      HEX     00
-
-
-
 ; ── DisplayLevelNum ───────────────────────────────────────────────
 ; HOW: Renders the current level number on screen. Reads the level
 ;      counter ($3A), converts it to a display value (level = 6 - $3A),
@@ -2195,11 +2057,6 @@ temp          EQU $3C      ; Temporary work variable
 004D6D  60                            rts
 
 004D6E  00665F35                HEX     00665F35 74
-
-
-; LEVEL SETUP ($4D73)
-; Initializes alien positions and states for the current level.
-
 ; ── LevelSetup ────────────────────────────────────────────────────
 ; HOW: Initializes a new level. Resets all 16 alien type values in the
 ;      $53B8 table to type 1 (UFO). Sets up the initial alien positions
@@ -2221,11 +2078,6 @@ temp          EQU $3C      ; Temporary work variable
 004D84  10 F1                         bpl  $4D77
 
 004D86  60                            rts
-
-
-; UPDATE ALIEN POSITIONS ($4D87)
-; Moves aliens each tick based on current difficulty timing.
-
 ; ── UpdateAlienPositions ──────────────────────────────────────────
 ; HOW: Iterates through all 16 aliens, updating their orbital position
 ;      around the playfield edges. Each alien moves along its assigned
@@ -2276,20 +2128,6 @@ temp          EQU $3C      ; Temporary work variable
 
 004DDD  20 E4 56                      jsr  IncreaseDifficulty
 004DE0  4C 4F 5B                      jmp  InputProcessA
-
-; ALIEN EVOLUTION ("Genetic Drift")
-; Aliens cycle through 6 forms when hit:
-;   Type 1: UFO (flying saucer) - starting form
-;   Type 2: Eye Alien (blue)
-;   Type 3: Eye Alien (green)
-;   Type 4: TV - THE GOAL! All 16 must be TVs to complete the level
-;   Type 5: Diamond - PENALTY STATE (set by punishment routine)
-;   Type 6: Bowtie
-;   Type 7: Wraps back to Type 1 (UFO)
-; Strategy: Hit aliens 3 times to reach TV (UFO->Eye1->Eye2->TV)
-;           STOP shooting once they're TVs!
-;           Hitting a TV cycles it to Diamond (need 5 more hits!)
-
 ; ── AlienEvolve ───────────────────────────────────────────────────
 ; HOW: Increments the alien's type value in the $53B8 table. Type cycle:
 ;        1 (UFO) → 2 (Eye Blue) → 3 (Eye Green) → 4 (TV) → 5 (Diamond)
@@ -2339,8 +2177,6 @@ temp          EQU $3C      ; Temporary work variable
 004E31  BD C8 53                      lda  $53C8,X
 004E34  20 7F 52                      jsr  DrawSatellite
 004E37  60                            rts
-
-
 ; ── AlienHitHandler ───────────────────────────────────────────────
 ; HOW: Checks if a player's projectile has collided with an alien by
 ;      comparing the projectile's coordinate against the alien's track
@@ -2466,19 +2302,16 @@ temp          EQU $3C      ; Temporary work variable
 004F2E  BD D6 53                      lda  $53D6,X
 004F31  20 7F 52                      jsr  DrawSatellite
 004F34  60                            rts
-
-
-
 ; ── PlayHitSound ──────────────────────────────────────────────────
 ; HOW: Toggles the speaker ($C030) with timing controlled by A and Y
 ;      registers. Creates a short percussive sound.
 ; WHY: Audio confirmation of a successful hit on an alien or satellite.
 
-004F35  85 38                         sta  $38
-004F37  84 39                         sty  $39
+004F35  85 38                         sta  snd_pitch1
+004F37  84 39                         sty  snd_pitch2
 004F39  A2 30                         ldx  #$30
 
-004F3B  A4 38                         ldy  $38
+004F3B  A4 38                         ldy  snd_pitch1
 
 004F3D  EA                            nop
 004F3E  EA                            nop
@@ -2492,7 +2325,7 @@ temp          EQU $3C      ; Temporary work variable
 
 004F49  A2 30                         ldx  #$30
 
-004F4B  A4 39                         ldy  $39
+004F4B  A4 39                         ldy  snd_pitch2
 
 004F4D  EA                            nop
 004F4E  EA                            nop
@@ -2506,12 +2339,6 @@ temp          EQU $3C      ; Temporary work variable
 004F58  D0 F1                         bne  $4F4B
 
 004F5A  60                            rts
-
-
-; CHECK SATELLITE HITS ($4F5B)
-; Checks if laser beams hit satellites (bonus targets).
-; Satellites require multiple hits to destroy. Points awarded per hit.
-
 ; ── CheckSatelliteHits ────────────────────────────────────────────
 ; HOW: For each of 4 projectile directions (X=3..0), first checks if
 ;      the laser is in a satellite zone (edges of the playfield). If yes,
@@ -2595,13 +2422,11 @@ temp          EQU $3C      ; Temporary work variable
 004FF0  CE 01 50          loc_004FF0  dec  $5001
 004FF3  10 AA                         bpl  loc_004F9F
 
-004FF5  C6 12             loc_004FF5  dec  $12
+004FF5  C6 12             loc_004FF5  dec  loop_idx
 004FF7  30 03                         bmi  loc_004FFC
 004FF9  4C 5F 4F                      jmp  $4F5F
 
 004FFC  60                loc_004FFC  rts
-
-
 ; ── Satellite Orbit Path: Y Coordinates ──────────────────────────
 ; 256 bytes. Positions 0-239 define the satellite's Y coordinate at
 ; each step of its rectangular orbit around the playfield edges.
@@ -2626,7 +2451,6 @@ temp          EQU $3C      ; Temporary work variable
 0050CD  A2A2A3A3                HEX     A2A2A3A3 A3A4A4A4 A4A4A4A4 A4A4A4A4
 0050DD  A4A4A4A4                HEX     A4A4A4A4 A3A3A3A2 A2A2A1A1 A0A09F9E
 0050ED  9E9D9C9B                HEX     9E9D9C9B 9B9A9998 97969594 93929190
-
 ; ── Satellite Orbit Path: X Coordinates ──────────────────────────
 ; 256 bytes. Paired with the Y table above to define the full 2D
 ; orbit path. Index into both tables with the satellite's position
@@ -2649,7 +2473,6 @@ temp          EQU $3C      ; Temporary work variable
 0051DD  62636566                HEX     62636566 68696B6C 6E6F7072 73747677
 0051ED  787A7B7C                HEX     787A7B7C 7E7F8081 82838586 8788898A
 0051FD  8B8C8C8D                HEX     8B8C8C8D 8EAD10C0 AD00C010 FB8D10C0
-
 ; ── Satellite State: Orbit Position ──────────────────────────────
 ; 4 bytes (one per satellite slot). Current position index (0-239)
 ; in the orbit path tables. Decremented each movement tick to orbit
@@ -2664,12 +2487,6 @@ temp          EQU $3C      ; Temporary work variable
 
 00520D  6081A0A5                HEX     6081A0A5 A0A9A087 CD93A095 D4002E58
 00521D  3C434A51                HEX     3C434A51 CFA0FEAE 0000
-
-
-; SPAWN SATELLITE ($5227)
-; Spawns a bonus satellite target for one direction.
-; Satellites appear on levels 3+ ($3A <= 3).
-
 ; ── SpawnSatellite ────────────────────────────────────────────────
 ; HOW: Finds an empty satellite slot (checks $5212,X for zero), sets hit
 ;      points based on the current level:
@@ -2773,9 +2590,6 @@ temp          EQU $3C      ; Temporary work variable
 0052BC  18                            clc
 0052BD  6D 7E 52                      adc  $527E
 0052C0  4C C0 40                      jmp  DrawSpriteXY
-
-
-
 ; ── DrawSatellite ─────────────────────────────────────────────────
 ; HOW: Reads the satellite's orbit position from $520E,X, uses it as an
 ;      index into the 256-byte orbit path tables at $5002 (Y coord) and
@@ -2804,9 +2618,6 @@ temp          EQU $3C      ; Temporary work variable
 0052E0  A8                            tay
 0052E1  B9 1A 52                      lda  $521A,Y
 0052E4  60                            rts
-
-
-
 ; ── DrawBase_ClearSatellites ──────────────────────────────────────
 ; HOW: Draws the player's base sprite at the center of the playfield,
 ;      then loops through all 4 satellite slots, setting $5212,X to zero
@@ -2825,9 +2636,6 @@ temp          EQU $3C      ; Temporary work variable
 0052EF  60                            rts
 
 0052F0  00E0E0                  HEX     00E0E0
-
-
-
 ; ── RedrawScreen ──────────────────────────────────────────────────
 ; HOW: Master screen redraw. Handles satellite orbit movement: increments
 ;      a sub-counter ($52F1), when it wraps, reloads from $52F2 (speed)
@@ -2870,8 +2678,6 @@ temp          EQU $3C      ; Temporary work variable
 005333  20 C3 52                      jsr  $52C3
 
 005336  60                            rts
-
-
 ; ── Satellite Corner Transition Points ───────────────────────────
 ; 4 bytes: orbit positions ($96, $D6, $16, $56) corresponding to
 ; the 4 corners of the playfield. When a satellite's position matches
@@ -2896,17 +2702,12 @@ temp          EQU $3C      ; Temporary work variable
 00535B  8D 67 5B                      sta  $5B67
 00535E  4C 62 5B                      jmp  InputProcessB
 005361  60                            rts
-
-
 ; ── 4-Direction Fire Ammo Counter ────────────────────────────────
 ; 1 byte. Number of remaining "super shot" uses. Starts at 3,
 ; gains 1 with each difficulty increase. When > 0, pressing A or F
 ; fires in all 4 directions simultaneously.
 
 005362  A9E5A96D                HEX     A9E5A96D 00000000 225E9A5E 0000
-
-
-
 ; ── Set4DirAmmo ───────────────────────────────────────────────────
 ; HOW: Loads the initial 4-direction fire ammo value (3 uses) and stores
 ;      it at $536F.
@@ -2947,10 +2748,6 @@ temp          EQU $3C      ; Temporary work variable
 0053B3  A9 01             loc_0053B3  lda  #$01
 0053B5  85 36                         sta  fire_req
 0053B7  60                            rts
-
-; --- Alien Type Table: 16 entries (4 per direction) ---
-; Types: 0=empty, 1=UFO, 2=Eye1, 3=Eye2, 4=TV(GOAL!), 5=Diamond(PENALTY!), 6=Bowtie
-
 ; ── Alien Type Table ─────────────────────────────────────────────
 ; 16 bytes: current evolution type for each alien.
 ;   Indices  0- 3: UP direction aliens
@@ -3173,9 +2970,6 @@ temp          EQU $3C      ; Temporary work variable
 00558C  60                            rts
 
 00558D  F8F80000                HEX     F8F80000
-
-
-
 ; ── DrawAlienRowDir ───────────────────────────────────────────────
 ; HOW: Direction-specific alien row drawing routine. Handles the
 ;      coordinate transformation needed to draw aliens orbiting from
@@ -3354,14 +3148,6 @@ temp          EQU $3C      ; Temporary work variable
 0056E2  60                            rts
 
 0056E3  50                      HEX     50
-
-
-; DIFFICULTY SYSTEM ($56E4)
-; Decrements step counter $31. When it reaches 0 and $30 > 0,
-; decreases $30 (making game harder) and reloads all timing tables.
-; $30 ranges from $0B (easiest) to $00 (hardest).
-; Called after hitting aliens and collecting hearts.
-
 ; ── IncreaseDifficulty ────────────────────────────────────────────
 ; HOW: Decrements diff_steps ($31). When it reaches zero AND difficulty
 ;      ($30) is not already at maximum (0), decrements difficulty by 1
@@ -3384,14 +3170,6 @@ temp          EQU $3C      ; Temporary work variable
 0056F1  60                            rts
 
 0056F2  00                      HEX     00
-
-
-; LOAD DIFFICULTY TABLES ($56F3)
-; Uses $30 as index into 8 lookup tables at $576C-$57CB to set:
-;   $2F = frame delay reload, $32 = alien fire rate,
-;   $31 = steps until next difficulty increase, plus other timing values.
-; Higher values = slower/easier, lower values = faster/harder.
-
 ; ── LoadDifficultyTables ──────────────────────────────────────────
 ; HOW: Uses difficulty ($30) as an index into 8 parallel 12-entry lookup
 ;      tables at $576C-$57CB. Loads each value into its destination:
@@ -3499,18 +3277,15 @@ temp          EQU $3C      ; Temporary work variable
 ; Easiest: 112 frames/step. Hardest: 28 frames/step. 4× range.
 
 00576C  FCFAF9F7                HEX     FCFAF9F7 F5F4F0EB E6E4E2E0 F9F7F6F4
-
 ; ── Table 3: Alien Draw Timing ───────────────────────────────────
 ; → $55E0. Controls alien sprite animation speed.
 
 00577C  F3F0ECEB                HEX     F3F0ECEB E8E6E4E4 F8F6F4F1 EFEDEBE9
-
 ; ── Table 4: Alien Fire Rate ─────────────────────────────────────
 ; → fire_rate ($32). How often aliens shoot at the player.
 ; Easiest ($E0): every 32 frames. Hardest ($FC): every 4 frames. 8× range.
 
 00578C  E7E5E3E1                HEX     E7E5E3E1 FCFAF7F5 F0EEEDEC E7E4E2E0
-
 ; ── Table 5: Enemy Projectile Timer ──────────────────────────────
 ; → $57CC. 2-byte cascaded timer for enemy projectile spawning.
 ; Effective interval = (256 - value)² frames per shot.
@@ -3519,12 +3294,10 @@ temp          EQU $3C      ; Temporary work variable
 ; → $57CF.
 
 00579C  F4F4F3F3                HEX     F4F4F3F3 F2F2F1F1 F0F0F0F0 F0F0F0F0
-
 ; ── Table 7: Timer Parameter 3 (constant) ────────────────────────
 ; → $57D2. All entries are $F0 — no variation across difficulty.
 
 0057AC  EFE8E0D8                HEX     EFE8E0D8 D0C8C0C0 F0F0F0F0 F0F0F0F0
-
 ; ── Table 8: Steps to Next Difficulty Increase ───────────────────
 ; → diff_steps ($31). Hits required before advancing to the next
 ; difficulty level. Index 0 (hardest) = $FF (never increases further).
@@ -3532,12 +3305,6 @@ temp          EQU $3C      ; Temporary work variable
 
 0057BC  F0F0F0F0                HEX     F0F0F0F0 FF2A2A30 281E1E18 18101010
 0057CC  00000000                HEX     00000000 000000F4 000000
-
-; MAIN ENTRY POINT ($57D7)
-; Called after bootstrap relocation completes.
-; Initializes clipping bounds, clears HGR screen, sets up title screen,
-; zeroes score/high-score, sets lives=3, then waits for RETURN key.
-
 ; ── MainEntry ─────────────────────────────────────────────────────
 ; HOW: Clears decimal mode (CLD), calls hardware initialization, then
 ;      proceeds to the title screen setup.
@@ -3575,13 +3342,6 @@ temp          EQU $3C      ; Temporary work variable
 005802  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off
 005805  C9 8D                         cmp  #$8D
 005807  D0 F5                         bne  WaitForReturn
-
-
-; START NEW GAME ($5809)
-; Sets lives=3, level=$3A=5 (Level 1), calls LevelSetup, zeros score,
-; sets direction=UP, difficulty=easiest ($0B), loads timing tables,
-; sets 4-dir fire ammo=3, initializes projectile/alien state.
-
 ; ── GameStart ─────────────────────────────────────────────────────
 ; HOW: Initializes all game state for a new game:
 ;        lives = 3
@@ -3656,22 +3416,6 @@ temp          EQU $3C      ; Temporary work variable
 00586E  85 2D                         sta  timer_hi
 005870  85 2E                         sta  frame_ctr
 005872  8D 10 C0                      sta  CLRKBD          ; KBDSTRB - Clear keyboard strobe
-
-; MAIN GAME LOOP ($5875)
-; Each tick:
-;   1. Move all 4 laser beams ($457F)
-;   2. Redraw screen/sprites ($52F3)
-;   3. Check laser vs satellite collisions ($4F5B)
-;   4. Update star twinkle animation ($5C1C)
-;   5. Check if all 16 aliens are TVs - level complete ($5C78)
-;   6. Handle keyboard input ($43E0) - direction + fire
-;   7. Check paddle button ($C061) - alternative fire
-;   8. Fire projectile if triggered ($58A5)
-;   9. Update alien positions ($4D87)
-;  10. Check laser vs alien collisions ($58CB)
-;  11. Frame timing delay ($5A04)
-;  12. Loop back to top
-
 ; ── MainGameLoop ──────────────────────────────────────────────────
 ; HOW: The main game loop, executed once per frame:
 ;        1. MoveAllProjectiles  — advance player lasers 3px
@@ -3809,7 +3553,7 @@ temp          EQU $3C      ; Temporary work variable
 005976  A2 03             loc_005976  ldx  #$03
 005978  86 12                         stx  loop_idx
 
-00597A  A6 12             loc_00597A  ldx  $12
+00597A  A6 12             loc_00597A  ldx  loop_idx
 00597C  BD 58 5D                      lda  $5D58,X
 00597F  F0 41                         beq  $59C2
 005981  E0 03                         cpx  #$03
@@ -3882,7 +3626,7 @@ temp          EQU $3C      ; Temporary work variable
 005A0F  A2 03                         ldx  #$03
 005A11  86 12                         stx  loop_idx
 
-005A13  A6 12             loc_005A13  ldx  $12
+005A13  A6 12             loc_005A13  ldx  loop_idx
 005A15  BD 54 5D                      lda  $5D54,X
 005A18  F0 3C                         beq  loc_005A56
 005A1A  E0 03                         cpx  #$03
@@ -3911,7 +3655,7 @@ temp          EQU $3C      ; Temporary work variable
 005A51  D0 03                         bne  loc_005A56
 005A53  4C 5D 5A                      jmp  $5A5D
 
-005A56  C6 12             loc_005A56  dec  $12
+005A56  C6 12             loc_005A56  dec  loop_idx
 005A58  10 B9                         bpl  loc_005A13
 
 005A5A  4C 75 58                      jmp  MainGameLoop
@@ -3955,7 +3699,7 @@ temp          EQU $3C      ; Temporary work variable
 005AA3  F0 03                         beq  loc_005AA8
 005AA5  20 C4 44                      jsr  DrawHitFlash
 
-005AA8  C6 12             loc_005AA8  dec  $12
+005AA8  C6 12             loc_005AA8  dec  loop_idx
 005AAA  10 F2                         bpl  $5A9E
 
 005AAC  A6 11                         ldx  direction
@@ -3978,12 +3722,12 @@ temp          EQU $3C      ; Temporary work variable
 005ACC  A2 03                         ldx  #$03
 005ACE  86 12                         stx  loop_idx
 
-005AD0  A6 12             loc_005AD0  ldx  $12
+005AD0  A6 12             loc_005AD0  ldx  loop_idx
 005AD2  BD 58 5D                      lda  $5D58,X
 005AD5  F0 03                         beq  loc_005ADA
 005AD7  20 41 44                      jsr  ClearSpriteArea
 
-005ADA  C6 12             loc_005ADA  dec  $12
+005ADA  C6 12             loc_005ADA  dec  loop_idx
 005ADC  10 F2                         bpl  loc_005AD0
 
 005ADE  A2 03                         ldx  #$03
@@ -4121,9 +3865,6 @@ temp          EQU $3C      ; Temporary work variable
 005BF4  AABAA0A0                HEX     AABAA0A0 A0A5AEA0 C3AFACA0 CFA089A0
 005C04  99A0A0AE                HEX     99A0A0AE C38AA0D0 A0F480A0 A5A0D6A0
 005C14  00081018                HEX     00081018 00889098
-
-
-
 ; ── UpdateStarTwinkle ─────────────────────────────────────────────
 ; HOW: Animates twinkling background stars by toggling individual pixels
 ;      in HGR memory. Uses the random number generator to select which
@@ -4142,12 +3883,12 @@ temp          EQU $3C      ; Temporary work variable
 
 005C28  A9 00             UpdateStarTwinkleB  lda  #$00
 005C2A  85 34                         sta  game_flag
-005C2C  A6 33                         ldx  $33
+005C2C  A6 33                         ldx  star_idx
 005C2E  E8                            inx
 005C2F  E0 20                         cpx  #$20
 005C31  90 02                         bcc  loc_005C35
 005C33  A2 00                         ldx  #$00
-005C35  86 33             loc_005C35  stx  $33
+005C35  86 33             loc_005C35  stx  star_idx
 005C37  BD D4 5B                      lda  $5BD4,X
 005C3A  A8                            tay
 005C3B  B9 6C 41                      lda  $416C,Y
@@ -4187,8 +3928,6 @@ temp          EQU $3C      ; Temporary work variable
 005C75  D0 F6                         bne  loc_005C6D
 
 005C77  60                            rts
-
-
 ; ── CheckAllTVs ───────────────────────────────────────────────────
 ; HOW: Loops through all 16 entries in the alien type table ($53B8).
 ;      If every entry equals 4 (TV type), the level is complete.
@@ -4230,14 +3969,6 @@ temp          EQU $3C      ; Temporary work variable
 005CB0  9D 12 52                      sta  $5212,X
 005CB3  CE 13 5D          loc_005CB3  dec  $5D13
 005CB6  10 D8                         bpl  loc_005C90
-
-; LEVEL COMPLETE ($5CB8)
-; Awards 50 point bonus, advances level (DEC $3A), plays animation.
-; If $3A < 4: spawns 4 satellites.
-; If $3A = 0: VICTORY!
-; During animation: checks for Shift-N cheat code ($9E) which gives
-; +3 lives and resets difficulty to easiest.
-
 ; ── LevelComplete ─────────────────────────────────────────────────
 ; HOW: Awards 50-point bonus (BCD), decrements the level counter ($3A),
 ;      displays the level number, plays the completion animation (which
@@ -4307,9 +4038,6 @@ temp          EQU $3C      ; Temporary work variable
 
 
 005D12  6000                    HEX     6000
-
-
-
 ; ── InitProjectileTables ──────────────────────────────────────────
 ; HOW: Zeroes out all projectile state arrays at $5D48-$5D73. Clears
 ;      position, state, and active flags for all 4 direction slots.
@@ -4337,7 +4065,6 @@ temp          EQU $3C      ; Temporary work variable
 
 ; --- Base X Positions (4 directions) ---
 005D34  181A1816                HEX     181A1816 525D6B5D 17251709 0156B156
-
 ; ── Player Projectile State Tables ───────────────────────────────
 ; 4 bytes each, one per direction (UP/RIGHT/DOWN/LEFT):
 ;   $5D48-$5D4B: X position, low byte
@@ -4357,7 +4084,6 @@ temp          EQU $3C      ; Temporary work variable
 005D54  A0C8A080                HEX     A0C8A080 D4ACBAA0 A0BBA0AC A0A0D0AE
 ; --- Draw Y (4 projectiles) ---
 005D64  E6AF8CB0                HEX     E6AF8CB0 ABBCAB9A 00000000 51606C60
-
 ; ── Sprite Pointer Table (Low Bytes) ─────────────────────────────
 ; 161 entries. Low byte of each sprite's data address in memory.
 ; Indexed by sprite number (0-160).
@@ -4372,7 +4098,6 @@ temp          EQU $3C      ; Temporary work variable
 005DE4  BCCEE9FB                HEX     BCCEE9FB 0D1F2D42 576C8196 ABB9CEE3
 005DF4  F8061B30                HEX     F8061B30 3E53687D 92A7BCC2 CEDAE6F2
 005E04  FE0A101C                HEX     FE0A101C 2834404C 5818B878 F050B010
-
 ; ── Sprite Pointer Table (High Bytes) ────────────────────────────
 ; 161 entries. High byte paired with the low-byte table above.
 
@@ -4386,7 +4111,6 @@ temp          EQU $3C      ; Temporary work variable
 005E84  68686868                HEX     68686868 68696969 69696969 69696969
 005E94  69696A6A                HEX     69696A6A 6A6A6A6A 6A6A6A6A 6A6A6A6A
 005EA4  6A6A6B6B                HEX     6A6A6B6B 6B6B6B6B 6B6B6C6B 6C6C6D6D
-
 ; ── Sprite Width Table ───────────────────────────────────────────
 ; 161 entries. Width in bytes for each sprite. Determines how many
 ; HGR memory bytes wide the sprite is (multiply by 7 for pixels).
@@ -4401,7 +4125,6 @@ temp          EQU $3C      ; Temporary work variable
 005F24  02020203                HEX     02020203 02020202 03030303 03030203
 005F34  03030203                HEX     03030203 03020303 03030303 01020202
 005F44  02020201                HEX     02020201 02020202 02020404 04050404
-
 ; ── Sprite Height Table ──────────────────────────────────────────
 ; 161 entries. Height in scanline rows for each sprite.
 
