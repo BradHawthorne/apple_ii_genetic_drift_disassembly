@@ -56,7 +56,7 @@
 ;                   $5227   Satellite spawning
 ;                   $52F3   Screen redraw / satellite movement
 ;                   $5370   4-direction fire ammo
-;                   $53B8   Alien type table (16 aliens)
+;                   $53B8   Alien type tables (4 dirs × 4 aliens)
 ;                   $56E4   Difficulty increase
 ;                   $56F3   Load difficulty tables
 ;                   $576C   Difficulty lookup tables (8 × 12)
@@ -182,7 +182,7 @@ temp          EQU $3C      ; Temporary work variable
 ;      when the binary first loads. This bootstrap copies them into place
 ;      before the main game code enables hi-res graphics.
 
-0037D7  8D 10 C0                      sta  CLRKBD          ; KBDSTRB - Clear keyboard strobe
+0037D7  8D 10 C0                      sta  CLRKBD          ; Clear keyboard strobe
 0037DA  A9 38                         lda  #$38
 0037DC  85 01                         sta  src_hi
 0037DE  A9 00                         lda  #$00
@@ -216,7 +216,7 @@ temp          EQU $3C      ; Temporary work variable
 000010  03006C1D                HEX     03006C1D B213D1D1 3C3BD499 9BD1
 
 
-00001E  F9 BA 00          loc_00001E  sbc  !$00BA,Y
+00001E  F9 BA 00          loc_00001E  sbc  $00BA,Y
 000021  28                            plp
 000022  00 18                         brk  #$18
 
@@ -655,7 +655,7 @@ temp          EQU $3C      ; Temporary work variable
 
 004005  12                      HEX     12
 
-004006  49 24                         eor  #$24            ; A=comp@$4006
+004006  49 24                         eor  #$24
 
 004008  12492412                HEX     12492412 49241249 24124924 12492412
 004018  49241249                HEX     49241249 24124924 12492412 49241249
@@ -683,11 +683,11 @@ temp          EQU $3C      ; Temporary work variable
 ;      cost is worth it — and with only ~5KB of sprite data total in a
 ;      15KB binary, the tradeoff is well-managed.
 
-0040C0  A8                            tay                  ; A=comp@$4006 Y=A
-0040C1  B9 7C 5D                      lda  $5D7C,Y         ; A=comp@$4006 Y=A
-0040C4  8D 05 41                      sta  $4105           ; A=comp@$4006 Y=A
-0040C7  B9 1D 5E                      lda  $5E1D,Y         ; A=comp@$4006 Y=A
-0040CA  8D 06 41                      sta  $4106           ; A=comp@$4006 Y=A
+0040C0  A8                            tay
+0040C1  B9 7C 5D                      lda  $5D7C,Y
+0040C4  8D 05 41                      sta  $4105
+0040C7  B9 1D 5E                      lda  $5E1D,Y
+0040CA  8D 06 41                      sta  $4106
 0040CD  A5 02                         lda  col_ctr
 0040CF  85 03                         sta  dest_hi
 0040D1  18                            clc
@@ -717,7 +717,7 @@ temp          EQU $3C      ; Temporary work variable
 0040FE  90 0D                         bcc  DrawSprite_NextRow
 004100  C4 0B                         cpy  clip_right
 004102  B0 09                         bcs  DrawSprite_NextRow
-004104  AD 00 00                      lda  !src_lo
+004104  AD 00 00                      lda  src_lo
 004107  49 FF                         eor  #$FF
 004109  31 06                         and  (hgr_lo),Y
 00410B  91 06                         sta  (hgr_lo),Y
@@ -755,9 +755,9 @@ temp          EQU $3C      ; Temporary work variable
 004131  CA                            dex
 004132  D0 F4                         bne  InitHiRes_ClearLoop
 
-004134  AD 50 C0                      lda  TXTCLR          ; TXTCLR - Enable graphics mode
-004137  AD 57 C0                      lda  HIRES           ; HIRES - Hi-res graphics mode
-00413A  AD 52 C0                      lda  MIXCLR          ; MIXCLR - Full screen graphics
+004134  AD 50 C0                      lda  TXTCLR          ; Graphics mode on (soft switch)
+004137  AD 57 C0                      lda  HIRES           ; Hi-res mode on (soft switch)
+00413A  AD 52 C0                      lda  MIXCLR          ; Full-screen (no text window)
 00413D  60                            rts
 ; ── ClearPlayfield ────────────────────────────────────────────────
 ; HOW: Fills the playfield area of HGR page 1 with black (zero bytes).
@@ -1011,7 +1011,7 @@ temp          EQU $3C      ; Temporary work variable
 
 0043E0  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off
 0043E3  10 12                         bpl  $43F7
-0043E5  8D 10 C0                      sta  CLRKBD          ; KBDSTRB - Clear keyboard strobe
+0043E5  8D 10 C0                      sta  CLRKBD          ; Clear keyboard strobe
 0043E8  C9 9B                         cmp  #$9B
 0043EA  D0 03                         bne  $43EF
 0043EC  85 36                         sta  fire_req
@@ -1301,7 +1301,7 @@ temp          EQU $3C      ; Temporary work variable
 0045EF  85 1E                         sta  target_y
 0045F1  85 04                         sta  sprite_calc
 0045F3  20 40 49          loc_0045F3  jsr  UpdateAlienAnim
-0045F6  8D 30 C0                      sta  SPKR            ; SPKR - Speaker toggle
+0045F6  8D 30 C0                      sta  SPKR            ; Toggle speaker (click)
 
 0045F9  C6 12             loc_0045F9  dec  loop_idx
 0045FB  10 86                         bpl  loc_004583
@@ -1974,7 +1974,7 @@ temp          EQU $3C      ; Temporary work variable
 004C64  A9 9A                         lda  #$9A
 004C66  4C 6B 4C                      jmp  loc_004C6B
 004C69  A9 90             loc_004C69  lda  #$90
-004C6B  2C 30 C0          loc_004C6B  bit  SPKR            ; SPKR - Speaker toggle
+004C6B  2C 30 C0          loc_004C6B  bit  SPKR            ; Toggle speaker (click)
 004C6E  4C 7F 52                      jmp  DrawSatellite
 
 
@@ -1987,7 +1987,7 @@ temp          EQU $3C      ; Temporary work variable
 004C7F  A9 9A                         lda  #$9A
 004C81  4C 86 4C                      jmp  $4C86
 004C84  A9 90             loc_004C84  lda  #$90
-004C86  2C 30 C0                      bit  SPKR            ; SPKR - Speaker toggle
+004C86  2C 30 C0                      bit  SPKR            ; Toggle speaker (click)
 004C89  4C A1 52                      jmp  DrawSatelliteB
 
 004C8C  000060C0                HEX     000060C0 C0000051 01A5A501 00
@@ -2046,7 +2046,7 @@ temp          EQU $3C      ; Temporary work variable
 004CEF  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off
 004CF2  C9 9E                         cmp  #$9E
 004CF4  D0 0E                         bne  loc_004D04
-004CF6  AD 10 C0                      lda  KBDSTRB         ; KBDSTRB - Clear keyboard strobe
+004CF6  AD 10 C0                      lda  KBDSTRB         ; Clear keyboard strobe
 004CF9  A9 0B                         lda  #$0B
 004CFB  85 30                         sta  difficulty
 004CFD  A9 03                         lda  #$03
@@ -2057,7 +2057,7 @@ temp          EQU $3C      ; Temporary work variable
 004D06  8D 32 4D                      sta  $4D32
 
 004D09  20 1C 5C          loc_004D09  jsr  UpdateStarTwinkle
-004D0C  2C 30 C0                      bit  SPKR            ; SPKR - Speaker toggle
+004D0C  2C 30 C0                      bit  SPKR            ; Toggle speaker (click)
 004D0F  CE 32 4D                      dec  $4D32
 004D12  10 F5                         bpl  loc_004D09
 
@@ -2376,7 +2376,7 @@ temp          EQU $3C      ; Temporary work variable
 004F40  88                            dey
 004F41  D0 FA                         bne  $4F3D
 
-004F43  8D 30 C0                      sta  SPKR            ; SPKR - Speaker toggle
+004F43  8D 30 C0                      sta  SPKR            ; Toggle speaker (click)
 004F46  CA                            dex
 004F47  D0 F2                         bne  $4F3B
 
@@ -2390,7 +2390,7 @@ temp          EQU $3C      ; Temporary work variable
 004F50  88                            dey
 004F51  D0 FA                         bne  $4F4D
 
-004F53  8D 30 C0                      sta  SPKR            ; SPKR - Speaker toggle
+004F53  8D 30 C0                      sta  SPKR            ; Toggle speaker (click)
 004F56  EA                            nop
 004F57  CA                            dex
 004F58  D0 F1                         bne  $4F4B
@@ -3509,7 +3509,7 @@ temp          EQU $3C      ; Temporary work variable
 00586C  85 2C                         sta  timer_lo
 00586E  85 2D                         sta  timer_hi
 005870  85 2E                         sta  frame_ctr
-005872  8D 10 C0                      sta  CLRKBD          ; KBDSTRB - Clear keyboard strobe
+005872  8D 10 C0                      sta  CLRKBD          ; Clear keyboard strobe
 ; ── MainGameLoop ──────────────────────────────────────────────────
 ; HOW: The main game loop, executed once per frame:
 ;        1. MoveAllProjectiles  — advance player lasers 3px
@@ -3545,7 +3545,7 @@ temp          EQU $3C      ; Temporary work variable
 00588A  A9 00                         lda  #$00
 00588C  85 36                         sta  fire_req
 00588E  4C A5 58                      jmp  FireProjectile
-005891  AD 61 C0                      lda  BUTN0           ; BUTN0 - Button 0 / Open Apple
+005891  AD 61 C0                      lda  BUTN0           ; Read Open Apple button
 005894  30 05                         bmi  $589B
 005896  85 2B                         sta  slot_x16
 005898  4C C3 58                      jmp  AfterFire
@@ -3919,7 +3919,7 @@ temp          EQU $3C      ; Temporary work variable
 005B70  CA                            dex
 005B71  D0 FD                         bne  $5B70
 
-005B73  2C 30 C0                      bit  SPKR            ; SPKR - Speaker toggle
+005B73  2C 30 C0                      bit  SPKR            ; Toggle speaker (click)
 005B76  60                            rts
 ; ── InputWaitKey ──────────────────────────────────────────────────
 ; HOW: Loops reading RandomByte ($0403) to advance the PRNG state
