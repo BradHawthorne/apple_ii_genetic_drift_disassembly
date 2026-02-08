@@ -386,8 +386,8 @@ temp          EQU $3C      ; Temporary work variable
 0002C4  D0 EF                         bne  rwts_store_nib
 
 
-0002C6  BC 8C C0                      ldy  $C08C,X
-0002C9  10 FB                         bpl  $02C6
+0002C6  BC 8C C0  rwts_sync_wait  ldy  $C08C,X
+0002C9  10 FB                         bpl  rwts_sync_wait
 
 0002CB  59 00 08                      eor  $0800,Y
 0002CE  D0 8D                         bne  RWTS_ReadSector
@@ -403,7 +403,7 @@ temp          EQU $3C      ; Temporary work variable
 
 0002D1  A8                            tay
 
-0002D2  A2 00                         ldx  #$00
+0002D2  A2 00  rwts_data_loop  ldx  #$00
 
 0002D4  B9 00 08          rwts_decode_loop  lda  $0800,Y
 0002D7  4A                            lsr  a
@@ -423,15 +423,15 @@ temp          EQU $3C      ; Temporary work variable
 0002EE  D0 E4                         bne  rwts_decode_loop
 
 0002F0  C6 2A                         dec  line_ctr_hi
-0002F2  D0 DE                         bne  $02D2
+0002F2  D0 DE                         bne  rwts_data_loop
 
 0002F4  CC 00 03                      cpy  $0300
-0002F7  D0 03                         bne  $02FC
+0002F7  D0 03                         bne  rwts_verify
 0002F9  60                            rts
 
 0002FA  0000                    HEX     0000
 
-0002FC  4C 2D FF                      jmp  PRERR
+0002FC  4C 2D FF  rwts_verify  jmp  PRERR
 
 0002FF  00000000                HEX     00000000 00000000 00000000 00000000
 00030F  00000000                HEX     00000000 00000000 00000000 00000000
@@ -472,43 +472,43 @@ temp          EQU $3C      ; Temporary work variable
 ;      faster than equivalent code in the $4000+ range.
 
 000416  A8                            tay
-000417  B9 7C 5D                      lda  $5D7C,Y
-00041A  8D 4B 04                      sta  $044B
-00041D  B9 1D 5E                      lda  $5E1D,Y
-000420  8D 4C 04                      sta  $044C
+000417  B9 7C 5D                      lda  $5D7C,Y  ; sprite_ptr_lo
+00041A  8D 4B 04                      sta  $044B  ; smc_spr_ptr_lo
+00041D  B9 1D 5E                      lda  $5E1D,Y  ; sprite_ptr_hi
+000420  8D 4C 04                      sta  $044C  ; smc_spr_ptr_hi
 000423  A5 02                         lda  col_ctr
 000425  85 03                         sta  dest_hi
 000427  18                            clc
-000428  79 BE 5E                      adc  $5EBE,Y
+000428  79 BE 5E                      adc  $5EBE,Y  ; sprite_width
 00042B  85 02                         sta  col_ctr
 00042D  A5 04                         lda  sprite_calc
 00042F  AA                            tax
 000430  18                            clc
-000431  79 5F 5F                      adc  $5F5F,Y
+000431  79 5F 5F                      adc  $5F5F,Y  ; sprite_height
 000434  85 05                         sta  sprite_h
 
-000436  E0 C0                         cpx  #$C0
-000438  B0 27                         bcs  $0461
-00043A  BD 6C 41                      lda  $416C,X
+000436  E0 C0  spr_row_loop  cpx  #$C0
+000438  B0 27                         bcs  spr_done
+00043A  BD 6C 41                      lda  $416C,X  ; hgr_addr_lo
 00043D  85 06                         sta  hgr_lo
-00043F  BD 2C 42                      lda  $422C,X
+00043F  BD 2C 42                      lda  $422C,X  ; hgr_addr_hi
 000442  85 07                         sta  hgr_hi
 000444  A4 03                         ldy  dest_hi
 
-000446  C0 28                         cpy  #$28
-000448  B0 05                         bcs  $044F
-00044A  AD 1C 60                      lda  $601C
+000446  C0 28  spr_col_loop  cpy  #$28
+000448  B0 05                         bcs  spr_next_byte
+00044A  AD 1C 60                      lda  $601C  ; sprite_blank
 00044D  91 06                         sta  (hgr_lo),Y
-00044F  EE 4B 04                      inc  $044B
-000452  D0 03                         bne  $0457
-000454  EE 4C 04                      inc  $044C
+00044F  EE 4B 04  spr_next_byte  inc  $044B  ; smc_spr_ptr_lo
+000452  D0 03                         bne  spr_next_col
+000454  EE 4C 04                      inc  $044C  ; smc_spr_ptr_hi
 000457  C8                            iny
 000458  C4 02                         cpy  col_ctr
-00045A  90 EA                         bcc  $0446
+00045A  90 EA                         bcc  spr_col_loop
 
 00045C  E8                            inx
 00045D  E4 05                         cpx  sprite_h
-00045F  90 D5                         bcc  $0436
+00045F  90 D5                         bcc  spr_row_loop
 
 000461  60                            rts
 ; ── EraseSprite ───────────────────────────────────────────────────
@@ -527,35 +527,35 @@ temp          EQU $3C      ; Temporary work variable
 0004B2  EEA804C8                HEX     EEA804C8 C40290E0 E8E40590 C360
 
 0004C0  A8                            tay
-0004C1  B9 7C 5D                      lda  $5D7C,Y
-0004C4  8D 05 41                      sta  $4105
-0004C7  B9 1D 5E                      lda  $5E1D,Y
-0004CA  8D 06 41                      sta  $4106
+0004C1  B9 7C 5D                      lda  $5D7C,Y  ; sprite_ptr_lo
+0004C4  8D 05 41                      sta  $4105  ; smc_erase_ptr_lo
+0004C7  B9 1D 5E                      lda  $5E1D,Y  ; sprite_ptr_hi
+0004CA  8D 06 41                      sta  $4106  ; smc_erase_ptr_hi
 0004CD  A5 02                         lda  col_ctr
 0004CF  85 03                         sta  dest_hi
 0004D1  18                            clc
-0004D2  79 BE 5E                      adc  $5EBE,Y
+0004D2  79 BE 5E                      adc  $5EBE,Y  ; sprite_width
 0004D5  85 02                         sta  col_ctr
 0004D7  A5 04                         lda  sprite_calc
 0004D9  AA                            tax
 0004DA  18                            clc
-0004DB  79 5F 5F                      adc  $5F5F,Y
+0004DB  79 5F 5F                      adc  $5F5F,Y  ; sprite_height
 0004DE  85 05                         sta  sprite_h
 0004E0  E0 C0                         cpx  #$C0
-0004E2  B0 3B                         bcs  $051F
+0004E2  B0 3B                         bcs  erase_done
 0004E4  E4 08                         cpx  clip_top
-0004E6  90 25                         bcc  $050D
+0004E6  90 25                         bcc  erase_clip_skip
 0004E8  E4 09                         cpx  clip_bot
-0004EA  B0 21                         bcs  $050D
-0004EC  BD 6C 41                      lda  $416C,X
+0004EA  B0 21                         bcs  erase_clip_skip
+0004EC  BD 6C 41                      lda  $416C,X  ; hgr_addr_lo
 0004EF  85 06                         sta  hgr_lo
-0004F1  BD 2C 42                      lda  $422C,X
+0004F1  BD 2C 42                      lda  $422C,X  ; hgr_addr_hi
 0004F4  85 07                         sta  hgr_hi
 0004F6  A4 03                         ldy  dest_hi
 0004F8  C0 28                         cpy  #$28
-0004FA  B0 11                         bcs  $050D
+0004FA  B0 11                         bcs  erase_clip_skip
 0004FC  C4 0A                         cpy  clip_left
-0004FE  90 0D                         bcc  $050D
+0004FE  90 0D                         bcc  erase_clip_skip
 000500  61 0B                         adc  (clip_right,X)
 000502  9A                            txs
 000503  AC AD 26                      ldy  $26AD
@@ -564,7 +564,7 @@ temp          EQU $3C      ; Temporary work variable
 000508  FF570677                HEX     FF570677 078B0411 D2E5EF83 41A86CBB
 000518  EC8365AF                HEX     EC8365AF 0129DC
 
-00051F  3E 24 4C                      rol  $4C24,X
+00051F  3E 24 4C  erase_done  rol  $4C24,X
 000522  A6 85                         ldx  $85
 000524  AA                            tax
 
@@ -606,9 +606,9 @@ temp          EQU $3C      ; Temporary work variable
 0006C0  20 E0 20                      jsr  $20E0  ; HGR2Clear
 0006C3  D0 20                         bne  reset_handler
 0006C5  C0 20                         cpy  #$20
-0006C7  B0 20                         bcs  $06E9
+0006C7  B0 20                         bcs  init_hgr_mode
 0006C9  C0 20                         cpy  #$20
-0006CB  D0 20                         bne  $06ED
+0006CB  D0 20                         bne  init_skip_hgr
 0006CD  E0 00                         cpx  #$00
 0006CF  00 48                         brk  #$48
 
@@ -621,7 +621,7 @@ temp          EQU $3C      ; Temporary work variable
 
 0006EC  00                      HEX     00
 
-0006ED  00 00                         brk  #$00
+0006ED  00 00  init_skip_hgr  brk  #$00
 
 0006EF  00C2D2B0                HEX     00C2D2B0 C4C5D2C2 D5CEC400 00000000
 0006FF  00505050                HEX     00505050 50D0D0D0 D0D0D0D0 D0505050
@@ -682,19 +682,19 @@ temp          EQU $3C      ; Temporary work variable
 ;      15KB binary, the tradeoff is well-managed.
 
 0040C0  A8                            tay
-0040C1  B9 7C 5D                      lda  $5D7C,Y
-0040C4  8D 05 41                      sta  $4105
-0040C7  B9 1D 5E                      lda  $5E1D,Y
-0040CA  8D 06 41                      sta  $4106
+0040C1  B9 7C 5D                      lda  $5D7C,Y  ; sprite_ptr_lo
+0040C4  8D 05 41                      sta  $4105  ; smc_erase_ptr_lo
+0040C7  B9 1D 5E                      lda  $5E1D,Y  ; sprite_ptr_hi
+0040CA  8D 06 41                      sta  $4106  ; smc_erase_ptr_hi
 0040CD  A5 02                         lda  col_ctr
 0040CF  85 03                         sta  dest_hi
 0040D1  18                            clc
-0040D2  79 BE 5E                      adc  $5EBE,Y
+0040D2  79 BE 5E                      adc  $5EBE,Y  ; sprite_width
 0040D5  85 02                         sta  col_ctr
 0040D7  A5 04                         lda  sprite_calc
 0040D9  AA                            tax
 0040DA  18                            clc
-0040DB  79 5F 5F                      adc  $5F5F,Y
+0040DB  79 5F 5F                      adc  $5F5F,Y  ; sprite_height
 0040DE  85 05                         sta  sprite_h
 
 0040E0  E0 C0                         cpx  #$C0
@@ -703,9 +703,9 @@ temp          EQU $3C      ; Temporary work variable
 0040E6  90 25                         bcc  DrawSprite_NextRow
 0040E8  E4 09                         cpx  clip_bot
 0040EA  B0 21                         bcs  DrawSprite_NextRow
-0040EC  BD 6C 41                      lda  $416C,X
+0040EC  BD 6C 41                      lda  $416C,X  ; hgr_addr_lo
 0040EF  85 06                         sta  hgr_lo
-0040F1  BD 2C 42                      lda  $422C,X
+0040F1  BD 2C 42                      lda  $422C,X  ; hgr_addr_hi
 0040F4  85 07                         sta  hgr_hi
 0040F6  A4 03                         ldy  dest_hi
 
@@ -719,9 +719,9 @@ temp          EQU $3C      ; Temporary work variable
 004107  49 FF                         eor  #$FF
 004109  31 06                         and  (hgr_lo),Y
 00410B  91 06                         sta  (hgr_lo),Y
-00410D  EE 05 41                      inc  $4105
+00410D  EE 05 41                      inc  $4105  ; smc_erase_ptr_lo
 004110  D0 03                         bne  DrawSprite_IncCol
-004112  EE 06 41                      inc  $4106
+004112  EE 06 41                      inc  $4106  ; smc_erase_ptr_hi
 004115  C8                            iny
 004116  C4 02                         cpy  col_ctr
 004118  90 DE                         bcc  DrawSprite_ColLoop
@@ -765,9 +765,9 @@ temp          EQU $3C      ; Temporary work variable
 
 00413E  A6 08                         ldx  clip_top
 
-004140  BD 6C 41                      lda  $416C,X
+004140  BD 6C 41                      lda  $416C,X  ; hgr_addr_lo
 004143  85 06                         sta  hgr_lo
-004145  BD 2C 42                      lda  $422C,X
+004145  BD 2C 42                      lda  $422C,X  ; hgr_addr_hi
 004148  85 07                         sta  hgr_hi
 00414A  A4 0A                         ldy  clip_left
 00414C  A9 00                         lda  #$00
@@ -972,9 +972,9 @@ temp          EQU $3C      ; Temporary work variable
 0043B5  A0 08                         ldy  #$08
 0043B7  A2 00                         ldx  #$00
 
-0043B9  BD 6C 41          tbl_lookup_loop  lda  $416C,X
+0043B9  BD 6C 41          tbl_lookup_loop  lda  $416C,X  ; hgr_addr_lo
 0043BC  85 06                         sta  hgr_lo
-0043BE  BD 2C 42                      lda  $422C,X
+0043BE  BD 2C 42                      lda  $422C,X  ; hgr_addr_hi
 0043C1  85 07                         sta  hgr_hi
 0043C3  A9 94                         lda  #$94
 0043C5  91 06                         sta  (hgr_lo),Y
@@ -1008,13 +1008,13 @@ temp          EQU $3C      ; Temporary work variable
 ;      limited uses (starts at 3, gains 1 per difficulty increase).
 
 0043E0  AD 00 C0                      lda  KBD             ; Read keyboard (high bit = key pressed)
-0043E3  10 12                         bpl  $43F7
+0043E3  10 12                         bpl  tbl_continue
 0043E5  8D 10 C0                      sta  CLRKBD          ; Clear keyboard strobe
 0043E8  C9 9B                         cmp  #$9B
-0043EA  D0 03                         bne  $43EF
+0043EA  D0 03                         bne  tbl_adjust
 0043EC  85 36                         sta  fire_req
 0043EE  60                            rts
-0043EF  C9 D9                         cmp  #$D9
+0043EF  C9 D9   tbl_adjust  cmp  #$D9
 0043F1  D0 05                         bne  Key_CheckJ
 0043F3  A9 00                         lda  #$00
 0043F5  85 11                         sta  direction
@@ -1053,7 +1053,7 @@ temp          EQU $3C      ; Temporary work variable
 004441  E0 03                         cpx  #$03
 004443  F0 31                         beq  ClearSprite_Right
 004445  E0 02                         cpx  #$02
-004447  F0 22                         beq  $446B
+004447  F0 22                         beq  sprclip_offscreen
 004449  E0 01                         cpx  #$01
 00444B  F0 45                         beq  ClearSprite_Left
 00444D  A2 00                         ldx  #$00
@@ -1061,9 +1061,9 @@ temp          EQU $3C      ; Temporary work variable
 004451  A9 51                         lda  #$51
 004453  85 05                         sta  sprite_h
 
-004455  BD 6C 41          ClearSprite_Loop  lda  $416C,X
+004455  BD 6C 41          ClearSprite_Loop  lda  $416C,X  ; hgr_addr_lo
 004458  85 06                         sta  hgr_lo
-00445A  BD 2C 42                      lda  $422C,X
+00445A  BD 2C 42                      lda  $422C,X  ; hgr_addr_hi
 00445D  85 07                         sta  hgr_hi
 00445F  A9 73                         lda  #$73
 004461  31 06                         and  (hgr_lo),Y
@@ -1073,7 +1073,7 @@ temp          EQU $3C      ; Temporary work variable
 004468  D0 EB                         bne  ClearSprite_Loop
 
 00446A  60                            rts
-00446B  A2 6E                         ldx  #$6E
+00446B  A2 6E  sprclip_offscreen  ldx  #$6E
 00446D  A0 18                         ldy  #$18
 00446F  A5 09                         lda  clip_bot
 004471  85 05                         sta  sprite_h
@@ -1084,9 +1084,9 @@ temp          EQU $3C      ; Temporary work variable
 
 00447A  85 05             sprite_col_loop  sta  sprite_h
 00447C  A2 60                         ldx  #$60
-00447E  BD 6C 41                      lda  $416C,X
+00447E  BD 6C 41                      lda  $416C,X  ; hgr_addr_lo
 004481  85 06                         sta  hgr_lo
-004483  BD 2C 42                      lda  $422C,X
+004483  BD 2C 42                      lda  $422C,X  ; hgr_addr_hi
 004486  85 07                         sta  hgr_hi
 004488  A9 00                         lda  #$00
 
@@ -1108,20 +1108,20 @@ temp          EQU $3C      ; Temporary work variable
 004499  20 EF 44                      jsr  $44EF  ; LoadProjectileState
 00449C  A6 19                         ldx  draw_y
 00449E  A5 1A                         lda  draw_y_hi
-0044A0  D0 0F                         bne  $44B1
+0044A0  D0 0F                         bne  clip_right_adj
 0044A2  BD AA 47                      lda  $47AA,X
 0044A5  85 02                         sta  col_ctr
 0044A7  BD 92 46                      lda  $4692,X
 0044AA  AA                            tax
 0044AB  BD D3 48                      lda  $48D3,X
 0044AE  4C BD 44                      jmp  sprite_clip_right
-0044B1  BD AD 48                      lda  $48AD,X
+0044B1  BD AD 48  clip_right_adj  lda  $48AD,X
 0044B4  85 02                         sta  col_ctr
 0044B6  BD 8B 47                      lda  $478B,X
 0044B9  AA                            tax
 0044BA  BD D3 48                      lda  $48D3,X
 0044BD  18                sprite_clip_right  clc
-0044BE  6D 09 45                      adc  $4509
+0044BE  6D 09 45                      adc  $4509  ; spr_save_idx
 0044C1  4C 62 04                      jmp  $0462  ; EraseSprite
 ; ── DrawHitFlash ──────────────────────────────────────────────────
 ; HOW: Draws a brief flash/explosion sprite at the point of impact
@@ -1131,20 +1131,20 @@ temp          EQU $3C      ; Temporary work variable
 0044C4  20 EF 44                      jsr  $44EF  ; LoadProjectileState
 0044C7  A6 19                         ldx  draw_y
 0044C9  A5 1A                         lda  draw_y_hi
-0044CB  D0 0F                         bne  $44DC
+0044CB  D0 0F                         bne  clip_left_adj
 0044CD  BD AA 47                      lda  $47AA,X
 0044D0  85 02                         sta  col_ctr
 0044D2  BD 92 46                      lda  $4692,X
 0044D5  AA                            tax
 0044D6  BD D3 48                      lda  $48D3,X
 0044D9  4C E8 44                      jmp  sprite_clip_left
-0044DC  BD AD 48                      lda  $48AD,X
+0044DC  BD AD 48  clip_left_adj  lda  $48AD,X
 0044DF  85 02                         sta  col_ctr
 0044E1  BD 8B 47                      lda  $478B,X
 0044E4  AA                            tax
 0044E5  BD D3 48                      lda  $48D3,X
 0044E8  18                sprite_clip_left  clc
-0044E9  6D 09 45                      adc  $4509
+0044E9  6D 09 45                      adc  $4509  ; spr_save_idx
 0044EC  4C C0 40                      jmp  DrawSpriteXY
 ; ── LoadProjectileState ───────────────────────────────────────────
 ; HOW: Loads projectile rendering parameters from the state tables
@@ -1153,16 +1153,16 @@ temp          EQU $3C      ; Temporary work variable
 ; WHY: Centralizes the table-to-register transfer for projectile
 ;      drawing, used by both the draw and erase paths.
 
-0044EF  BD 48 5D                      lda  $5D48,X
+0044EF  BD 48 5D                      lda  $5D48,X  ; proj_x_lo
 0044F2  85 19                         sta  draw_y
-0044F4  BD 4C 5D                      lda  $5D4C,X
+0044F4  BD 4C 5D                      lda  $5D4C,X  ; proj_x_hi
 0044F7  85 1A                         sta  draw_y_hi
-0044F9  BD 50 5D                      lda  $5D50,X
+0044F9  BD 50 5D                      lda  $5D50,X  ; proj_y
 0044FC  85 04                         sta  sprite_calc
-0044FE  BD 54 5D                      lda  $5D54,X
+0044FE  BD 54 5D                      lda  $5D54,X  ; proj_state
 004501  AA                            tax
 004502  BD 0A 45                      lda  $450A,X
-004505  8D 09 45                      sta  $4509
+004505  8D 09 45                      sta  $4509  ; spr_save_idx
 004508  60                            rts
 
 004509  001E1E82                HEX     001E1E82 89
@@ -1179,50 +1179,50 @@ temp          EQU $3C      ; Temporary work variable
 004510  86 12                         stx  loop_idx
 
 004512  A6 12             hitflash_loop  ldx  loop_idx
-004514  BD 54 5D                      lda  $5D54,X
+004514  BD 54 5D                      lda  $5D54,X  ; proj_state
 004517  F0 61                         beq  hitflash_next
 004519  20 C4 44                      jsr  DrawHitFlash
 
 00451C  A6 12                         ldx  loop_idx
 00451E  E0 03                         cpx  #$03
-004520  F0 28                         beq  $454A
+004520  F0 28                         beq  hf_case_left
 004522  E0 02                         cpx  #$02
-004524  F0 14                         beq  $453A
+004524  F0 14                         beq  hf_case_down
 004526  E0 01                         cpx  #$01
-004528  F0 30                         beq  $455A
-00452A  BD 50 5D                      lda  $5D50,X
+004528  F0 30                         beq  hf_case_right
+00452A  BD 50 5D                      lda  $5D50,X  ; proj_y
 00452D  18                            clc
 00452E  69 01                         adc  #$01
 004530  C9 60                         cmp  #$60
 004532  B0 46                         bcs  hitflash_next
-004534  9D 50 5D                      sta  $5D50,X
+004534  9D 50 5D                      sta  $5D50,X  ; proj_y
 004537  4C 77 45                      jmp  hitflash_draw
-00453A  BD 50 5D                      lda  $5D50,X
+00453A  BD 50 5D  hf_case_down  lda  $5D50,X  ; proj_y
 00453D  38                            sec
 00453E  E9 01                         sbc  #$01
 004540  C9 60                         cmp  #$60
 004542  90 36                         bcc  hitflash_next
-004544  9D 50 5D                      sta  $5D50,X
+004544  9D 50 5D                      sta  $5D50,X  ; proj_y
 004547  4C 77 45                      jmp  hitflash_draw
-00454A  BD 48 5D                      lda  $5D48,X
+00454A  BD 48 5D  hf_case_left  lda  $5D48,X  ; proj_x_lo
 00454D  18                            clc
 00454E  69 01                         adc  #$01
 004550  C9 AB                         cmp  #$AB
 004552  B0 26                         bcs  hitflash_next
-004554  9D 48 5D                      sta  $5D48,X
+004554  9D 48 5D                      sta  $5D48,X  ; proj_x_lo
 004557  4C 77 45                      jmp  hitflash_draw
-00455A  BD 4C 5D                      lda  $5D4C,X
-00455D  D0 07                         bne  $4566
-00455F  BD 48 5D                      lda  $5D48,X
+00455A  BD 4C 5D  hf_case_right  lda  $5D4C,X  ; proj_x_hi
+00455D  D0 07                         bne  hf_sub16
+00455F  BD 48 5D                      lda  $5D48,X  ; proj_x_lo
 004562  C9 AB                         cmp  #$AB
 004564  90 14                         bcc  hitflash_next
-004566  BD 48 5D                      lda  $5D48,X
+004566  BD 48 5D  hf_sub16  lda  $5D48,X  ; proj_x_lo
 004569  38                            sec
 00456A  E9 01                         sbc  #$01
-00456C  9D 48 5D                      sta  $5D48,X
-00456F  BD 4C 5D                      lda  $5D4C,X
+00456C  9D 48 5D                      sta  $5D48,X  ; proj_x_lo
+00456F  BD 4C 5D                      lda  $5D4C,X  ; proj_x_hi
 004572  E9 00                         sbc  #$00
-004574  9D 4C 5D                      sta  $5D4C,X
+004574  9D 4C 5D                      sta  $5D4C,X  ; proj_x_hi
 004577  20 99 44          hitflash_draw  jsr  DrawProjectile
 
 00457A  C6 12             hitflash_next  dec  loop_idx
@@ -1243,15 +1243,15 @@ temp          EQU $3C      ; Temporary work variable
 004581  86 12                         stx  loop_idx
 
 004583  A6 12             moveproj_loop  ldx  loop_idx
-004585  BD 58 5D                      lda  $5D58,X
+004585  BD 58 5D                      lda  $5D58,X  ; proj_type
 004588  F0 6F                         beq  moveproj_next
 00458A  E0 03                         cpx  #$03
-00458C  F0 41                         beq  $45CF
+00458C  F0 41                         beq  mp_case_left
 00458E  E0 02                         cpx  #$02
-004590  F0 28                         beq  $45BA
+004590  F0 28                         beq  mp_case_down
 004592  E0 01                         cpx  #$01
-004594  F0 68                         beq  $45FE
-004596  BD 64 5D                      lda  $5D64,X
+004594  F0 68                         beq  mp_case_right
+004596  BD 64 5D                      lda  $5D64,X  ; proj_draw_y
 004599  F0 5E                         beq  moveproj_next
 00459B  85 04                         sta  sprite_calc
 00459D  38                            sec
@@ -1260,15 +1260,15 @@ temp          EQU $3C      ; Temporary work variable
 0045A2  A9 00                         lda  #$00
 
 0045A4  85 1E             moveproj_store_y  sta  target_y
-0045A6  9D 64 5D                      sta  $5D64,X
-0045A9  BD 5C 5D                      lda  $5D5C,X
+0045A6  9D 64 5D                      sta  $5D64,X  ; proj_draw_y
+0045A9  BD 5C 5D                      lda  $5D5C,X  ; proj_draw_x
 0045AC  85 19                         sta  draw_y
 0045AE  85 1C                         sta  target_x
-0045B0  BD 60 5D                      lda  $5D60,X
+0045B0  BD 60 5D                      lda  $5D60,X  ; proj_draw_x_hi
 0045B3  85 1A                         sta  draw_y_hi
 0045B5  85 1D                         sta  target_x_hi
 0045B7  4C F3 45                      jmp  moveproj_animate
-0045BA  BD 64 5D                      lda  $5D64,X
+0045BA  BD 64 5D  mp_case_down  lda  $5D64,X  ; proj_draw_y
 0045BD  C9 BF                         cmp  #$BF
 0045BF  F0 38                         beq  moveproj_next
 0045C1  85 04                         sta  sprite_calc
@@ -1280,22 +1280,22 @@ temp          EQU $3C      ; Temporary work variable
 0045CA  A9 BF                         lda  #$BF
 0045CC  4C A4 45                      jmp  moveproj_store_y
 
-0045CF  BD 5C 5D                      lda  $5D5C,X
+0045CF  BD 5C 5D  mp_case_left  lda  $5D5C,X  ; proj_draw_x
 0045D2  C9 3E                         cmp  #$3E
 0045D4  90 23                         bcc  moveproj_next
 0045D6  85 1C                         sta  target_x
 0045D8  38                            sec
 0045D9  E9 03                         sbc  #$03
 0045DB  C9 3E                         cmp  #$3E
-0045DD  B0 02                         bcs  $45E1
+0045DD  B0 02                         bcs  mp_clamp_pos
 0045DF  A9 3E                         lda  #$3E
-0045E1  85 19                         sta  draw_y
-0045E3  9D 5C 5D                      sta  $5D5C,X
+0045E1  85 19  mp_clamp_pos  sta  draw_y
+0045E3  9D 5C 5D                      sta  $5D5C,X  ; proj_draw_x
 0045E6  A9 00                         lda  #$00
 0045E8  85 1D                         sta  target_x_hi
 0045EA  85 1A                         sta  draw_y_hi
 
-0045EC  BD 64 5D          moveproj_load_anim  lda  $5D64,X
+0045EC  BD 64 5D          moveproj_load_anim  lda  $5D64,X  ; proj_draw_y
 0045EF  85 1E                         sta  target_y
 0045F1  85 04                         sta  sprite_calc
 0045F3  20 40 49          moveproj_animate  jsr  UpdateAlienAnim
@@ -1305,23 +1305,23 @@ temp          EQU $3C      ; Temporary work variable
 0045FB  10 86                         bpl  moveproj_loop
 
 0045FD  60                            rts
-0045FE  BD 5C 5D                      lda  $5D5C,X
+0045FE  BD 5C 5D  mp_case_right  lda  $5D5C,X  ; proj_draw_x
 004601  C9 17                         cmp  #$17
-004603  BD 60 5D                      lda  $5D60,X
+004603  BD 60 5D                      lda  $5D60,X  ; proj_draw_x_hi
 004606  E9 01                         sbc  #$01
 004608  B0 EF                         bcs  moveproj_next
 
-00460A  BD 60 5D                      lda  $5D60,X
+00460A  BD 60 5D                      lda  $5D60,X  ; proj_draw_x_hi
 00460D  85 1A                         sta  draw_y_hi
-00460F  BD 5C 5D                      lda  $5D5C,X
+00460F  BD 5C 5D                      lda  $5D5C,X  ; proj_draw_x
 004612  85 19                         sta  draw_y
 004614  18                            clc
 004615  69 03                         adc  #$03
-004617  9D 5C 5D                      sta  $5D5C,X
+004617  9D 5C 5D                      sta  $5D5C,X  ; proj_draw_x
 00461A  85 1C                         sta  target_x
-00461C  BD 60 5D                      lda  $5D60,X
+00461C  BD 60 5D                      lda  $5D60,X  ; proj_draw_x_hi
 00461F  69 00                         adc  #$00
-004621  9D 60 5D                      sta  $5D60,X
+004621  9D 60 5D                      sta  $5D60,X  ; proj_draw_x_hi
 004624  85 1D                         sta  target_x_hi
 004626  A5 1C                         lda  target_x
 004628  C9 17                         cmp  #$17
@@ -1330,24 +1330,24 @@ temp          EQU $3C      ; Temporary work variable
 00462E  90 BC                         bcc  moveproj_load_anim
 
 004630  A9 17                         lda  #$17
-004632  9D 5C 5D                      sta  $5D5C,X
+004632  9D 5C 5D                      sta  $5D5C,X  ; proj_draw_x
 004635  85 1C                         sta  target_x
 004637  A9 01                         lda  #$01
 004639  85 1D                         sta  target_x_hi
-00463B  9D 60 5D                      sta  $5D60,X
+00463B  9D 60 5D                      sta  $5D60,X  ; proj_draw_x_hi
 00463E  4C EC 45                      jmp  moveproj_load_anim
 ; ── StoreLaserState_Up ────────────────────────────────────────────
 ; HOW: Stores laser projectile state for the UP direction.
 
-004641  8D 55 46                      sta  $4655
-004644  8E 56 46                      stx  $4656
-004647  8C 57 46                      sty  $4657
+004641  8D 55 46                      sta  $4655  ; save_a
+004644  8E 56 46                      stx  $4656  ; save_x
+004647  8C 57 46                      sty  $4657  ; save_y
 00464A  60                            rts
 
 
-00464B  AD 55 46                      lda  $4655
-00464E  AE 56 46                      ldx  $4656
-004651  AC 57 46                      ldy  $4657
+00464B  AD 55 46                      lda  $4655  ; save_a
+00464E  AE 56 46                      ldx  $4656  ; save_x
+004651  AC 57 46                      ldy  $4657  ; save_y
 004654  60                            rts
 
 004655  000000                  HEX     000000
@@ -1363,9 +1363,9 @@ temp          EQU $3C      ; Temporary work variable
 00465A  86 14                         stx  save_x
 00465C  84 15                         sty  save_y
 00465E  A6 04                         ldx  sprite_calc
-004660  BD 6C 41                      lda  $416C,X
+004660  BD 6C 41                      lda  $416C,X  ; hgr_addr_lo
 004663  85 06                         sta  hgr_lo
-004665  BD 2C 42                      lda  $422C,X
+004665  BD 2C 42                      lda  $422C,X  ; hgr_addr_hi
 004668  85 07                         sta  hgr_hi
 00466A  A6 19                         ldx  draw_y
 00466C  A5 1A                         lda  draw_y_hi
@@ -1453,7 +1453,7 @@ temp          EQU $3C      ; Temporary work variable
 004916  48                            pha
 004917  A5 19                         lda  draw_y
 004919  29 01                         and  #$01
-00491B  F0 0B                         beq  $4928
+00491B  F0 0B                         beq  arow_skip_odd
 00491D  20 58 46                      jsr  MoveLaserDownRight
 
 004920  A4 17                         ldy  draw_col
@@ -1518,7 +1518,7 @@ temp          EQU $3C      ; Temporary work variable
 004989  A9 00                         lda  #$00
 00498B  85 20                         sta  step_x_hi
 00498D  A5 26             bres_load_dy  lda  delta_y_hi
-00498F  10 16                         bpl  $49A7
+00498F  10 16                         bpl  bres_skip_negate
 004991  A9 FF                         lda  #$FF
 004993  85 21                         sta  step_y
 004995  85 22                         sta  step_y_hi
@@ -1530,7 +1530,7 @@ temp          EQU $3C      ; Temporary work variable
 0049A0  E5 26                         sbc  delta_y_hi
 0049A2  85 26                         sta  delta_y_hi
 0049A4  4C AF 49                      jmp  $49AF  ; BresenhamLineInit
-0049A7  A9 01                         lda  #$01
+0049A7  A9 01  bres_skip_negate  lda  #$01
 0049A9  85 21                         sta  step_y
 0049AB  A9 00                         lda  #$00
 0049AD  85 22                         sta  step_y_hi
@@ -1538,11 +1538,11 @@ temp          EQU $3C      ; Temporary work variable
 0049B1  C5 25                         cmp  delta_y
 0049B3  A5 24                         lda  delta_x_hi
 0049B5  E5 26                         sbc  delta_y_hi
-0049B7  B0 06                         bcs  $49BF
+0049B7  B0 06                         bcs  bres_setup_step
 0049B9  20 2F 4A                      jsr  DrawAlienSideB
-0049BC  4C C2 49                      jmp  $49C2
-0049BF  20 C6 49                      jsr  DrawAlienSide
-0049C2  20 4B 46                      jsr  MoveLaserLeft
+0049BC  4C C2 49                      jmp  bres_begin
+0049BF  20 C6 49  bres_setup_step  jsr  DrawAlienSide
+0049C2  20 4B 46  bres_begin  jsr  MoveLaserLeft
 
 0049C5  60                            rts
 ; ── BresenhamLineStep ─────────────────────────────────────────────
@@ -1561,10 +1561,10 @@ temp          EQU $3C      ; Temporary work variable
 ;      for line drawing in the 8-bit era.
 
 0049C6  A5 23                         lda  delta_x
-0049C8  D0 04                         bne  $49CE
+0049C8  D0 04                         bne  bres_x_only
 0049CA  A5 24                         lda  delta_x_hi
-0049CC  F0 60                         beq  $4A2E
-0049CE  A5 24                         lda  delta_x_hi
+0049CC  F0 60                         beq  line_complete
+0049CE  A5 24  bres_x_only  lda  delta_x_hi
 0049D0  85 2A                         sta  line_ctr_hi
 0049D2  4A                            lsr  a
 0049D3  85 28                         sta  accum_hi
@@ -1603,16 +1603,16 @@ temp          EQU $3C      ; Temporary work variable
 004A0F  65 20                         adc  step_x_hi
 004A11  85 1A                         sta  draw_y_hi
 004A13  24 1B                         bit  anim_dir
-004A15  10 06                         bpl  $4A1D
+004A15  10 06                         bpl  line_adj_y
 004A17  20 C0 40                      jsr  DrawSpriteXY
 
 004A1A  4C 20 4A                      jmp  line_check_done
-004A1D  20 14 49                      jsr  DrawAlienRow
+004A1D  20 14 49  line_adj_y  jsr  DrawAlienRow
 
 004A20  A5 29             line_check_done  lda  line_ctr_lo
-004A22  D0 02                         bne  $4A26
+004A22  D0 02                         bne  line_adj_done
 004A24  C6 2A                         dec  line_ctr_hi
-004A26  C6 29                         dec  line_ctr_lo
+004A26  C6 29  line_adj_done  dec  line_ctr_lo
 004A28  A5 29                         lda  line_ctr_lo
 004A2A  05 2A                         ora  line_ctr_hi
 004A2C  D0 AE                         bne  line_step_loop
@@ -1660,9 +1660,9 @@ temp          EQU $3C      ; Temporary work variable
 004A74  20 14 49                      jsr  DrawAlienRow
 
 004A77  A5 29                         lda  line_ctr_lo
-004A79  D0 02                         bne  $4A7D
+004A79  D0 02                         bne  lneg_adj_y
 004A7B  C6 2A                         dec  line_ctr_hi
-004A7D  C6 29                         dec  line_ctr_lo
+004A7D  C6 29   lneg_adj_y  dec  line_ctr_lo
 004A7F  A5 29                         lda  line_ctr_lo
 004A81  05 2A                         ora  line_ctr_hi
 004A83  D0 B8                         bne  line_neg_loop
@@ -1707,12 +1707,12 @@ temp          EQU $3C      ; Temporary work variable
 004ABB  A9 42                         lda  #$42
 004ABD  85 04                         sta  sprite_calc
 004ABF  A5 11                         lda  direction
-004AC1  F0 08                         beq  $4ACB
+004AC1  F0 08                         beq  score_no_carry
 004AC3  A9 25                         lda  #$25
 004AC5  20 C0 40                      jsr  DrawSpriteXY
 
 004AC8  4C D0 4A                      jmp  $4AD0  ; UpdateStarTwinkle
-004ACB  A9 25                         lda  #$25
+004ACB  A9 25  score_no_carry  lda  #$25
 004ACD  20 62 04                      jsr  $0462  ; EraseSprite
 004AD0  20 28 5C                      jsr  UpdateStarTwinkleB
 004AD3  A9 40                         lda  #$40
@@ -1740,7 +1740,7 @@ temp          EQU $3C      ; Temporary work variable
 004AEA  85 0D                         sta  score_hi
 004AEC  D8                            cld
 004AED  C5 35                         cmp  sat_counter
-004AEF  D0 18                         bne  $4B09
+004AEF  D0 18                         bne  twinkle_bounce
 004AF1  E6 10                         inc  lives
 004AF3  20 CD 43                      jsr  PerFrameUpdate
 
@@ -1752,9 +1752,9 @@ temp          EQU $3C      ; Temporary work variable
 004AFD  85 35                         sta  sat_counter
 004AFF  A0 00                         ldy  #$00
 004B01  A9 3C                         lda  #$3C
-004B03  8D 67 5B                      sta  $5B67
+004B03  8D 67 5B                      sta  $5B67  ; snd_trigger
 004B06  20 62 5B                      jsr  InputProcessB
-004B09  4C 87 43                      jmp  InitGameVarsB
+004B09  4C 87 43  twinkle_bounce  jmp  InitGameVarsB
 ; ── SelectProjectileType ──────────────────────────────────────────
 ; HOW: Determines what type of projectile an alien fires. Checks if all
 ;      4 aliens on the firing side are type 4 (TV). If yes, calls the
@@ -1768,7 +1768,7 @@ temp          EQU $3C      ; Temporary work variable
 ;      screen carefully in the final moments of each level.
 
 004B0C  8A                            txa
-004B0D  8E 64 4B                      stx  $4B64
+004B0D  8E 64 4B                      stx  $4B64  ; proj_dir_idx
 004B10  0A                            asl  a
 004B11  0A                            asl  a
 004B12  18                            clc
@@ -1776,12 +1776,12 @@ temp          EQU $3C      ; Temporary work variable
 004B15  AA                            tax
 004B16  A0 03                         ldy  #$03
 
-004B18  BD B8 53                      lda  $53B8,X
+004B18  BD B8 53  twinkle_loop  lda  $53B8,X  ; alien_type_up
 004B1B  C9 04                         cmp  #$04
 004B1D  D0 15                         bne  pdir_case_1
 004B1F  CA                            dex
 004B20  88                            dey
-004B21  10 F5                         bpl  $4B18
+004B21  10 F5                         bpl  twinkle_loop
 
 004B23  20 03 04                      jsr  $0403  ; RandomByte
 004B26  C9 10                         cmp  #$10
@@ -1791,17 +1791,17 @@ temp          EQU $3C      ; Temporary work variable
 004B2F  A9 02             pdir_case_2  lda  #$02
 004B31  4C 36 4B                      jmp  pdir_resolved
 004B34  A9 01             pdir_case_1  lda  #$01
-004B36  AE 64 4B          pdir_resolved  ldx  $4B64
-004B39  9D 54 5D                      sta  $5D54,X
-004B3C  BD 58 4B                      lda  $4B58,X
-004B3F  9D 48 5D                      sta  $5D48,X
-004B42  BD 5C 4B                      lda  $4B5C,X
-004B45  9D 4C 5D                      sta  $5D4C,X
-004B48  BD 60 4B                      lda  $4B60,X
-004B4B  9D 50 5D                      sta  $5D50,X
+004B36  AE 64 4B          pdir_resolved  ldx  $4B64  ; proj_dir_idx
+004B39  9D 54 5D                      sta  $5D54,X  ; proj_state
+004B3C  BD 58 4B                      lda  $4B58,X  ; pspawn_x_lo
+004B3F  9D 48 5D                      sta  $5D48,X  ; proj_x_lo
+004B42  BD 5C 4B                      lda  $4B5C,X  ; pspawn_x_hi
+004B45  9D 4C 5D                      sta  $5D4C,X  ; proj_x_hi
+004B48  BD 60 4B                      lda  $4B60,X  ; pspawn_y
+004B4B  9D 50 5D                      sta  $5D50,X  ; proj_y
 004B4E  A0 10                         ldy  #$10
 004B50  A9 45                         lda  #$45
-004B52  8D 67 5B                      sta  $5B67
+004B52  8D 67 5B                      sta  $5B67  ; snd_trigger
 004B55  4C 62 5B                      jmp  InputProcessB
 
 004B58  A900A950                HEX     A900A950 00010000 105EAC5E 00
@@ -1816,9 +1816,9 @@ temp          EQU $3C      ; Temporary work variable
 ;      UFO → Eye1 → Eye2 → TV). That's 20 hits of lost progress per
 ;      mistake. It rewards careful play over spray-and-pray.
 
-004B65  AD D6 57                      lda  $57D6
+004B65  AD D6 57                      lda  $57D6  ; cur_proj_slot
 004B68  20 3C 4C                      jsr  PlayPunishSound
-004B6B  AD D6 57                      lda  $57D6
+004B6B  AD D6 57                      lda  $57D6  ; cur_proj_slot
 004B6E  0A                            asl  a
 004B6F  0A                            asl  a
 004B70  18                            clc
@@ -1827,110 +1827,110 @@ temp          EQU $3C      ; Temporary work variable
 004B74  A0 03                         ldy  #$03
 004B76  A9 05                         lda  #$05
 
-004B78  9D B8 53          pdir_init_loop  sta  $53B8,X
+004B78  9D B8 53          pdir_init_loop  sta  $53B8,X  ; alien_type_up
 004B7B  CA                            dex
 004B7C  88                            dey
 004B7D  10 F9                         bpl  pdir_init_loop
 
-004B7F  AE D6 57                      ldx  $57D6
+004B7F  AE D6 57                      ldx  $57D6  ; cur_proj_slot
 004B82  D0 03                         bne  pdir_check_1
 004B84  4C C5 54                      jmp  $54C5  ; AnimateSatelliteDown
 004B87  E0 01             pdir_check_1  cpx  #$01
 004B89  D0 03                         bne  pdir_check_2
 004B8B  4C 61 54                      jmp  $5461  ; AnimateSatelliteLeft
 004B8E  E0 02             pdir_check_2  cpx  #$02
-004B90  D0 03                         bne  $4B95
+004B90  D0 03                         bne  pdir_up_fallthru
 004B92  4C 29 55                      jmp  $5529  ; AnimateSatelliteRight
-004B95  4C FD 53                      jmp  $53FD  ; AnimateSatelliteUp
+004B95  4C FD 53  pdir_up_fallthru  jmp  $53FD  ; AnimateSatelliteUp
 
 004B98  A9 03                         lda  #$03
-004B9A  8D F8 53                      sta  $53F8
+004B9A  8D F8 53                      sta  $53F8  ; alien_loop_ctr
 
-004B9D  AE F8 53                      ldx  $53F8
-004BA0  BD C4 53                      lda  $53C4,X
-004BA3  F0 16                         beq  $4BBB
+004B9D  AE F8 53  orbit_left_loop  ldx  $53F8  ; alien_loop_ctr
+004BA0  BD C4 53                      lda  $53C4,X  ; alien_type_left
+004BA3  F0 16                         beq  orbit_left_skip
 004BA5  48                            pha
-004BA6  AD F3 53                      lda  $53F3
+004BA6  AD F3 53                      lda  $53F3  ; alien_pos_left
 004BA9  18                            clc
-004BAA  7D E8 53                      adc  $53E8,X
+004BAA  7D E8 53                      adc  $53E8,X  ; alien_anim_off
 004BAD  85 04                         sta  sprite_calc
 004BAF  A9 09                         lda  #$09
 004BB1  85 02                         sta  col_ctr
 004BB3  68                            pla
 004BB4  AA                            tax
-004BB5  BD D6 53                      lda  $53D6,X
+004BB5  BD D6 53                      lda  $53D6,X  ; alien_spr_left_b
 004BB8  20 C0 40                      jsr  DrawSpriteXY
 
-004BBB  CE F8 53                      dec  $53F8
-004BBE  10 DD                         bpl  $4B9D
+004BBB  CE F8 53  orbit_left_skip  dec  $53F8  ; alien_loop_ctr
+004BBE  10 DD                         bpl  orbit_left_loop
 
 004BC0  60                            rts
 
 004BC1  A9 03             dir_up_handler  lda  #$03
-004BC3  8D F8 53                      sta  $53F8
+004BC3  8D F8 53                      sta  $53F8  ; alien_loop_ctr
 
-004BC6  AE F8 53                      ldx  $53F8
-004BC9  BD BC 53                      lda  $53BC,X
-004BCC  F0 16                         beq  $4BE4
+004BC6  AE F8 53  orbit_up_loop  ldx  $53F8  ; alien_loop_ctr
+004BC9  BD BC 53                      lda  $53BC,X  ; alien_type_right
+004BCC  F0 16                         beq  orbit_up_skip
 004BCE  48                            pha
-004BCF  AD F1 53                      lda  $53F1
+004BCF  AD F1 53                      lda  $53F1  ; alien_pos_right
 004BD2  18                            clc
-004BD3  7D E8 53                      adc  $53E8,X
+004BD3  7D E8 53                      adc  $53E8,X  ; alien_anim_off
 004BD6  85 04                         sta  sprite_calc
 004BD8  A9 25                         lda  #$25
 004BDA  85 02                         sta  col_ctr
 004BDC  68                            pla
 004BDD  AA                            tax
-004BDE  BD DD 53                      lda  $53DD,X
+004BDE  BD DD 53                      lda  $53DD,X  ; alien_spr_right_b
 004BE1  20 C0 40                      jsr  DrawSpriteXY
 
-004BE4  CE F8 53                      dec  $53F8
-004BE7  10 DD                         bpl  $4BC6
+004BE4  CE F8 53  orbit_up_skip  dec  $53F8  ; alien_loop_ctr
+004BE7  10 DD                         bpl  orbit_up_loop
 
 004BE9  60                            rts
 
 004BEA  A9 03             dir_right_handler  lda  #$03
-004BEC  8D F8 53                      sta  $53F8
+004BEC  8D F8 53                      sta  $53F8  ; alien_loop_ctr
 
-004BEF  AE F8 53                      ldx  $53F8
-004BF2  BD B8 53                      lda  $53B8,X
-004BF5  F0 16                         beq  $4C0D
+004BEF  AE F8 53  orbit_right_loop  ldx  $53F8  ; alien_loop_ctr
+004BF2  BD B8 53                      lda  $53B8,X  ; alien_type_up
+004BF5  F0 16                         beq  orbit_right_skip
 004BF7  48                            pha
-004BF8  AD EC 53                      lda  $53EC
+004BF8  AD EC 53                      lda  $53EC  ; alien_pos_up
 004BFB  18                            clc
-004BFC  7D E4 53                      adc  $53E4,X
+004BFC  7D E4 53                      adc  $53E4,X  ; alien_base_off
 004BFF  85 19                         sta  draw_y
 004C01  A9 01                         lda  #$01
 ; case 0:
 004C03  85 04                         sta  sprite_calc
 004C05  68                            pla
 004C06  AA                            tax
-004C07  BD C8 53                      lda  $53C8,X
+004C07  BD C8 53                      lda  $53C8,X  ; alien_spr_up
 004C0A  20 A1 52                      jsr  DrawSatelliteB
-004C0D  CE F8 53                      dec  $53F8
-004C10  10 DD                         bpl  $4BEF
+004C0D  CE F8 53  orbit_right_skip  dec  $53F8  ; alien_loop_ctr
+004C10  10 DD                         bpl  orbit_right_loop
 
 004C12  60                            rts
 
 004C13  A9 03             dir_down_handler  lda  #$03
-004C15  8D F8 53                      sta  $53F8
+004C15  8D F8 53                      sta  $53F8  ; alien_loop_ctr
 
-004C18  AE F8 53                      ldx  $53F8
-004C1B  BD C0 53                      lda  $53C0,X
-004C1E  F0 16                         beq  $4C36
+004C18  AE F8 53  orbit_down_loop  ldx  $53F8  ; alien_loop_ctr
+004C1B  BD C0 53                      lda  $53C0,X  ; alien_type_down
+004C1E  F0 16                         beq  orbit_down_skip
 004C20  48                            pha
-004C21  AD EE 53                      lda  $53EE
+004C21  AD EE 53                      lda  $53EE  ; alien_pos_down
 004C24  18                            clc
-004C25  7D E4 53                      adc  $53E4,X
+004C25  7D E4 53                      adc  $53E4,X  ; alien_base_off
 004C28  85 19                         sta  draw_y
 004C2A  A9 B4                         lda  #$B4
 004C2C  85 04                         sta  sprite_calc
 004C2E  68                            pla
 004C2F  AA                            tax
-004C30  BD CF 53                      lda  $53CF,X
+004C30  BD CF 53                      lda  $53CF,X  ; alien_spr_down_b
 004C33  20 A1 52                      jsr  DrawSatelliteB
-004C36  CE F8 53                      dec  $53F8
-004C39  10 DD                         bpl  $4C18
+004C36  CE F8 53  orbit_down_skip  dec  $53F8  ; alien_loop_ctr
+004C39  10 DD                         bpl  orbit_down_loop
 
 004C3B  60                            rts
 ; ── PlayPunishSound ───────────────────────────────────────────────
@@ -1963,9 +1963,9 @@ temp          EQU $3C      ; Temporary work variable
 ;      toggle. All sound is generated by precisely-timed CPU loops.
 ;      This routine is the building block for all game sound effects.
 
-004C56  AD 54 4C                      lda  $4C54
+004C56  AD 54 4C                      lda  $4C54  ; tone_pitch1
 004C59  85 19                         sta  draw_y
-004C5B  AD 55 4C                      lda  $4C55
+004C5B  AD 55 4C                      lda  $4C55  ; tone_pitch2
 004C5E  85 04                         sta  sprite_calc
 004C60  A5 3A                         lda  level
 004C62  D0 05                         bne  snd_loud_vol
@@ -1976,16 +1976,16 @@ temp          EQU $3C      ; Temporary work variable
 004C6E  4C 7F 52                      jmp  DrawSatellite
 
 
-004C71  AD 54 4C                      lda  $4C54
+004C71  AD 54 4C                      lda  $4C54  ; tone_pitch1
 004C74  85 19                         sta  draw_y
-004C76  AD 55 4C                      lda  $4C55
+004C76  AD 55 4C                      lda  $4C55  ; tone_pitch2
 004C79  85 04                         sta  sprite_calc
 004C7B  A5 3A                         lda  level
 004C7D  D0 05                         bne  snd_loud_vol2
 004C7F  A9 9A                         lda  #$9A
-004C81  4C 86 4C                      jmp  $4C86
+004C81  4C 86 4C                      jmp  snd_finished
 004C84  A9 90             snd_loud_vol2  lda  #$90
-004C86  2C 30 C0                      bit  SPKR            ; Toggle speaker (click)
+004C86  2C 30 C0  snd_finished  bit  SPKR            ; Toggle speaker (click)
 004C89  4C A1 52                      jmp  DrawSatelliteB
 
 004C8C  000060C0                HEX     000060C0 C0000051 01A5A501 00
@@ -2003,43 +2003,43 @@ temp          EQU $3C      ; Temporary work variable
 ;      multiple times during a single animation.
 
 004C99  A9 C0                         lda  #$C0
-004C9B  8D 54 4C                      sta  $4C54
+004C9B  8D 54 4C                      sta  $4C54  ; tone_pitch1
 004C9E  A9 01                         lda  #$01
-004CA0  8D 55 4C                      sta  $4C55
+004CA0  8D 55 4C                      sta  $4C55  ; tone_pitch2
 004CA3  A9 04                         lda  #$04
-004CA5  8D 98 4C                      sta  $4C98
+004CA5  8D 98 4C                      sta  $4C98  ; snd_loop_ctr
 
-004CA8  AE 98 4C          star_main_loop  ldx  $4C98
-004CAB  BD 8E 4C                      lda  $4C8E,X
-004CAE  8D 8C 4C                      sta  $4C8C
-004CB1  BD 93 4C                      lda  $4C93,X
-004CB4  8D 8D 4C                      sta  $4C8D
+004CA8  AE 98 4C          star_main_loop  ldx  $4C98  ; snd_loop_ctr
+004CAB  BD 8E 4C                      lda  $4C8E,X  ; tone_delta1
+004CAE  8D 8C 4C                      sta  $4C8C  ; tone_target1
+004CB1  BD 93 4C                      lda  $4C93,X  ; tone_delta2
+004CB4  8D 8D 4C                      sta  $4C8D  ; tone_target2
 
-004CB7  20 71 4C                      jsr  PlayToneB
+004CB7  20 71 4C  tone_step_loop  jsr  PlayToneB
 
-004CBA  AD 54 4C                      lda  $4C54
-004CBD  CD 8C 4C                      cmp  $4C8C
-004CC0  F0 11                         beq  $4CD3
-004CC2  B0 09                         bcs  $4CCD
+004CBA  AD 54 4C                      lda  $4C54  ; tone_pitch1
+004CBD  CD 8C 4C                      cmp  $4C8C  ; tone_target1
+004CC0  F0 11                         beq  tone_step1_done
+004CC2  B0 09                         bcs  tone_neg_step1
 004CC4  18                            clc
 004CC5  69 04                         adc  #$04
-004CC7  8D 54 4C                      sta  $4C54
-004CCA  4C D3 4C                      jmp  $4CD3
+004CC7  8D 54 4C                      sta  $4C54  ; tone_pitch1
+004CCA  4C D3 4C                      jmp  tone_step1_done
 004CCD  38                            sec
 004CCE  E9 04                         sbc  #$04
-004CD0  8D 54 4C                      sta  $4C54
-004CD3  AD 55 4C                      lda  $4C55
-004CD6  CD 8D 4C                      cmp  $4C8D
-004CD9  F0 11                         beq  $4CEC
-004CDB  B0 09                         bcs  $4CE6
+004CD0  8D 54 4C                      sta  $4C54  ; tone_pitch1
+004CD3  AD 55 4C  tone_step1_done  lda  $4C55  ; tone_pitch2
+004CD6  CD 8D 4C                      cmp  $4C8D  ; tone_target2
+004CD9  F0 11                         beq  tone_step2_done
+004CDB  B0 09                         bcs  tone_neg_step2
 004CDD  18                            clc
 004CDE  69 04                         adc  #$04
-004CE0  8D 55 4C                      sta  $4C55
-004CE3  4C EC 4C                      jmp  $4CEC
+004CE0  8D 55 4C                      sta  $4C55  ; tone_pitch2
+004CE3  4C EC 4C                      jmp  tone_step2_done
 004CE6  38                            sec
 004CE7  E9 04                         sbc  #$04
-004CE9  8D 55 4C                      sta  $4C55
-004CEC  20 56 4C                      jsr  PlayTone
+004CE9  8D 55 4C                      sta  $4C55  ; tone_pitch2
+004CEC  20 56 4C  tone_step2_done  jsr  PlayTone
 
 004CEF  AD 00 C0                      lda  KBD             ; Read keyboard (high bit = key pressed)
 004CF2  C9 9E                         cmp  #$9E
@@ -2061,16 +2061,16 @@ temp          EQU $3C      ; Temporary work variable
 
 004D14  A9 FF                         lda  #$FF
 004D16  20 6C 5C                      jsr  StarTwinkleC
-004D19  AD 54 4C                      lda  $4C54
-004D1C  CD 8C 4C                      cmp  $4C8C
-004D1F  D0 96                         bne  $4CB7
+004D19  AD 54 4C                      lda  $4C54  ; tone_pitch1
+004D1C  CD 8C 4C                      cmp  $4C8C  ; tone_target1
+004D1F  D0 96                         bne  tone_step_loop
 
-004D21  AD 55 4C                      lda  $4C55
-004D24  CD 8D 4C                      cmp  $4C8D
-004D27  D0 8E                         bne  $4CB7
+004D21  AD 55 4C                      lda  $4C55  ; tone_pitch2
+004D24  CD 8D 4C                      cmp  $4C8D  ; tone_target2
+004D27  D0 8E                         bne  tone_step_loop
 
-004D29  CE 98 4C                      dec  $4C98
-004D2C  30 03                         bmi  $4D31
+004D29  CE 98 4C                      dec  $4C98  ; snd_loop_ctr
+004D2C  30 03                         bmi  title_exit
 004D2E  4C A8 4C                      jmp  star_main_loop
 
 004D31  60                            rts
@@ -2094,7 +2094,7 @@ temp          EQU $3C      ; Temporary work variable
 004D46  85 04                         sta  sprite_calc
 004D48  A6 3A                         ldx  level
 004D4A  F0 07                         beq  title_init_delay
-004D4C  BD 6E 4D                      lda  $4D6E,X
+004D4C  BD 6E 4D                      lda  $4D6E,X  ; level_spr_tbl
 004D4F  20 7F 52                      jsr  DrawSatellite
 004D52  60                            rts
 004D53  A9 14             title_init_delay  lda  #$14
@@ -2125,12 +2125,12 @@ temp          EQU $3C      ; Temporary work variable
 004D73  A2 03                         ldx  #$03
 004D75  A9 00                         lda  #$00
 
-004D77  9D B8 53                      sta  $53B8,X
-004D7A  9D C0 53                      sta  $53C0,X
-004D7D  9D BC 53                      sta  $53BC,X
-004D80  9D C4 53                      sta  $53C4,X
+004D77  9D B8 53  apos_clear_loop  sta  $53B8,X  ; alien_type_up
+004D7A  9D C0 53                      sta  $53C0,X  ; alien_type_down
+004D7D  9D BC 53                      sta  $53BC,X  ; alien_type_right
+004D80  9D C4 53                      sta  $53C4,X  ; alien_type_left
 004D83  CA                            dex
-004D84  10 F1                         bpl  $4D77
+004D84  10 F1                         bpl  apos_clear_loop
 
 004D86  60                            rts
 ; ── UpdateAlienPositions ──────────────────────────────────────────
@@ -2143,26 +2143,26 @@ temp          EQU $3C      ; Temporary work variable
 ;      game's biology/mutation theme.
 
 004D87  A2 03                         ldx  #$03
-004D89  8E BB 4D                      stx  $4DBB
+004D89  8E BB 4D                      stx  $4DBB  ; alien_iter_ctr
 
-004D8C  AE BB 4D                      ldx  $4DBB
-004D8F  BD 58 5D                      lda  $5D58,X
-004D92  F0 21                         beq  $4DB5
+004D8C  AE BB 4D  apos_iter_loop  ldx  $4DBB  ; alien_iter_ctr
+004D8F  BD 58 5D                      lda  $5D58,X  ; proj_type
+004D92  F0 21                         beq  apos_next_slot
 004D94  E0 03                         cpx  #$03
-004D96  F0 1A                         beq  $4DB2
+004D96  F0 1A                         beq  apos_case_left
 004D98  E0 02                         cpx  #$02
-004D9A  F0 0A                         beq  $4DA6
+004D9A  F0 0A                         beq  apos_case_down
 004D9C  E0 01                         cpx  #$01
-004D9E  F0 0C                         beq  $4DAC
+004D9E  F0 0C                         beq  apos_case_right
 004DA0  20 E3 4D                      jsr  AlienEvolve
-004DA3  4C B5 4D                      jmp  $4DB5  ; UpdateAlienPositions
-004DA6  20 8B 4E                      jsr  AlienHitHandlerB
-004DA9  4C B5 4D                      jmp  $4DB5  ; UpdateAlienPositions
-004DAC  20 38 4E                      jsr  AlienHitHandler
-004DAF  4C B5 4D                      jmp  $4DB5  ; UpdateAlienPositions
-004DB2  20 E0 4E                      jsr  AlienHitHandlerC
-004DB5  CE BB 4D                      dec  $4DBB
-004DB8  10 D2                         bpl  $4D8C
+004DA3  4C B5 4D                      jmp  apos_next_slot  ; UpdateAlienPositions
+004DA6  20 8B 4E  apos_case_down  jsr  AlienHitHandlerB
+004DA9  4C B5 4D                      jmp  apos_next_slot  ; UpdateAlienPositions
+004DAC  20 38 4E  apos_case_right  jsr  AlienHitHandler
+004DAF  4C B5 4D                      jmp  apos_next_slot  ; UpdateAlienPositions
+004DB2  20 E0 4E  apos_case_left  jsr  AlienHitHandlerC
+004DB5  CE BB 4D  apos_next_slot  dec  $4DBB  ; alien_iter_ctr
+004DB8  10 D2                         bpl  apos_iter_loop
 
 004DBA  60                            rts
 
@@ -2170,15 +2170,15 @@ temp          EQU $3C      ; Temporary work variable
 
 
 004DC4  AA                            tax
-004DC5  BD BD 4D                      lda  $4DBD,X
+004DC5  BD BD 4D                      lda  $4DBD,X  ; alien_score_tbl
 004DC8  20 E0 4A                      jsr  AddScore
 
 004DCB  A9 14                         lda  #$14
 004DCD  A0 0A                         ldy  #$0A
 004DCF  20 35 4F                      jsr  PlaySound
-004DD2  AE BB 4D                      ldx  $4DBB
+004DD2  AE BB 4D                      ldx  $4DBB  ; alien_iter_ctr
 004DD5  A9 00                         lda  #$00
-004DD7  9D 58 5D                      sta  $5D58,X
+004DD7  9D 58 5D                      sta  $5D58,X  ; proj_type
 004DDA  20 41 44                      jsr  ClearSpriteArea
 
 004DDD  20 E4 56                      jsr  IncreaseDifficulty
@@ -2196,40 +2196,40 @@ temp          EQU $3C      ; Temporary work variable
 ;      creates a strategic puzzle layered on top of the action gameplay:
 ;      you must count your shots carefully and stop at exactly TV.
 
-004DE3  AD 64 5D                      lda  $5D64
+004DE3  AD 64 5D                      lda  $5D64  ; proj_draw_y
 004DE6  C9 0A                         cmp  #$0A
-004DE8  B0 4D                         bcs  $4E37
+004DE8  B0 4D                         bcs  evolve_done
 004DEA  20 0E 56                      jsr  $560E  ; CheckAlienDirection
-004DED  F0 48                         beq  $4E37
-004DEF  8E BC 4D                      stx  $4DBC
+004DED  F0 48                         beq  evolve_done
+004DEF  8E BC 4D                      stx  $4DBC  ; alien_slot_tmp
 004DF2  20 C4 4D                      jsr  UpdateAlienPosB
 
-004DF5  AE BC 4D                      ldx  $4DBC
-004DF8  AD EC 53                      lda  $53EC
+004DF5  AE BC 4D                      ldx  $4DBC  ; alien_slot_tmp
+004DF8  AD EC 53                      lda  $53EC  ; alien_pos_up
 004DFB  18                            clc
-004DFC  7D E4 53                      adc  $53E4,X
-004DFF  8D FC 53                      sta  $53FC
+004DFC  7D E4 53                      adc  $53E4,X  ; alien_base_off
+004DFF  8D FC 53                      sta  $53FC  ; alien_work_d
 004E02  85 19                         sta  draw_y
 004E04  A9 01                         lda  #$01
 004E06  85 04                         sta  sprite_calc
-004E08  BD B8 53                      lda  $53B8,X
+004E08  BD B8 53                      lda  $53B8,X  ; alien_type_up
 004E0B  AA                            tax
-004E0C  BD C8 53                      lda  $53C8,X
+004E0C  BD C8 53                      lda  $53C8,X  ; alien_spr_up
 004E0F  20 A1 52                      jsr  DrawSatelliteB
-004E12  AE BC 4D                      ldx  $4DBC
-004E15  FE B8 53                      inc  $53B8,X
-004E18  BD B8 53                      lda  $53B8,X
+004E12  AE BC 4D                      ldx  $4DBC  ; alien_slot_tmp
+004E15  FE B8 53                      inc  $53B8,X  ; alien_type_up
+004E18  BD B8 53                      lda  $53B8,X  ; alien_type_up
 004E1B  C9 07                         cmp  #$07
-004E1D  90 05                         bcc  $4E24
+004E1D  90 05                         bcc  evolve_no_wrap
 004E1F  A9 01                         lda  #$01
-004E21  9D B8 53                      sta  $53B8,X
-004E24  AD FC 53                      lda  $53FC
+004E21  9D B8 53                      sta  $53B8,X  ; alien_type_up
+004E24  AD FC 53  evolve_no_wrap  lda  $53FC  ; alien_work_d
 004E27  85 19                         sta  draw_y
 004E29  A9 01                         lda  #$01
 004E2B  85 04                         sta  sprite_calc
-004E2D  BD B8 53                      lda  $53B8,X
+004E2D  BD B8 53                      lda  $53B8,X  ; alien_type_up
 004E30  AA                            tax
-004E31  BD C8 53                      lda  $53C8,X
+004E31  BD C8 53                      lda  $53C8,X  ; alien_spr_up
 004E34  20 7F 52                      jsr  DrawSatellite
 004E37  60                            rts
 ; ── AlienHitHandler ───────────────────────────────────────────────
@@ -2248,113 +2248,113 @@ temp          EQU $3C      ; Temporary work variable
 ;      This is efficient on the 6502 and perfectly suited to the
 ;      game's cardinal-direction-only movement.
 
-004E38  AD 61 5D                      lda  $5D61
-004E3B  F0 4D                         beq  $4E8A
+004E38  AD 61 5D                      lda  $5D61  ; proj_draw_y_1
+004E3B  F0 4D                         beq  ahit_up_done
 004E3D  20 0E 56                      jsr  $560E  ; CheckAlienDirection
-004E40  8E BC 4D                      stx  $4DBC
-004E43  F0 45                         beq  $4E8A
+004E40  8E BC 4D                      stx  $4DBC  ; alien_slot_tmp
+004E43  F0 45                         beq  ahit_up_done
 004E45  20 C4 4D                      jsr  UpdateAlienPosB
 
-004E48  AE BC 4D                      ldx  $4DBC
-004E4B  AD F1 53                      lda  $53F1
+004E48  AE BC 4D                      ldx  $4DBC  ; alien_slot_tmp
+004E4B  AD F1 53                      lda  $53F1  ; alien_pos_right
 004E4E  18                            clc
-004E4F  7D E4 53                      adc  $53E4,X
-004E52  8D FA 53                      sta  $53FA
+004E4F  7D E4 53                      adc  $53E4,X  ; alien_base_off
+004E52  8D FA 53                      sta  $53FA  ; alien_work_b
 004E55  85 04                         sta  sprite_calc
 004E57  A9 C4                         lda  #$C4
 004E59  85 19                         sta  draw_y
-004E5B  BD BC 53                      lda  $53BC,X
+004E5B  BD BC 53                      lda  $53BC,X  ; alien_type_right
 004E5E  AA                            tax
-004E5F  BD DD 53                      lda  $53DD,X
+004E5F  BD DD 53                      lda  $53DD,X  ; alien_spr_right_b
 004E62  20 A1 52                      jsr  DrawSatelliteB
-004E65  AE BC 4D                      ldx  $4DBC
-004E68  FE BC 53                      inc  $53BC,X
-004E6B  BD BC 53                      lda  $53BC,X
+004E65  AE BC 4D                      ldx  $4DBC  ; alien_slot_tmp
+004E68  FE BC 53                      inc  $53BC,X  ; alien_type_right
+004E6B  BD BC 53                      lda  $53BC,X  ; alien_type_right
 004E6E  C9 07                         cmp  #$07
-004E70  90 05                         bcc  $4E77
+004E70  90 05                         bcc  ahit_up_no_wrap
 004E72  A9 01                         lda  #$01
-004E74  9D BC 53                      sta  $53BC,X
-004E77  AD FA 53                      lda  $53FA
+004E74  9D BC 53                      sta  $53BC,X  ; alien_type_right
+004E77  AD FA 53  ahit_up_no_wrap  lda  $53FA  ; alien_work_b
 004E7A  85 04                         sta  sprite_calc
 004E7C  A9 C4                         lda  #$C4
 004E7E  85 19                         sta  draw_y
-004E80  BD BC 53                      lda  $53BC,X
+004E80  BD BC 53                      lda  $53BC,X  ; alien_type_right
 004E83  AA                            tax
-004E84  BD DD 53                      lda  $53DD,X
+004E84  BD DD 53                      lda  $53DD,X  ; alien_spr_right_b
 004E87  20 7F 52                      jsr  DrawSatellite
 004E8A  60                            rts
 
-004E8B  AD 66 5D                      lda  $5D66
+004E8B  AD 66 5D                      lda  $5D66  ; proj_draw_y_2
 004E8E  C9 B4                         cmp  #$B4
-004E90  90 4D                         bcc  $4EDF
+004E90  90 4D                         bcc  ahit_down_done
 004E92  20 0E 56                      jsr  $560E  ; CheckAlienDirection
-004E95  F0 48                         beq  $4EDF
-004E97  8E BC 4D                      stx  $4DBC
+004E95  F0 48                         beq  ahit_down_done
+004E97  8E BC 4D                      stx  $4DBC  ; alien_slot_tmp
 004E9A  20 C4 4D                      jsr  UpdateAlienPosB
 
-004E9D  AE BC 4D                      ldx  $4DBC
-004EA0  AD EE 53                      lda  $53EE
+004E9D  AE BC 4D                      ldx  $4DBC  ; alien_slot_tmp
+004EA0  AD EE 53                      lda  $53EE  ; alien_pos_down
 004EA3  18                            clc
-004EA4  7D E4 53                      adc  $53E4,X
-004EA7  8D FC 53                      sta  $53FC
+004EA4  7D E4 53                      adc  $53E4,X  ; alien_base_off
+004EA7  8D FC 53                      sta  $53FC  ; alien_work_d
 004EAA  85 19                         sta  draw_y
 004EAC  A9 B4                         lda  #$B4
 004EAE  85 04                         sta  sprite_calc
-004EB0  BD C0 53                      lda  $53C0,X
+004EB0  BD C0 53                      lda  $53C0,X  ; alien_type_down
 004EB3  AA                            tax
-004EB4  BD CF 53                      lda  $53CF,X
+004EB4  BD CF 53                      lda  $53CF,X  ; alien_spr_down_b
 004EB7  20 A1 52                      jsr  DrawSatelliteB
-004EBA  AE BC 4D                      ldx  $4DBC
-004EBD  FE C0 53                      inc  $53C0,X
-004EC0  BD C0 53                      lda  $53C0,X
+004EBA  AE BC 4D                      ldx  $4DBC  ; alien_slot_tmp
+004EBD  FE C0 53                      inc  $53C0,X  ; alien_type_down
+004EC0  BD C0 53                      lda  $53C0,X  ; alien_type_down
 004EC3  C9 07                         cmp  #$07
-004EC5  90 05                         bcc  $4ECC
+004EC5  90 05                         bcc  ahit_down_no_wrap
 004EC7  A9 01                         lda  #$01
-004EC9  9D C0 53                      sta  $53C0,X
-004ECC  AD FC 53                      lda  $53FC
+004EC9  9D C0 53                      sta  $53C0,X  ; alien_type_down
+004ECC  AD FC 53  ahit_down_no_wrap  lda  $53FC  ; alien_work_d
 004ECF  85 19                         sta  draw_y
 004ED1  A9 B4                         lda  #$B4
 004ED3  85 04                         sta  sprite_calc
-004ED5  BD C0 53                      lda  $53C0,X
+004ED5  BD C0 53                      lda  $53C0,X  ; alien_type_down
 004ED8  AA                            tax
-004ED9  BD CF 53                      lda  $53CF,X
+004ED9  BD CF 53                      lda  $53CF,X  ; alien_spr_down_b
 004EDC  20 7F 52                      jsr  DrawSatellite
 004EDF  60                            rts
 
-004EE0  AD 5F 5D                      lda  $5D5F
+004EE0  AD 5F 5D                      lda  $5D5F  ; proj_draw_x_3
 004EE3  C9 46                         cmp  #$46
-004EE5  B0 4D                         bcs  $4F34
+004EE5  B0 4D                         bcs  ahit_left_done
 004EE7  20 0E 56                      jsr  $560E  ; CheckAlienDirection
-004EEA  F0 48                         beq  $4F34
-004EEC  8E BC 4D                      stx  $4DBC
+004EEA  F0 48                         beq  ahit_left_done
+004EEC  8E BC 4D                      stx  $4DBC  ; alien_slot_tmp
 004EEF  20 C4 4D                      jsr  UpdateAlienPosB
 
-004EF2  AE BC 4D                      ldx  $4DBC
-004EF5  AD F3 53                      lda  $53F3
+004EF2  AE BC 4D                      ldx  $4DBC  ; alien_slot_tmp
+004EF5  AD F3 53                      lda  $53F3  ; alien_pos_left
 004EF8  18                            clc
-004EF9  7D E4 53                      adc  $53E4,X
-004EFC  8D FA 53                      sta  $53FA
+004EF9  7D E4 53                      adc  $53E4,X  ; alien_base_off
+004EFC  8D FA 53                      sta  $53FA  ; alien_work_b
 004EFF  85 04                         sta  sprite_calc
 004F01  A9 00                         lda  #$00
 004F03  85 19                         sta  draw_y
-004F05  BD C4 53                      lda  $53C4,X
+004F05  BD C4 53                      lda  $53C4,X  ; alien_type_left
 004F08  AA                            tax
-004F09  BD D6 53                      lda  $53D6,X
+004F09  BD D6 53                      lda  $53D6,X  ; alien_spr_left_b
 004F0C  20 A1 52                      jsr  DrawSatelliteB
-004F0F  AE BC 4D                      ldx  $4DBC
-004F12  FE C4 53                      inc  $53C4,X
-004F15  BD C4 53                      lda  $53C4,X
+004F0F  AE BC 4D                      ldx  $4DBC  ; alien_slot_tmp
+004F12  FE C4 53                      inc  $53C4,X  ; alien_type_left
+004F15  BD C4 53                      lda  $53C4,X  ; alien_type_left
 004F18  C9 07                         cmp  #$07
-004F1A  90 05                         bcc  $4F21
+004F1A  90 05                         bcc  ahit_left_no_wrap
 004F1C  A9 01                         lda  #$01
-004F1E  9D C4 53                      sta  $53C4,X
-004F21  AD FA 53                      lda  $53FA
+004F1E  9D C4 53                      sta  $53C4,X  ; alien_type_left
+004F21  AD FA 53  ahit_left_no_wrap  lda  $53FA  ; alien_work_b
 004F24  85 04                         sta  sprite_calc
 004F26  A9 00                         lda  #$00
 004F28  85 19                         sta  draw_y
-004F2A  BD C4 53                      lda  $53C4,X
+004F2A  BD C4 53                      lda  $53C4,X  ; alien_type_left
 004F2D  AA                            tax
-004F2E  BD D6 53                      lda  $53D6,X
+004F2E  BD D6 53                      lda  $53D6,X  ; alien_spr_left_b
 004F31  20 7F 52                      jsr  DrawSatellite
 004F34  60                            rts
 ; ── PlayHitSound ──────────────────────────────────────────────────
@@ -2366,32 +2366,32 @@ temp          EQU $3C      ; Temporary work variable
 004F37  84 39                         sty  snd_pitch2
 004F39  A2 30                         ldx  #$30
 
-004F3B  A4 38                         ldy  snd_pitch1
+004F3B  A4 38  psnd_dec_pitch1  ldy  snd_pitch1
 
 004F3D  EA                            nop
 004F3E  EA                            nop
 004F3F  EA                            nop
 004F40  88                            dey
-004F41  D0 FA                         bne  $4F3D
+004F41  D0 FA                         bne  psnd_tone_loop1
 
 004F43  8D 30 C0                      sta  SPKR            ; Toggle speaker (click)
 004F46  CA                            dex
-004F47  D0 F2                         bne  $4F3B
+004F47  D0 F2                         bne  psnd_dec_pitch1
 
 004F49  A2 30                         ldx  #$30
 
-004F4B  A4 39                         ldy  snd_pitch2
+004F4B  A4 39  psnd_dec_pitch2  ldy  snd_pitch2
 
 004F4D  EA                            nop
 004F4E  EA                            nop
 004F4F  EA                            nop
 004F50  88                            dey
-004F51  D0 FA                         bne  $4F4D
+004F51  D0 FA                         bne  psnd_tone_loop2
 
 004F53  8D 30 C0                      sta  SPKR            ; Toggle speaker (click)
 004F56  EA                            nop
 004F57  CA                            dex
-004F58  D0 F1                         bne  $4F4B
+004F58  D0 F1                         bne  psnd_dec_pitch2
 
 004F5A  60                            rts
 ; ── CheckSatelliteHits ────────────────────────────────────────────
@@ -2412,74 +2412,74 @@ temp          EQU $3C      ; Temporary work variable
 004F5B  A2 03                         ldx  #$03
 004F5D  86 12                         stx  loop_idx
 
-004F5F  A6 12                         ldx  loop_idx
-004F61  BD 58 5D                      lda  $5D58,X
+004F5F  A6 12  satcol_outer  ldx  loop_idx
+004F61  BD 58 5D                      lda  $5D58,X  ; proj_type
 004F64  D0 03                         bne  satcol_check_dir
 004F66  4C F5 4F                      jmp  satcol_next
 004F69  E0 03             satcol_check_dir  cpx  #$03
-004F6B  F0 26                         beq  $4F93
+004F6B  F0 26                         beq  satcol_case_left
 004F6D  E0 02                         cpx  #$02
-004F6F  F0 18                         beq  $4F89
+004F6F  F0 18                         beq  satcol_case_down
 004F71  E0 01                         cpx  #$01
-004F73  F0 0A                         beq  $4F7F
-004F75  BD 64 5D                      lda  $5D64,X
+004F73  F0 0A                         beq  satcol_case_right
+004F75  BD 64 5D                      lda  $5D64,X  ; proj_draw_y
 004F78  C9 26                         cmp  #$26
-004F7A  90 1E                         bcc  $4F9A
+004F7A  90 1E                         bcc  satcol_in_range
 004F7C  4C F5 4F                      jmp  satcol_next
-004F7F  BD 5C 5D                      lda  $5D5C,X
+004F7F  BD 5C 5D  satcol_case_right  lda  $5D5C,X  ; proj_draw_x
 004F82  C9 E3                         cmp  #$E3
-004F84  B0 14                         bcs  $4F9A
+004F84  B0 14                         bcs  satcol_in_range
 004F86  4C F5 4F                      jmp  satcol_next
-004F89  BD 64 5D                      lda  $5D64,X
+004F89  BD 64 5D  satcol_case_down  lda  $5D64,X  ; proj_draw_y
 004F8C  C9 98                         cmp  #$98
-004F8E  B0 0A                         bcs  $4F9A
+004F8E  B0 0A                         bcs  satcol_in_range
 004F90  4C F5 4F                      jmp  satcol_next
-004F93  BD 5C 5D                      lda  $5D5C,X
+004F93  BD 5C 5D  satcol_case_left  lda  $5D5C,X  ; proj_draw_x
 004F96  C9 71                         cmp  #$71
 004F98  B0 5B                         bcs  satcol_next
-004F9A  A0 03                         ldy  #$03
-004F9C  8C 01 50                      sty  $5001
+004F9A  A0 03  satcol_in_range  ldy  #$03
+004F9C  8C 01 50                      sty  $5001  ; sat_slot_ctr
 
-004F9F  AC 01 50          satcol_loop  ldy  $5001
-004FA2  B9 12 52                      lda  $5212,Y
+004F9F  AC 01 50          satcol_loop  ldy  $5001  ; sat_slot_ctr
+004FA2  B9 12 52                      lda  $5212,Y  ; sat_hp
 004FA5  F0 49                         beq  satcol_dec_count
-004FA7  B9 0E 52                      lda  $520E,Y
+004FA7  B9 0E 52                      lda  $520E,Y  ; sat_orbit_pos
 004FAA  38                            sec
 004FAB  A6 12                         ldx  loop_idx
-004FAD  FD FD 4F                      sbc  $4FFD,X
+004FAD  FD FD 4F                      sbc  $4FFD,X  ; satcol_thresh
 004FB0  C9 05                         cmp  #$05
 004FB2  B0 3C                         bcs  satcol_dec_count
 004FB4  A9 08                         lda  #$08
 004FB6  A0 10                         ldy  #$10
 004FB8  20 35 4F                      jsr  PlaySound
 
-004FBB  AE 01 50                      ldx  $5001
-004FBE  BD 12 52                      lda  $5212,X
+004FBB  AE 01 50                      ldx  $5001  ; sat_slot_ctr
+004FBE  BD 12 52                      lda  $5212,X  ; sat_hp
 004FC1  20 E0 4A                      jsr  AddScore
 
 004FC4  20 E4 56                      jsr  IncreaseDifficulty
 004FC7  A6 12                         ldx  loop_idx
 004FC9  A9 00                         lda  #$00
-004FCB  9D 58 5D                      sta  $5D58,X
+004FCB  9D 58 5D                      sta  $5D58,X  ; proj_type
 004FCE  20 41 44                      jsr  ClearSpriteArea
 
 004FD1  20 4F 5B                      jsr  InputProcessA
-004FD4  AE 01 50                      ldx  $5001
-004FD7  DE 21 52                      dec  $5221,X
+004FD4  AE 01 50                      ldx  $5001  ; sat_slot_ctr
+004FD7  DE 21 52                      dec  $5221,X  ; sat_hp_backup
 004FDA  D0 14                         bne  satcol_dec_count
 004FDC  20 C9 52                      jsr  $52C9  ; EraseSatellite
-004FDF  AE 01 50                      ldx  $5001
-004FE2  DE 12 52                      dec  $5212,X
-004FE5  BD 12 52                      lda  $5212,X
-004FE8  9D 21 52                      sta  $5221,X
+004FDF  AE 01 50                      ldx  $5001  ; sat_slot_ctr
+004FE2  DE 12 52                      dec  $5212,X  ; sat_hp
+004FE5  BD 12 52                      lda  $5212,X  ; sat_hp
+004FE8  9D 21 52                      sta  $5221,X  ; sat_hp_backup
 004FEB  F0 03                         beq  satcol_dec_count
 004FED  20 C3 52                      jsr  $52C3  ; DrawSatellite
-004FF0  CE 01 50          satcol_dec_count  dec  $5001
+004FF0  CE 01 50          satcol_dec_count  dec  $5001  ; sat_slot_ctr
 004FF3  10 AA                         bpl  satcol_loop
 
 004FF5  C6 12             satcol_next  dec  loop_idx
 004FF7  30 03                         bmi  satcol_done
-004FF9  4C 5F 4F                      jmp  $4F5F
+004FF9  4C 5F 4F                      jmp  satcol_outer
 
 004FFC  60                satcol_done  rts
 ; ── Satellite Orbit Path: Y Coordinates ──────────────────────────
@@ -2560,25 +2560,25 @@ temp          EQU $3C      ; Temporary work variable
 
 005227  A2 03                         ldx  #$03
 
-005229  BD 12 52          spawn_find_slot  lda  $5212,X
+005229  BD 12 52          spawn_find_slot  lda  $5212,X  ; sat_hp
 00522C  F0 04                         beq  spawn_slot_found
 00522E  CA                            dex
 00522F  10 F8                         bpl  spawn_find_slot
 
 005231  60                            rts
-005232  8E 25 52          spawn_slot_found  stx  $5225
+005232  8E 25 52          spawn_slot_found  stx  $5225  ; spawn_slot_tmp
 005235  A5 3A                         lda  level
 005237  C9 03                         cmp  #$03
-005239  F0 09                         beq  $5244
+005239  F0 09                         beq  spawn_empty
 00523B  C9 02                         cmp  #$02
-00523D  D0 0A                         bne  $5249
+00523D  D0 0A                         bne  spawn_continue
 00523F  A9 04                         lda  #$04
 005241  4C 4B 52                      jmp  $524B  ; SpawnSatellite
-005244  A9 02                         lda  #$02
+005244  A9 02  spawn_empty  lda  #$02
 005246  4C 4B 52                      jmp  $524B  ; SpawnSatellite
-005249  A9 06                         lda  #$06
-00524B  9D 12 52                      sta  $5212,X
-00524E  9D 21 52                      sta  $5221,X
+005249  A9 06  spawn_continue  lda  #$06
+00524B  9D 12 52                      sta  $5212,X  ; sat_hp
+00524E  9D 21 52                      sta  $5221,X  ; sat_hp_backup
 
 005251  20 03 04          spawn_rand_pos  jsr  $0403  ; RandomByte
 005254  C9 F0                         cmp  #$F0
@@ -2587,11 +2587,11 @@ temp          EQU $3C      ; Temporary work variable
 005258  8D 26 52                      sta  $5226
 00525B  A0 03                         ldy  #$03
 
-00525D  B9 12 52          spawn_verify_slot  lda  $5212,Y
+00525D  B9 12 52          spawn_verify_slot  lda  $5212,Y  ; sat_hp
 005260  F0 0F                         beq  spawn_verify_next
 005262  AD 26 52                      lda  $5226
 005265  38                            sec
-005266  F9 0E 52                      sbc  $520E,Y
+005266  F9 0E 52                      sbc  $520E,Y  ; sat_orbit_pos
 005269  C9 0A                         cmp  #$0A
 00526B  90 E4                         bcc  spawn_rand_pos
 
@@ -2602,14 +2602,14 @@ temp          EQU $3C      ; Temporary work variable
 005272  10 E9                         bpl  spawn_verify_slot
 
 005274  AD 26 52                      lda  $5226
-005277  AE 25 52                      ldx  $5225
-00527A  9D 0E 52                      sta  $520E,X
+005277  AE 25 52                      ldx  $5225  ; spawn_slot_tmp
+00527A  9D 0E 52                      sta  $520E,X  ; sat_orbit_pos
 00527D  60                            rts
 
 00527E  00                      HEX     00
 
 
-00527F  8D 7E 52                      sta  $527E
+00527F  8D 7E 52                      sta  $527E  ; sat_spr_off
 005282  A5 19                         lda  draw_y
 005284  29 FE                         and  #$FE
 005286  AA                            tax
@@ -2624,11 +2624,11 @@ temp          EQU $3C      ; Temporary work variable
 005296  AA                            tax
 005297  BD D3 48                      lda  $48D3,X
 00529A  18                            clc
-00529B  6D 7E 52                      adc  $527E
+00529B  6D 7E 52                      adc  $527E  ; sat_spr_off
 00529E  4C 16 04                      jmp  $0416  ; DrawSprite
 
 
-0052A1  8D 7E 52          DrawSatelliteB  sta  $527E
+0052A1  8D 7E 52          DrawSatelliteB  sta  $527E  ; sat_spr_off
 0052A4  A5 19                         lda  draw_y
 0052A6  29 FE                         and  #$FE
 0052A8  AA                            tax
@@ -2643,7 +2643,7 @@ temp          EQU $3C      ; Temporary work variable
 0052B8  AA                            tax
 0052B9  BD D3 48                      lda  $48D3,X
 0052BC  18                            clc
-0052BD  6D 7E 52                      adc  $527E
+0052BD  6D 7E 52                      adc  $527E  ; sat_spr_off
 0052C0  4C C0 40                      jmp  DrawSpriteXY
 ; ── DrawSatellite ─────────────────────────────────────────────────
 ; HOW: Reads the satellite's orbit position from $520E,X, uses it as an
@@ -2674,15 +2674,15 @@ temp          EQU $3C      ; Temporary work variable
 ;      Both DrawSatellite and EraseSatellite call this to avoid
 ;      duplicating the table lookup logic.
 
-0052CF  BD 0E 52                      lda  $520E,X
+0052CF  BD 0E 52                      lda  $520E,X  ; sat_orbit_pos
 0052D2  A8                            tay
-0052D3  B9 02 51                      lda  $5102,Y
+0052D3  B9 02 51                      lda  $5102,Y  ; orbit_x_path
 0052D6  85 04                         sta  sprite_calc
-0052D8  B9 02 50                      lda  $5002,Y
+0052D8  B9 02 50                      lda  $5002,Y  ; orbit_y_path
 0052DB  85 19                         sta  draw_y
-0052DD  BD 12 52                      lda  $5212,X
+0052DD  BD 12 52                      lda  $5212,X  ; sat_hp
 0052E0  A8                            tay
-0052E1  B9 1A 52                      lda  $521A,Y
+0052E1  B9 1A 52                      lda  $521A,Y  ; sat_spr_by_hp
 0052E4  60                            rts
 ; ── DrawBase_ClearSatellites ──────────────────────────────────────
 ; HOW: Draws the player's base sprite at the center of the playfield,
@@ -2695,7 +2695,7 @@ temp          EQU $3C      ; Temporary work variable
 0052E5  A2 03                         ldx  #$03
 0052E7  A9 00                         lda  #$00
 
-0052E9  9D 12 52          sat_init_loop  sta  $5212,X
+0052E9  9D 12 52          sat_init_loop  sta  $5212,X  ; sat_hp
 0052EC  CA                            dex
 0052ED  10 FA                         bpl  sat_init_loop
 
@@ -2713,34 +2713,34 @@ temp          EQU $3C      ; Temporary work variable
 ;      time consistent regardless of satellite count. Movement speed is
 ;      controlled by the difficulty table via $52F2.
 
-0052F3  EE F1 52                      inc  $52F1
+0052F3  EE F1 52                      inc  $52F1  ; sat_frame_skip
 0052F6  F0 01                         beq  sat_load_speed
 0052F8  60                            rts
-0052F9  AD F2 52          sat_load_speed  lda  $52F2
-0052FC  8D F1 52                      sta  $52F1
-0052FF  CE F0 52                      dec  $52F0
-005302  10 05                         bpl  $5309
+0052F9  AD F2 52          sat_load_speed  lda  $52F2  ; sat_speed
+0052FC  8D F1 52                      sta  $52F1  ; sat_frame_skip
+0052FF  CE F0 52                      dec  $52F0  ; sat_round_robin
+005302  10 05                         bpl  sinit_case1
 005304  A9 03                         lda  #$03
-005306  8D F0 52                      sta  $52F0
-005309  AE F0 52                      ldx  $52F0
-00530C  BD 12 52                      lda  $5212,X
-00530F  F0 25                         beq  $5336
-005311  BD 0E 52                      lda  $520E,X
+005306  8D F0 52                      sta  $52F0  ; sat_round_robin
+005309  AE F0 52  sinit_case1  ldx  $52F0  ; sat_round_robin
+00530C  BD 12 52                      lda  $5212,X  ; sat_hp
+00530F  F0 25                         beq  sinit_done
+005311  BD 0E 52                      lda  $520E,X  ; sat_orbit_pos
 005314  A2 03                         ldx  #$03
 
-005316  DD 37 53                      cmp  $5337,X
-005319  D0 09                         bne  $5324
+005316  DD 37 53  sinit_set_pos  cmp  $5337,X  ; efire_trigger
+005319  D0 09                         bne  sinit_assign
 00531B  20 3B 53                      jsr  $533B  ; SpawnEnemyProjectile
-00531E  AE F0 52                      ldx  $52F0
-005321  4C 2A 53                      jmp  $532A
+00531E  AE F0 52                      ldx  $52F0  ; sat_round_robin
+005321  4C 2A 53                      jmp  sinit_finalize
 005324  CA                            dex
-005325  10 EF                         bpl  $5316
+005325  10 EF                         bpl  sinit_set_pos
 
-005327  AE F0 52                      ldx  $52F0
-00532A  20 C9 52                      jsr  $52C9  ; EraseSatellite
+005327  AE F0 52                      ldx  $52F0  ; sat_round_robin
+00532A  20 C9 52  sinit_finalize  jsr  $52C9  ; EraseSatellite
 
-00532D  AE F0 52                      ldx  $52F0
-005330  DE 0E 52                      dec  $520E,X
+00532D  AE F0 52                      ldx  $52F0  ; sat_round_robin
+005330  DE 0E 52                      dec  $520E,X  ; sat_orbit_pos
 005333  20 C3 52                      jsr  $52C3  ; DrawSatellite
 
 005336  60                            rts
@@ -2759,19 +2759,19 @@ temp          EQU $3C      ; Temporary work variable
 ;      center where the player sits. The spawn tables pre-define
 ;      the starting positions so corner shots converge naturally.
 
-00533B  BD 54 5D                      lda  $5D54,X
-00533E  D0 21                         bne  $5361
+00533B  BD 54 5D                      lda  $5D54,X  ; proj_state
+00533E  D0 21                         bne  efire_spawn_proj
 005340  A9 01                         lda  #$01
-005342  9D 54 5D                      sta  $5D54,X
-005345  BD 62 53                      lda  $5362,X
-005348  9D 48 5D                      sta  $5D48,X
-00534B  BD 66 53                      lda  $5366,X
-00534E  9D 4C 5D                      sta  $5D4C,X
-005351  BD 6A 53                      lda  $536A,X
-005354  9D 50 5D                      sta  $5D50,X
+005342  9D 54 5D                      sta  $5D54,X  ; proj_state
+005345  BD 62 53                      lda  $5362,X  ; efire_x_lo
+005348  9D 48 5D                      sta  $5D48,X  ; proj_x_lo
+00534B  BD 66 53                      lda  $5366,X  ; efire_x_hi
+00534E  9D 4C 5D                      sta  $5D4C,X  ; proj_x_hi
+005351  BD 6A 53                      lda  $536A,X  ; efire_y
+005354  9D 50 5D                      sta  $5D50,X  ; proj_y
 005357  A0 10                         ldy  #$10
 005359  A9 45                         lda  #$45
-00535B  8D 67 5B                      sta  $5B67
+00535B  8D 67 5B                      sta  $5B67  ; snd_trigger
 00535E  4C 62 5B                      jmp  InputProcessB
 005361  60                            rts
 ; ── 4-Direction Fire Ammo Counter ────────────────────────────────
@@ -2796,7 +2796,7 @@ temp          EQU $3C      ; Temporary work variable
 ;      increases, compensating for the faster game speed.
 
 005376  EE 6F 53                      inc  $536F
-005379  D0 05                         bne  $5380
+005379  D0 05                         bne  efire_check_slot
 00537B  A9 FF                         lda  #$FF
 00537D  8D 6F 53                      sta  $536F
 005380  60                            rts
@@ -2804,21 +2804,21 @@ temp          EQU $3C      ; Temporary work variable
 005384  F0 2D                         beq  sat_anim_done
 005386  CE 6F 53                      dec  $536F
 005389  A2 03                         ldx  #$03
-00538B  8E 6E 53                      stx  $536E
+00538B  8E 6E 53                      stx  $536E  ; fire_ammo
 
-00538E  AE 6E 53                      ldx  $536E
-005391  BD 58 5D                      lda  $5D58,X
-005394  D0 17                         bne  $53AD
+00538E  AE 6E 53  efire_loop  ldx  $536E  ; fire_ammo
+005391  BD 58 5D                      lda  $5D58,X  ; proj_type
+005394  D0 17                         bne  efire_skip
 005396  A9 01                         lda  #$01
-005398  9D 58 5D                      sta  $5D58,X
-00539B  BD 68 5D                      lda  $5D68,X
-00539E  9D 5C 5D                      sta  $5D5C,X
-0053A1  BD 6C 5D                      lda  $5D6C,X
-0053A4  9D 60 5D                      sta  $5D60,X
-0053A7  BD 70 5D                      lda  $5D70,X
-0053AA  9D 64 5D                      sta  $5D64,X
-0053AD  CE 6E 53                      dec  $536E
-0053B0  10 DC                         bpl  $538E
+005398  9D 58 5D                      sta  $5D58,X  ; proj_type
+00539B  BD 68 5D                      lda  $5D68,X  ; proj_spawn_x
+00539E  9D 5C 5D                      sta  $5D5C,X  ; proj_draw_x
+0053A1  BD 6C 5D                      lda  $5D6C,X  ; proj_spawn_x_hi
+0053A4  9D 60 5D                      sta  $5D60,X  ; proj_draw_x_hi
+0053A7  BD 70 5D                      lda  $5D70,X  ; proj_spawn_y
+0053AA  9D 64 5D                      sta  $5D64,X  ; proj_draw_y
+0053AD  CE 6E 53  efire_skip  dec  $536E  ; fire_ammo
+0053B0  10 DC                         bpl  efire_loop
 
 0053B2  60                            rts
 0053B3  A9 01             sat_anim_done  lda  #$01
@@ -2850,12 +2850,12 @@ temp          EQU $3C      ; Temporary work variable
 0053F8  00000000                HEX     00000000 00
 
 
-0053FD  AD F3 53                      lda  $53F3
-005400  8D F9 53                      sta  $53F9
+0053FD  AD F3 53                      lda  $53F3  ; alien_pos_left
+005400  8D F9 53                      sta  $53F9  ; alien_work_a
 005403  18                            clc
 005404  6D F7 53                      adc  $53F7
-005407  8D FA 53                      sta  $53FA
-00540A  8D F3 53                      sta  $53F3
+005407  8D FA 53                      sta  $53FA  ; alien_work_b
+00540A  8D F3 53                      sta  $53F3  ; alien_pos_left
 00540D  C9 0A                         cmp  #$0A
 00540F  90 04                         bcc  sat_up_clamp
 005411  C9 6C                         cmp  #$6C
@@ -2865,45 +2865,45 @@ temp          EQU $3C      ; Temporary work variable
 005418  ED F7 53                      sbc  $53F7
 00541B  8D F7 53                      sta  $53F7
 00541E  A9 03             sat_up_store  lda  #$03
-005420  8D F8 53                      sta  $53F8
+005420  8D F8 53                      sta  $53F8  ; alien_loop_ctr
 
-005423  AE F8 53                      ldx  $53F8
-005426  BD C4 53                      lda  $53C4,X
+005423  AE F8 53  sat_up_draw  ldx  $53F8  ; alien_loop_ctr
+005426  BD C4 53                      lda  $53C4,X  ; alien_type_left
 005429  F0 30                         beq  sat_up_dec_hp
 00542B  48                            pha
-00542C  AD F9 53                      lda  $53F9
+00542C  AD F9 53                      lda  $53F9  ; alien_work_a
 00542F  18                            clc
-005430  7D E8 53                      adc  $53E8,X
+005430  7D E8 53                      adc  $53E8,X  ; alien_anim_off
 005433  85 04                         sta  sprite_calc
 005435  A9 09                         lda  #$09
 005437  85 02                         sta  col_ctr
 005439  68                            pla
 00543A  AA                            tax
-00543B  BD D6 53                      lda  $53D6,X
+00543B  BD D6 53                      lda  $53D6,X  ; alien_spr_left_b
 00543E  20 C0 40                      jsr  DrawSpriteXY
 
-005441  AE F8 53                      ldx  $53F8
-005444  AD FA 53                      lda  $53FA
+005441  AE F8 53                      ldx  $53F8  ; alien_loop_ctr
+005444  AD FA 53                      lda  $53FA  ; alien_work_b
 005447  18                            clc
-005448  7D E8 53                      adc  $53E8,X
+005448  7D E8 53                      adc  $53E8,X  ; alien_anim_off
 00544B  85 04                         sta  sprite_calc
 00544D  A9 09                         lda  #$09
 00544F  85 02                         sta  col_ctr
-005451  BD C4 53                      lda  $53C4,X
+005451  BD C4 53                      lda  $53C4,X  ; alien_type_left
 005454  AA                            tax
-005455  BD D6 53                      lda  $53D6,X
+005455  BD D6 53                      lda  $53D6,X  ; alien_spr_left_b
 005458  20 16 04                      jsr  $0416  ; DrawSprite
-00545B  CE F8 53          sat_up_dec_hp  dec  $53F8
-00545E  10 C3                         bpl  $5423
+00545B  CE F8 53          sat_up_dec_hp  dec  $53F8  ; alien_loop_ctr
+00545E  10 C3                         bpl  sat_up_draw
 
 005460  60                            rts
 
-005461  AD F1 53                      lda  $53F1
-005464  8D F9 53                      sta  $53F9
+005461  AD F1 53                      lda  $53F1  ; alien_pos_right
+005464  8D F9 53                      sta  $53F9  ; alien_work_a
 005467  18                            clc
 005468  6D F5 53                      adc  $53F5
-00546B  8D FA 53                      sta  $53FA
-00546E  8D F1 53                      sta  $53F1
+00546B  8D FA 53                      sta  $53FA  ; alien_work_b
+00546E  8D F1 53                      sta  $53F1  ; alien_pos_right
 005471  C9 0A                         cmp  #$0A
 005473  90 04                         bcc  sat_left_clamp
 005475  C9 6C                         cmp  #$6C
@@ -2913,95 +2913,95 @@ temp          EQU $3C      ; Temporary work variable
 00547C  ED F5 53                      sbc  $53F5
 00547F  8D F5 53                      sta  $53F5
 005482  A9 03             sat_left_store  lda  #$03
-005484  8D F8 53                      sta  $53F8
+005484  8D F8 53                      sta  $53F8  ; alien_loop_ctr
 
-005487  AE F8 53                      ldx  $53F8
-00548A  BD BC 53                      lda  $53BC,X
+005487  AE F8 53  sat_left_draw  ldx  $53F8  ; alien_loop_ctr
+00548A  BD BC 53                      lda  $53BC,X  ; alien_type_right
 00548D  F0 30                         beq  sat_left_dec_hp
 00548F  48                            pha
-005490  AD F9 53                      lda  $53F9
+005490  AD F9 53                      lda  $53F9  ; alien_work_a
 005493  18                            clc
-005494  7D E8 53                      adc  $53E8,X
+005494  7D E8 53                      adc  $53E8,X  ; alien_anim_off
 005497  85 04                         sta  sprite_calc
 005499  A9 25                         lda  #$25
 00549B  85 02                         sta  col_ctr
 00549D  68                            pla
 00549E  AA                            tax
-00549F  BD DD 53                      lda  $53DD,X
+00549F  BD DD 53                      lda  $53DD,X  ; alien_spr_right_b
 0054A2  20 C0 40                      jsr  DrawSpriteXY
 
-0054A5  AE F8 53                      ldx  $53F8
-0054A8  AD FA 53                      lda  $53FA
+0054A5  AE F8 53                      ldx  $53F8  ; alien_loop_ctr
+0054A8  AD FA 53                      lda  $53FA  ; alien_work_b
 0054AB  18                            clc
-0054AC  7D E8 53                      adc  $53E8,X
+0054AC  7D E8 53                      adc  $53E8,X  ; alien_anim_off
 0054AF  85 04                         sta  sprite_calc
 0054B1  A9 25                         lda  #$25
 0054B3  85 02                         sta  col_ctr
-0054B5  BD BC 53                      lda  $53BC,X
+0054B5  BD BC 53                      lda  $53BC,X  ; alien_type_right
 0054B8  AA                            tax
-0054B9  BD DD 53                      lda  $53DD,X
+0054B9  BD DD 53                      lda  $53DD,X  ; alien_spr_right_b
 0054BC  20 16 04                      jsr  $0416  ; DrawSprite
-0054BF  CE F8 53          sat_left_dec_hp  dec  $53F8
-0054C2  10 C3                         bpl  $5487
+0054BF  CE F8 53          sat_left_dec_hp  dec  $53F8  ; alien_loop_ctr
+0054C2  10 C3                         bpl  sat_left_draw
 
 0054C4  60                            rts
 
 ; case 1:
-0054C5  AD EC 53                      lda  $53EC
-0054C8  8D FB 53                      sta  $53FB
+0054C5  AD EC 53                      lda  $53EC  ; alien_pos_up
+0054C8  8D FB 53                      sta  $53FB  ; alien_work_c
 0054CB  18                            clc
-0054CC  6D F4 53                      adc  $53F4
-0054CF  8D FC 53                      sta  $53FC
-0054D2  8D EC 53                      sta  $53EC
+0054CC  6D F4 53                      adc  $53F4  ; alien_delta
+0054CF  8D FC 53                      sta  $53FC  ; alien_work_d
+0054D2  8D EC 53                      sta  $53EC  ; alien_pos_up
 0054D5  C9 0A                         cmp  #$0A
 0054D7  90 04                         bcc  sat_down_clamp
 0054D9  C9 85                         cmp  #$85
 0054DB  90 09                         bcc  sat_down_store
 0054DD  38                sat_down_clamp  sec
 0054DE  A9 00                         lda  #$00
-0054E0  ED F4 53                      sbc  $53F4
-0054E3  8D F4 53                      sta  $53F4
+0054E0  ED F4 53                      sbc  $53F4  ; alien_delta
+0054E3  8D F4 53                      sta  $53F4  ; alien_delta
 0054E6  A9 03             sat_down_store  lda  #$03
-0054E8  8D F8 53                      sta  $53F8
+0054E8  8D F8 53                      sta  $53F8  ; alien_loop_ctr
 
-0054EB  AE F8 53                      ldx  $53F8
-0054EE  BD B8 53                      lda  $53B8,X
-0054F1  F0 30                         beq  $5523
+0054EB  AE F8 53  sat_down_draw  ldx  $53F8  ; alien_loop_ctr
+0054EE  BD B8 53                      lda  $53B8,X  ; alien_type_up
+0054F1  F0 30                         beq  sat_down_check
 0054F3  48                            pha
-0054F4  AD FB 53                      lda  $53FB
+0054F4  AD FB 53                      lda  $53FB  ; alien_work_c
 0054F7  18                            clc
-0054F8  7D E4 53                      adc  $53E4,X
+0054F8  7D E4 53                      adc  $53E4,X  ; alien_base_off
 0054FB  85 19                         sta  draw_y
 0054FD  A9 01                         lda  #$01
 0054FF  85 04                         sta  sprite_calc
 005501  68                            pla
 005502  AA                            tax
-005503  BD C8 53                      lda  $53C8,X
+005503  BD C8 53                      lda  $53C8,X  ; alien_spr_up
 005506  20 A1 52                      jsr  DrawSatelliteB
 
-005509  AE F8 53                      ldx  $53F8
-00550C  AD FC 53                      lda  $53FC
+005509  AE F8 53                      ldx  $53F8  ; alien_loop_ctr
+00550C  AD FC 53                      lda  $53FC  ; alien_work_d
 00550F  18                            clc
-005510  7D E4 53                      adc  $53E4,X
+005510  7D E4 53                      adc  $53E4,X  ; alien_base_off
 005513  85 19                         sta  draw_y
 005515  A9 01                         lda  #$01
 005517  85 04                         sta  sprite_calc
-005519  BD B8 53                      lda  $53B8,X
+005519  BD B8 53                      lda  $53B8,X  ; alien_type_up
 00551C  AA                            tax
-00551D  BD C8 53                      lda  $53C8,X
+00551D  BD C8 53                      lda  $53C8,X  ; alien_spr_up
 005520  20 7F 52                      jsr  DrawSatellite
 
-005523  CE F8 53                      dec  $53F8
-005526  10 C3                         bpl  $54EB
+005523  CE F8 53  sat_down_check  dec  $53F8  ; alien_loop_ctr
+005526  10 C3                         bpl  sat_down_draw
 
 005528  60                            rts
 
-005529  AD EE 53                      lda  $53EE
-00552C  8D FB 53                      sta  $53FB
+005529  AD EE 53                      lda  $53EE  ; alien_pos_down
+00552C  8D FB 53                      sta  $53FB  ; alien_work_c
 00552F  18                            clc
 005530  6D F6 53                      adc  $53F6
-005533  8D FC 53                      sta  $53FC
-005536  8D EE 53                      sta  $53EE
+005533  8D FC 53                      sta  $53FC  ; alien_work_d
+005536  8D EE 53                      sta  $53EE  ; alien_pos_down
 005539  C9 0A                         cmp  #$0A
 00553B  90 04                         bcc  sat_right_clamp
 00553D  C9 85                         cmp  #$85
@@ -3011,37 +3011,37 @@ temp          EQU $3C      ; Temporary work variable
 005544  ED F6 53                      sbc  $53F6
 005547  8D F6 53                      sta  $53F6
 00554A  A9 03             sat_right_store  lda  #$03
-00554C  8D F8 53                      sta  $53F8
+00554C  8D F8 53                      sta  $53F8  ; alien_loop_ctr
 
-00554F  AE F8 53                      ldx  $53F8
-005552  BD C0 53                      lda  $53C0,X
-005555  F0 30                         beq  $5587
+00554F  AE F8 53  sat_right_draw  ldx  $53F8  ; alien_loop_ctr
+005552  BD C0 53                      lda  $53C0,X  ; alien_type_down
+005555  F0 30                         beq  sat_right_check
 005557  48                            pha
-005558  AD FB 53                      lda  $53FB
+005558  AD FB 53                      lda  $53FB  ; alien_work_c
 00555B  18                            clc
-00555C  7D E4 53                      adc  $53E4,X
+00555C  7D E4 53                      adc  $53E4,X  ; alien_base_off
 00555F  85 19                         sta  draw_y
 005561  A9 B4                         lda  #$B4
 005563  85 04                         sta  sprite_calc
 005565  68                            pla
 005566  AA                            tax
-005567  BD CF 53                      lda  $53CF,X
+005567  BD CF 53                      lda  $53CF,X  ; alien_spr_down_b
 00556A  20 A1 52                      jsr  DrawSatelliteB
 
-00556D  AE F8 53                      ldx  $53F8
-005570  AD FC 53                      lda  $53FC
+00556D  AE F8 53                      ldx  $53F8  ; alien_loop_ctr
+005570  AD FC 53                      lda  $53FC  ; alien_work_d
 005573  18                            clc
-005574  7D E4 53                      adc  $53E4,X
+005574  7D E4 53                      adc  $53E4,X  ; alien_base_off
 005577  85 19                         sta  draw_y
 005579  A9 B4                         lda  #$B4
 00557B  85 04                         sta  sprite_calc
-00557D  BD C0 53                      lda  $53C0,X
+00557D  BD C0 53                      lda  $53C0,X  ; alien_type_down
 005580  AA                            tax
-005581  BD CF 53                      lda  $53CF,X
+005581  BD CF 53                      lda  $53CF,X  ; alien_spr_down_b
 005584  20 7F 52                      jsr  DrawSatellite
 
-005587  CE F8 53                      dec  $53F8
-00558A  10 C3                         bpl  $554F
+005587  CE F8 53  sat_right_check  dec  $53F8  ; alien_loop_ctr
+00558A  10 C3                         bpl  sat_right_draw
 
 00558C  60                            rts
 
@@ -3054,43 +3054,43 @@ temp          EQU $3C      ; Temporary work variable
 ;      Each applies the correct coordinate transformation for its edge of
 ;      the playfield. The UP variant is the base; B/C/D mirror and rotate.
 
-005591  EE 8D 55                      inc  $558D
-005594  D0 49                         bne  $55DF
-005596  AD 8E 55                      lda  $558E
-005599  8D 8D 55                      sta  $558D
-00559C  EE 8F 55                      inc  $558F
-00559F  AD 8F 55                      lda  $558F
+005591  EE 8D 55                      inc  $558D  ; alien_spawn_ctr
+005594  D0 49  acheck_begin  bne  acheck_done
+005596  AD 8E 55                      lda  $558E  ; alien_spawn_ctr2
+005599  8D 8D 55                      sta  $558D  ; alien_spawn_ctr
+00559C  EE 8F 55                      inc  $558F  ; alien_spawn_count
+00559F  AD 8F 55                      lda  $558F  ; alien_spawn_count
 0055A2  29 03                         and  #$03
-0055A4  8D 8F 55                      sta  $558F
+0055A4  8D 8F 55                      sta  $558F  ; alien_spawn_count
 0055A7  AA                            tax
-0055A8  BD 54 5D                      lda  $5D54,X
-0055AB  D0 32                         bne  $55DF
+0055A8  BD 54 5D                      lda  $5D54,X  ; proj_state
+0055AB  D0 32                         bne  acheck_done
 0055AD  20 0E 56                      jsr  $560E  ; CheckAlienDirection
-0055B0  F0 2D                         beq  $55DF
+0055B0  F0 2D                         beq  acheck_done
 0055B2  E6 2C                         inc  timer_lo
-0055B4  D0 29                         bne  $55DF
+0055B4  D0 29                         bne  acheck_done
 0055B6  A5 32                         lda  fire_rate
 0055B8  85 2C                         sta  timer_lo
-0055BA  AD 8F 55                      lda  $558F
+0055BA  AD 8F 55                      lda  $558F  ; alien_spawn_count
 0055BD  0A                            asl  a
 0055BE  0A                            asl  a
 0055BF  18                            clc
 0055C0  69 03                         adc  #$03
 0055C2  AA                            tax
-0055C3  BD B8 53                      lda  $53B8,X
+0055C3  BD B8 53                      lda  $53B8,X  ; alien_type_up
 0055C6  CA                            dex
 0055C7  A0 02                         ldy  #$02
 
-0055C9  DD B8 53                      cmp  $53B8,X
+0055C9  DD B8 53  acheck_loop  cmp  $53B8,X  ; alien_type_up
 0055CC  D0 0B                         bne  adir_dispatch
 0055CE  CA                            dex
 0055CF  88                            dey
-0055D0  10 F7                         bpl  $55C9
+0055D0  10 F7                         bpl  acheck_loop
 
 0055D2  20 03 04                      jsr  $0403  ; RandomByte
 0055D5  C9 80                         cmp  #$80
-0055D7  B0 06                         bcs  $55DF
-0055D9  AE 8F 55          adir_dispatch  ldx  $558F
+0055D7  B0 06                         bcs  acheck_done
+0055D9  AE 8F 55          adir_dispatch  ldx  $558F  ; alien_spawn_count
 0055DC  20 0C 4B                      jsr  SelectProjectileType
 
 0055DF  60                            rts
@@ -3101,26 +3101,26 @@ temp          EQU $3C      ; Temporary work variable
 ;      the table offset at $55E1, then draws 4 aliens along the right
 ;      edge of the playfield.
 
-0055E3  EE E1 55          DrawAlienRowDirB  inc  $55E1
+0055E3  EE E1 55          DrawAlienRowDirB  inc  $55E1  ; alien_draw_state2
 0055E6  F0 01                         beq  adir_load_state
 0055E8  60                            rts
-0055E9  AD E0 55          adir_load_state  lda  $55E0
-0055EC  8D E1 55                      sta  $55E1
-0055EF  CE E2 55                      dec  $55E2
-0055F2  AD E2 55                      lda  $55E2
-0055F5  10 08                         bpl  $55FF
+0055E9  AD E0 55          adir_load_state  lda  $55E0  ; alien_draw_state
+0055EC  8D E1 55                      sta  $55E1  ; alien_draw_state2
+0055EF  CE E2 55                      dec  $55E2  ; alien_draw_state3
+0055F2  AD E2 55                      lda  $55E2  ; alien_draw_state3
+0055F5  10 08                         bpl  acheck_found
 0055F7  A9 03                         lda  #$03
-0055F9  8D E2 55                      sta  $55E2
+0055F9  8D E2 55                      sta  $55E2  ; alien_draw_state3
 0055FC  4C FD 53                      jmp  $53FD  ; AnimateSatelliteUp
 
-0055FF  D0 03                         bne  adir_case_right
+0055FF  D0 03  acheck_found  bne  adir_case_right
 005601  4C C5 54                      jmp  $54C5  ; AnimateSatelliteDown
 
 005604  C9 01             adir_case_right  cmp  #$01
-005606  D0 03                         bne  $560B
+005606  D0 03                         bne  acheck_test_dir
 005608  4C 61 54                      jmp  $5461  ; AnimateSatelliteLeft
 
-00560B  4C 29 55                      jmp  $5529  ; AnimateSatelliteRight
+00560B  4C 29 55  acheck_test_dir  jmp  $5529  ; AnimateSatelliteRight
 ; ── CheckAlienDirection ───────────────────────────────────────────
 ; HOW: Compares the alien's Y position against reference values to
 ;      determine which edge of the playfield it occupies. Branches
@@ -3131,91 +3131,91 @@ temp          EQU $3C      ; Temporary work variable
 ;      to the correct variant based on the alien's current orbit position.
 
 00560E  E0 01                         cpx  #$01
-005610  D0 03                         bne  $5615
+005610  D0 03                         bne  ddisp_case_right
 005612  4C 9E 56                      jmp  adir_handle_right
-005615  E0 02                         cpx  #$02
+005615  E0 02  ddisp_case_right  cpx  #$02
 005617  D0 03                         bne  adir_case_down
 005619  4C 4C 56                      jmp  adir_handle_left
 00561C  E0 03             adir_case_down  cpx  #$03
-00561E  D0 03                         bne  $5623
+00561E  D0 03                         bne  ddisp_case_down
 005620  4C 75 56                      jmp  adir_handle_down
-005623  AD EC 53                      lda  $53EC
-005626  8D FB 53                      sta  $53FB
+005623  AD EC 53  ddisp_case_down  lda  $53EC  ; alien_pos_up
+005626  8D FB 53                      sta  $53FB  ; alien_work_c
 005629  A9 03                         lda  #$03
-00562B  8D F8 53                      sta  $53F8
+00562B  8D F8 53                      sta  $53F8  ; alien_loop_ctr
 
-00562E  AE F8 53                      ldx  $53F8
-005631  AD FB 53                      lda  $53FB
+00562E  AE F8 53  ddisp_up_loop  ldx  $53F8  ; alien_loop_ctr
+005631  AD FB 53                      lda  $53FB  ; alien_work_c
 005634  18                            clc
-005635  7D E4 53                      adc  $53E4,X
+005635  7D E4 53                      adc  $53E4,X  ; alien_base_off
 005638  C9 5F                         cmp  #$5F
-00563A  90 08                         bcc  $5644
+00563A  90 08                         bcc  ddisp_up_match
 00563C  C9 6F                         cmp  #$6F
-00563E  B0 04                         bcs  $5644
-005640  BD B8 53                      lda  $53B8,X
+00563E  B0 04                         bcs  ddisp_up_match
+005640  BD B8 53                      lda  $53B8,X  ; alien_type_up
 005643  60                            rts
-005644  CE F8 53                      dec  $53F8
-005647  10 E5                         bpl  $562E
+005644  CE F8 53  ddisp_up_match  dec  $53F8  ; alien_loop_ctr
+005647  10 E5                         bpl  ddisp_up_loop
 
 005649  A9 00                         lda  #$00
 00564B  60                            rts
-00564C  AD EE 53          adir_handle_left  lda  $53EE
-00564F  8D FB 53                      sta  $53FB
+00564C  AD EE 53          adir_handle_left  lda  $53EE  ; alien_pos_down
+00564F  8D FB 53                      sta  $53FB  ; alien_work_c
 005652  A9 03                         lda  #$03
-005654  8D F8 53                      sta  $53F8
+005654  8D F8 53                      sta  $53F8  ; alien_loop_ctr
 
-005657  AE F8 53                      ldx  $53F8
-00565A  AD FB 53                      lda  $53FB
+005657  AE F8 53  ddisp_right_loop  ldx  $53F8  ; alien_loop_ctr
+00565A  AD FB 53                      lda  $53FB  ; alien_work_c
 00565D  18                            clc
-00565E  7D E4 53                      adc  $53E4,X
+00565E  7D E4 53                      adc  $53E4,X  ; alien_base_off
 005661  C9 5F                         cmp  #$5F
-005663  90 08                         bcc  $566D
+005663  90 08                         bcc  ddisp_right_match
 005665  C9 6F                         cmp  #$6F
-005667  B0 04                         bcs  $566D
-005669  BD C0 53                      lda  $53C0,X
+005667  B0 04                         bcs  ddisp_right_match
+005669  BD C0 53                      lda  $53C0,X  ; alien_type_down
 00566C  60                            rts
-00566D  CE F8 53                      dec  $53F8
-005670  10 E5                         bpl  $5657
+00566D  CE F8 53  ddisp_right_match  dec  $53F8  ; alien_loop_ctr
+005670  10 E5                         bpl  ddisp_right_loop
 
 005672  A9 00                         lda  #$00
 005674  60                            rts
-005675  AD F3 53          adir_handle_down  lda  $53F3
-005678  8D F9 53                      sta  $53F9
+005675  AD F3 53          adir_handle_down  lda  $53F3  ; alien_pos_left
+005678  8D F9 53                      sta  $53F9  ; alien_work_a
 00567B  A9 03                         lda  #$03
-00567D  8D F8 53                      sta  $53F8
+00567D  8D F8 53                      sta  $53F8  ; alien_loop_ctr
 
-005680  AE F8 53                      ldx  $53F8
-005683  AD F9 53                      lda  $53F9
+005680  AE F8 53  ddisp_down_loop  ldx  $53F8  ; alien_loop_ctr
+005683  AD F9 53                      lda  $53F9  ; alien_work_a
 005686  18                            clc
-005687  7D E8 53                      adc  $53E8,X
+005687  7D E8 53                      adc  $53E8,X  ; alien_anim_off
 00568A  C9 5A                         cmp  #$5A
-00568C  90 08                         bcc  $5696
+00568C  90 08                         bcc  ddisp_down_match
 00568E  C9 63                         cmp  #$63
-005690  B0 04                         bcs  $5696
-005692  BD C4 53                      lda  $53C4,X
+005690  B0 04                         bcs  ddisp_down_match
+005692  BD C4 53                      lda  $53C4,X  ; alien_type_left
 005695  60                            rts
-005696  CE F8 53                      dec  $53F8
-005699  10 E5                         bpl  $5680
+005696  CE F8 53  ddisp_down_match  dec  $53F8  ; alien_loop_ctr
+005699  10 E5                         bpl  ddisp_down_loop
 
 00569B  A9 00                         lda  #$00
 00569D  60                            rts
-00569E  AD F1 53          adir_handle_right  lda  $53F1
-0056A1  8D F9 53                      sta  $53F9
+00569E  AD F1 53          adir_handle_right  lda  $53F1  ; alien_pos_right
+0056A1  8D F9 53                      sta  $53F9  ; alien_work_a
 0056A4  A9 03                         lda  #$03
-0056A6  8D F8 53                      sta  $53F8
+0056A6  8D F8 53                      sta  $53F8  ; alien_loop_ctr
 
-0056A9  AE F8 53                      ldx  $53F8
-0056AC  AD F9 53                      lda  $53F9
+0056A9  AE F8 53  ddisp_left_loop  ldx  $53F8  ; alien_loop_ctr
+0056AC  AD F9 53                      lda  $53F9  ; alien_work_a
 0056AF  18                            clc
-0056B0  7D E8 53                      adc  $53E8,X
+0056B0  7D E8 53                      adc  $53E8,X  ; alien_anim_off
 0056B3  C9 5A                         cmp  #$5A
-0056B5  90 08                         bcc  $56BF
+0056B5  90 08                         bcc  ddisp_left_match
 0056B7  C9 63                         cmp  #$63
-0056B9  B0 04                         bcs  $56BF
-0056BB  BD BC 53                      lda  $53BC,X
+0056B9  B0 04                         bcs  ddisp_left_match
+0056BB  BD BC 53                      lda  $53BC,X  ; alien_type_right
 0056BE  60                            rts
-0056BF  CE F8 53                      dec  $53F8
-0056C2  10 E5                         bpl  $56A9
+0056BF  CE F8 53  ddisp_left_match  dec  $53F8  ; alien_loop_ctr
+0056C2  10 E5                         bpl  ddisp_left_loop
 
 0056C4  A9 00                         lda  #$00
 0056C6  60                            rts
@@ -3229,14 +3229,14 @@ temp          EQU $3C      ; Temporary work variable
 0056C9  20 03 04          DrawAlienRowDirD  jsr  $0403  ; RandomByte
 0056CC  29 03                         and  #$03
 0056CE  AA                            tax
-0056CF  BD 54 5D                      lda  $5D54,X
-0056D2  F0 0E                         beq  $56E2
-0056D4  8E C7 56                      stx  $56C7
+0056CF  BD 54 5D                      lda  $5D54,X  ; proj_state
+0056D2  F0 0E                         beq  rtype_assign
+0056D4  8E C7 56                      stx  $56C7  ; reg_save
 0056D7  20 C4 44                      jsr  DrawHitFlash
 
-0056DA  AE C7 56                      ldx  $56C7
+0056DA  AE C7 56                      ldx  $56C7  ; reg_save
 0056DD  A9 00                         lda  #$00
-0056DF  9D 54 5D                      sta  $5D54,X
+0056DF  9D 54 5D                      sta  $5D54,X  ; proj_state
 0056E2  60                            rts
 
 0056E3  50                      HEX     50
@@ -3254,9 +3254,9 @@ temp          EQU $3C      ; Temporary work variable
 ;      subsequent level of challenge harder to reach.
 
 0056E4  C6 31                         dec  diff_steps
-0056E6  D0 09                         bne  $56F1
+0056E6  D0 09                         bne  rtype_done
 0056E8  A5 30                         lda  difficulty
-0056EA  F0 05                         beq  $56F1
+0056EA  F0 05                         beq  rtype_done
 0056EC  C6 30                         dec  difficulty
 0056EE  4C F3 56                      jmp  LoadDifficultyTables
 0056F1  60                            rts
@@ -3282,16 +3282,16 @@ temp          EQU $3C      ; Temporary work variable
 ;      alien fire rate 8x faster, satellite movement 4x faster.
 
 0056F3  A6 30                         ldx  difficulty
-0056F5  BD 6C 57                      lda  $576C,X
+0056F5  BD 6C 57                      lda  $576C,X  ; diff_speed
 0056F8  85 2F                         sta  frame_reload
-0056FA  BD 78 57                      lda  $5778,X
-0056FD  8D F2 52                      sta  $52F2
-005700  BD 84 57                      lda  $5784,X
-005703  8D E0 55                      sta  $55E0
-005706  BD 90 57                      lda  $5790,X
+0056FA  BD 78 57                      lda  $5778,X  ; diff_sat_speed
+0056FD  8D F2 52                      sta  $52F2  ; sat_speed
+005700  BD 84 57                      lda  $5784,X  ; diff_alien_time
+005703  8D E0 55                      sta  $55E0  ; alien_draw_state
+005706  BD 90 57                      lda  $5790,X  ; diff_fire_rate
 005709  85 32                         sta  fire_rate
 00570B  BD 9C 57                      lda  $579C,X
-00570E  8D CC 57                      sta  $57CC
+00570E  8D CC 57                      sta  $57CC  ; timer_base
 005711  BD A8 57                      lda  $57A8,X
 005714  8D CF 57                      sta  $57CF
 005717  BD B4 57                      lda  $57B4,X
@@ -3306,31 +3306,31 @@ temp          EQU $3C      ; Temporary work variable
 
 00572B  A5 30                         lda  difficulty
 00572D  4A                            lsr  a
-00572E  8D F2 56                      sta  $56F2
+00572E  8D F2 56                      sta  $56F2  ; alien_rand_type
 005731  A9 06                         lda  #$06
 005733  38                            sec
-005734  ED F2 56                      sbc  $56F2
-005737  8D F2 56                      sta  $56F2
+005734  ED F2 56                      sbc  $56F2  ; alien_rand_type
+005737  8D F2 56                      sta  $56F2  ; alien_rand_type
 00573A  A2 03                         ldx  #$03
 
-00573C  BD B8 53                      lda  $53B8,X
-00573F  D0 06                         bne  $5747
-005741  AD F2 56                      lda  $56F2
-005744  9D B8 53                      sta  $53B8,X
-005747  BD C0 53                      lda  $53C0,X
-00574A  D0 06                         bne  $5752
-00574C  AD F2 56                      lda  $56F2
-00574F  9D C0 53                      sta  $53C0,X
-005752  BD BC 53                      lda  $53BC,X
-005755  D0 06                         bne  $575D
-005757  AD F2 56                      lda  $56F2
-00575A  9D BC 53                      sta  $53BC,X
-00575D  BD C4 53                      lda  $53C4,X
+00573C  BD B8 53  diff_update_loop  lda  $53B8,X  ; alien_type_up
+00573F  D0 06                         bne  diff_case_right
+005741  AD F2 56                      lda  $56F2  ; alien_rand_type
+005744  9D B8 53                      sta  $53B8,X  ; alien_type_up
+005747  BD C0 53  diff_case_right  lda  $53C0,X  ; alien_type_down
+00574A  D0 06                         bne  diff_case_down
+00574C  AD F2 56                      lda  $56F2  ; alien_rand_type
+00574F  9D C0 53                      sta  $53C0,X  ; alien_type_down
+005752  BD BC 53  diff_case_down  lda  $53BC,X  ; alien_type_right
+005755  D0 06                         bne  diff_case_left
+005757  AD F2 56                      lda  $56F2  ; alien_rand_type
+00575A  9D BC 53                      sta  $53BC,X  ; alien_type_right
+00575D  BD C4 53  diff_case_left  lda  $53C4,X  ; alien_type_left
 005760  D0 06                         bne  diff_dec_ctr
-005762  AD F2 56                      lda  $56F2
-005765  9D C4 53                      sta  $53C4,X
+005762  AD F2 56                      lda  $56F2  ; alien_rand_type
+005765  9D C4 53                      sta  $53C4,X  ; alien_type_left
 005768  CA                diff_dec_ctr  dex
-005769  10 D1                         bpl  $573C
+005769  10 D1                         bpl  diff_update_loop
 
 00576B  60                            rts
 
@@ -3492,17 +3492,17 @@ temp          EQU $3C      ; Temporary work variable
 00584E  A2 03                         ldx  #$03
 005850  A9 00                         lda  #$00
 
-005852  9D 58 5D                      sta  $5D58,X
-005855  9D 54 5D                      sta  $5D54,X
+005852  9D 58 5D  game_input_poll  sta  $5D58,X  ; proj_type
+005855  9D 54 5D                      sta  $5D54,X  ; proj_state
 005858  CA                            dex
-005859  10 F7                         bpl  $5852
+005859  10 F7                         bpl  game_input_poll
 
 00585B  20 7A 43                      jsr  InitGameVarsA
 
 00585E  20 4F 5B                      jsr  InputProcessA
-005861  AD D3 57                      lda  $57D3
+005861  AD D3 57                      lda  $57D3  ; player_state
 005864  8D D4 57                      sta  $57D4
-005867  8D D5 57                      sta  $57D5
+005867  8D D5 57                      sta  $57D5  ; prev_lives
 00586A  A9 F0                         lda  #$F0
 00586C  85 2C                         sta  timer_lo
 00586E  85 2D                         sta  timer_hi
@@ -3538,107 +3538,107 @@ temp          EQU $3C      ; Temporary work variable
 00587E  20 1C 5C                      jsr  UpdateStarTwinkle
 005881  20 78 5C                      jsr  CheckAllTVs
 005884  A5 36                         lda  fire_req
-005886  F0 09                         beq  $5891
+005886  F0 09                         beq  game_check_fire
 005888  E6 01                         inc  src_hi
 00588A  A9 00                         lda  #$00
 00588C  85 36                         sta  fire_req
 00588E  4C A5 58                      jmp  FireProjectile
-005891  AD 61 C0                      lda  BUTN0           ; Read Open Apple button
-005894  30 05                         bmi  $589B
+005891  AD 61 C0  game_check_fire  lda  BUTN0           ; Read Open Apple button
+005894  30 05                         bmi  game_no_fire
 005896  85 2B                         sta  slot_x16
 005898  4C C3 58                      jmp  AfterFire
-00589B  25 2B                         and  slot_x16
+00589B  25 2B  game_no_fire  and  slot_x16
 00589D  30 24                         bmi  AfterFire
 00589F  E6 01                         inc  src_hi
 0058A1  A9 80                         lda  #$80
 0058A3  85 2B                         sta  slot_x16
 0058A5  A6 11                         ldx  direction
-0058A7  BD 58 5D                      lda  $5D58,X
+0058A7  BD 58 5D                      lda  $5D58,X  ; proj_type
 0058AA  D0 17                         bne  AfterFire
 0058AC  A9 01                         lda  #$01
-0058AE  9D 58 5D                      sta  $5D58,X
-0058B1  BD 68 5D                      lda  $5D68,X
-0058B4  9D 5C 5D                      sta  $5D5C,X
-0058B7  BD 6C 5D                      lda  $5D6C,X
-0058BA  9D 60 5D                      sta  $5D60,X
-0058BD  BD 70 5D                      lda  $5D70,X
-0058C0  9D 64 5D                      sta  $5D64,X
+0058AE  9D 58 5D                      sta  $5D58,X  ; proj_type
+0058B1  BD 68 5D                      lda  $5D68,X  ; proj_spawn_x
+0058B4  9D 5C 5D                      sta  $5D5C,X  ; proj_draw_x
+0058B7  BD 6C 5D                      lda  $5D6C,X  ; proj_spawn_x_hi
+0058BA  9D 60 5D                      sta  $5D60,X  ; proj_draw_x_hi
+0058BD  BD 70 5D                      lda  $5D70,X  ; proj_spawn_y
+0058C0  9D 64 5D                      sta  $5D64,X  ; proj_draw_y
 0058C3  20 87 4D          AfterFire  jsr  UpdateAlienPositions
 
 0058C6  A2 03                         ldx  #$03
-0058C8  8E D6 57                      stx  $57D6
+0058C8  8E D6 57                      stx  $57D6  ; cur_proj_slot
 
 ; Check laser vs alien collisions (all 4 directions)
 ; Direction-specific coordinate comparisons determine hits.
 ; On hit: alien evolves, play sound, add 1 point.
-0058CB  AE D6 57                      ldx  $57D6
-0058CE  BD 58 5D                      lda  $5D58,X
-0058D1  F0 08                         beq  $58DB
-0058D3  BD 54 5D                      lda  $5D54,X
-0058D6  F0 03                         beq  $58DB
+0058CB  AE D6 57                      ldx  $57D6  ; cur_proj_slot
+0058CE  BD 58 5D                      lda  $5D58,X  ; proj_type
+0058D1  F0 08                         beq  game_sat_update
+0058D3  BD 54 5D                      lda  $5D54,X  ; proj_state
+0058D6  F0 03                         beq  game_sat_update
 0058D8  4C DE 58                      jmp  $58DE  ; CheckSatelliteHits
-0058DB  4C 6E 59                      jmp  $596E  ; ProcessLaserHit
+0058DB  4C 6E 59  game_sat_update  jmp  game_laser_hit  ; ProcessLaserHit
 0058DE  E0 03                         cpx  #$03
-0058E0  F0 31                         beq  $5913
+0058E0  F0 31                         beq  game_dir_right
 0058E2  E0 02                         cpx  #$02
-0058E4  F0 22                         beq  $5908
+0058E4  F0 22                         beq  game_dir_down
 0058E6  E0 01                         cpx  #$01
-0058E8  F0 0B                         beq  $58F5
-0058EA  BD 64 5D                      lda  $5D64,X
-0058ED  DD 50 5D                      cmp  $5D50,X
-0058F0  90 2C                         bcc  $591E
-0058F2  4C 6E 59                      jmp  $596E  ; ProcessLaserHit
-0058F5  BD 60 5D                      lda  $5D60,X
-0058F8  DD 4C 5D                      cmp  $5D4C,X
-0058FB  90 71                         bcc  $596E
-0058FD  BD 5C 5D                      lda  $5D5C,X
-005900  DD 48 5D                      cmp  $5D48,X
-005903  90 69                         bcc  $596E
-005905  4C 1E 59                      jmp  $591E  ; DrawLaserProjectile
-005908  BD 64 5D                      lda  $5D64,X
-00590B  DD 50 5D                      cmp  $5D50,X
-00590E  B0 0E                         bcs  $591E
-005910  4C 6E 59                      jmp  $596E  ; ProcessLaserHit
-005913  BD 5C 5D                      lda  $5D5C,X
-005916  DD 48 5D                      cmp  $5D48,X
-005919  90 03                         bcc  $591E
-00591B  4C 6E 59                      jmp  $596E  ; ProcessLaserHit
-00591E  20 C4 44                      jsr  DrawHitFlash
+0058E8  F0 0B                         beq  game_dir_up
+0058EA  BD 64 5D                      lda  $5D64,X  ; proj_draw_y
+0058ED  DD 50 5D                      cmp  $5D50,X  ; proj_y
+0058F0  90 2C                         bcc  game_laser_fire
+0058F2  4C 6E 59                      jmp  game_laser_hit  ; ProcessLaserHit
+0058F5  BD 60 5D  game_dir_up  lda  $5D60,X  ; proj_draw_x_hi
+0058F8  DD 4C 5D                      cmp  $5D4C,X  ; proj_x_hi
+0058FB  90 71                         bcc  game_laser_hit
+0058FD  BD 5C 5D                      lda  $5D5C,X  ; proj_draw_x
+005900  DD 48 5D                      cmp  $5D48,X  ; proj_x_lo
+005903  90 69                         bcc  game_laser_hit
+005905  4C 1E 59                      jmp  game_laser_fire  ; DrawLaserProjectile
+005908  BD 64 5D  game_dir_down  lda  $5D64,X  ; proj_draw_y
+00590B  DD 50 5D                      cmp  $5D50,X  ; proj_y
+00590E  B0 0E                         bcs  game_laser_fire
+005910  4C 6E 59                      jmp  game_laser_hit  ; ProcessLaserHit
+005913  BD 5C 5D  game_dir_right  lda  $5D5C,X  ; proj_draw_x
+005916  DD 48 5D                      cmp  $5D48,X  ; proj_x_lo
+005919  90 03                         bcc  game_laser_fire
+00591B  4C 6E 59                      jmp  game_laser_hit  ; ProcessLaserHit
+00591E  20 C4 44  game_laser_fire  jsr  DrawHitFlash
 
-005921  AE D6 57                      ldx  $57D6
+005921  AE D6 57                      ldx  $57D6  ; cur_proj_slot
 005924  20 41 44                      jsr  ClearSpriteArea
 
-005927  AE D6 57                      ldx  $57D6
-00592A  BD 54 5D                      lda  $5D54,X
+005927  AE D6 57                      ldx  $57D6  ; cur_proj_slot
+00592A  BD 54 5D                      lda  $5D54,X  ; proj_state
 00592D  C9 02                         cmp  #$02
-00592F  D0 09                         bne  $593A
+00592F  D0 09                         bne  game_laser_miss
 005931  20 65 4B                      jsr  PunishmentRoutine
 
-005934  AE D6 57                      ldx  $57D6
-005937  4C 54 59                      jmp  $5954  ; LaserExplosion
-00593A  C9 03                         cmp  #$03
-00593C  D0 16                         bne  $5954
-00593E  AE D6 57                      ldx  $57D6
+005934  AE D6 57                      ldx  $57D6  ; cur_proj_slot
+005937  4C 54 59                      jmp  game_laser_explode  ; LaserExplosion
+00593A  C9 03  game_laser_miss  cmp  #$03
+00593C  D0 16                         bne  game_laser_explode
+00593E  AE D6 57                      ldx  $57D6  ; cur_proj_slot
 005941  A9 02                         lda  #$02
-005943  9D 54 5D                      sta  $5D54,X
+005943  9D 54 5D                      sta  $5D54,X  ; proj_state
 005946  20 99 44                      jsr  DrawProjectile
 
 005949  A9 00                         lda  #$00
-00594B  AE D6 57                      ldx  $57D6
-00594E  9D 58 5D                      sta  $5D58,X
+00594B  AE D6 57                      ldx  $57D6  ; cur_proj_slot
+00594E  9D 58 5D                      sta  $5D58,X  ; proj_type
 005951  4C 5C 59                      jmp  laser_start
-005954  A9 00                         lda  #$00
-005956  9D 54 5D                      sta  $5D54,X
-005959  9D 58 5D                      sta  $5D58,X
+005954  A9 00  game_laser_explode  lda  #$00
+005956  9D 54 5D                      sta  $5D54,X  ; proj_state
+005959  9D 58 5D                      sta  $5D58,X  ; proj_type
 00595C  A9 01             laser_start  lda  #$01
 00595E  20 E0 4A                      jsr  AddScore
 
 005961  A0 14                         ldy  #$14
 005963  A9 C4                         lda  #$C4
-005965  8D 67 5B                      sta  $5B67
+005965  8D 67 5B                      sta  $5B67  ; snd_trigger
 005968  20 62 5B                      jsr  InputProcessB
 00596B  20 4F 5B                      jsr  InputProcessA
-00596E  CE D6 57                      dec  $57D6
+00596E  CE D6 57  game_laser_hit  dec  $57D6  ; cur_proj_slot
 005971  30 03                         bmi  laser_init_dir
 005973  4C CB 58                      jmp  CheckLaserHits
 
@@ -3646,48 +3646,48 @@ temp          EQU $3C      ; Temporary work variable
 005978  86 12                         stx  loop_idx
 
 00597A  A6 12             laser_loop  ldx  loop_idx
-00597C  BD 58 5D                      lda  $5D58,X
-00597F  F0 41                         beq  $59C2
+00597C  BD 58 5D                      lda  $5D58,X  ; proj_type
+00597F  F0 41                         beq  game_proj_skip
 005981  E0 03                         cpx  #$03
-005983  F0 29                         beq  $59AE
+005983  F0 29                         beq  game_proj_case_right
 005985  E0 02                         cpx  #$02
-005987  F0 1B                         beq  $59A4
+005987  F0 1B                         beq  game_proj_case_down
 005989  E0 01                         cpx  #$01
-00598B  F0 08                         beq  $5995
-00598D  BD 64 5D                      lda  $5D64,X
-005990  F0 23                         beq  $59B5
-005992  4C C2 59                      jmp  $59C2  ; CheckLaserLoop
-005995  BD 5C 5D                      lda  $5D5C,X
+00598B  F0 08                         beq  game_proj_case_up
+00598D  BD 64 5D                      lda  $5D64,X  ; proj_draw_y
+005990  F0 23                         beq  game_proj_case_left
+005992  4C C2 59                      jmp  game_proj_skip  ; CheckLaserLoop
+005995  BD 5C 5D  game_proj_case_up  lda  $5D5C,X  ; proj_draw_x
 005998  C9 16                         cmp  #$16
-00599A  BD 60 5D                      lda  $5D60,X
+00599A  BD 60 5D                      lda  $5D60,X  ; proj_draw_x_hi
 00599D  E9 01                         sbc  #$01
-00599F  B0 14                         bcs  $59B5
-0059A1  4C C2 59                      jmp  $59C2  ; CheckLaserLoop
-0059A4  BD 64 5D                      lda  $5D64,X
+00599F  B0 14                         bcs  game_proj_case_left
+0059A1  4C C2 59                      jmp  game_proj_skip  ; CheckLaserLoop
+0059A4  BD 64 5D  game_proj_case_down  lda  $5D64,X  ; proj_draw_y
 0059A7  C9 BF                         cmp  #$BF
-0059A9  F0 0A                         beq  $59B5
-0059AB  4C C2 59                      jmp  $59C2  ; CheckLaserLoop
-0059AE  BD 5C 5D                      lda  $5D5C,X
+0059A9  F0 0A                         beq  game_proj_case_left
+0059AB  4C C2 59                      jmp  game_proj_skip  ; CheckLaserLoop
+0059AE  BD 5C 5D  game_proj_case_right  lda  $5D5C,X  ; proj_draw_x
 0059B1  C9 3E                         cmp  #$3E
-0059B3  D0 0D                         bne  $59C2
-0059B5  20 41 44                      jsr  ClearSpriteArea
+0059B3  D0 0D                         bne  game_proj_skip
+0059B5  20 41 44  game_proj_case_left  jsr  ClearSpriteArea
 
 0059B8  20 4F 5B                      jsr  InputProcessA
 0059BB  A6 12                         ldx  loop_idx
 0059BD  A9 00                         lda  #$00
-0059BF  9D 58 5D                      sta  $5D58,X
-0059C2  C6 12                         dec  loop_idx
+0059BF  9D 58 5D                      sta  $5D58,X  ; proj_type
+0059C2  C6 12  game_proj_skip  dec  loop_idx
 0059C4  10 B4                         bpl  laser_loop
 
 0059C6  A6 11                         ldx  direction
 0059C8  20 E0 43                      jsr  KeyboardHandler
 
 0059CB  E4 11                         cpx  direction
-0059CD  D0 03                         bne  $59D2
-0059CF  4C E8 59                      jmp  $59E8
-0059D2  BD 34 5D                      lda  $5D34,X
+0059CD  D0 03                         bne  game_proj_done
+0059CF  4C E8 59                      jmp  game_proj_draw
+0059D2  BD 34 5D  game_proj_done  lda  $5D34,X  ; proj_score_lo
 0059D5  85 02                         sta  col_ctr
-0059D7  BD 38 5D                      lda  $5D38,X
+0059D7  BD 38 5D                      lda  $5D38,X  ; proj_score_hi
 0059DA  85 04                         sta  sprite_calc
 0059DC  8A                            txa
 0059DD  18                            clc
@@ -3696,21 +3696,21 @@ temp          EQU $3C      ; Temporary work variable
 
 0059E3  20 4F 5B                      jsr  InputProcessA
 0059E6  E6 01                         inc  src_hi
-0059E8  20 91 55                      jsr  DrawAlienRowDir
+0059E8  20 91 55  game_proj_draw  jsr  DrawAlienRowDir
 
 0059EB  20 E3 55                      jsr  DrawAlienRowDirB
 
-0059EE  EE CD 57                      inc  $57CD
+0059EE  EE CD 57                      inc  $57CD  ; timer_lo
 0059F1  D0 11                         bne  FrameTimingLoop
-0059F3  EE CE 57                      inc  $57CE
+0059F3  EE CE 57                      inc  $57CE  ; timer_hi
 0059F6  D0 0C                         bne  FrameTimingLoop
-0059F8  AD CC 57                      lda  $57CC
-0059FB  8D CD 57                      sta  $57CD
-0059FE  8D CE 57                      sta  $57CE
+0059F8  AD CC 57                      lda  $57CC  ; timer_base
+0059FB  8D CD 57                      sta  $57CD  ; timer_lo
+0059FE  8D CE 57                      sta  $57CE  ; timer_hi
 005A01  20 C9 56                      jsr  DrawAlienRowDirD
 
 005A04  E6 2E                         inc  frame_ctr
-005A06  D0 52                         bne  $5A5A
+005A06  D0 52                         bne  ahitchk_to_main
 005A08  A5 2F                         lda  frame_reload
 005A0A  85 2E                         sta  frame_ctr
 005A0C  20 0E 45                      jsr  PeriodicGameLogic
@@ -3719,47 +3719,47 @@ temp          EQU $3C      ; Temporary work variable
 005A11  86 12                         stx  loop_idx
 
 005A13  A6 12             alienhit_loop  ldx  loop_idx
-005A15  BD 54 5D                      lda  $5D54,X
+005A15  BD 54 5D                      lda  $5D54,X  ; proj_state
 005A18  F0 3C                         beq  alienhit_next
 005A1A  E0 03                         cpx  #$03
-005A1C  F0 1C                         beq  $5A3A
+005A1C  F0 1C                         beq  ahitchk_case_left
 005A1E  E0 02                         cpx  #$02
-005A20  F0 0E                         beq  $5A30
+005A20  F0 0E                         beq  ahitchk_case_down
 005A22  E0 01                         cpx  #$01
-005A24  F0 1E                         beq  $5A44
-005A26  BD 50 5D                      lda  $5D50,X
+005A24  F0 1E                         beq  ahitchk_case_right
+005A26  BD 50 5D                      lda  $5D50,X  ; proj_y
 005A29  C9 52                         cmp  #$52
-005A2B  B0 30                         bcs  $5A5D
+005A2B  B0 30                         bcs  ahitchk_confirmed
 005A2D  4C 56 5A                      jmp  alienhit_next
-005A30  BD 50 5D                      lda  $5D50,X
+005A30  BD 50 5D  ahitchk_case_down  lda  $5D50,X  ; proj_y
 005A33  C9 6B                         cmp  #$6B
-005A35  90 26                         bcc  $5A5D
+005A35  90 26                         bcc  ahitchk_confirmed
 005A37  4C 56 5A                      jmp  alienhit_next
-005A3A  BD 48 5D                      lda  $5D48,X
+005A3A  BD 48 5D  ahitchk_case_left  lda  $5D48,X  ; proj_x_lo
 005A3D  C9 9B                         cmp  #$9B
 005A3F  90 15                         bcc  alienhit_next
-005A41  4C 5D 5A                      jmp  $5A5D  ; HandleAlienHit
-005A44  BD 48 5D                      lda  $5D48,X
+005A41  4C 5D 5A                      jmp  ahitchk_confirmed  ; HandleAlienHit
+005A44  BD 48 5D  ahitchk_case_right  lda  $5D48,X  ; proj_x_lo
 005A47  C9 B6                         cmp  #$B6
-005A49  90 03                         bcc  $5A4E
+005A49  90 03                         bcc  ahitchk_boundary
 005A4B  4C 56 5A                      jmp  alienhit_next
-005A4E  BD 4C 5D                      lda  $5D4C,X
+005A4E  BD 4C 5D  ahitchk_boundary  lda  $5D4C,X  ; proj_x_hi
 005A51  D0 03                         bne  alienhit_next
-005A53  4C 5D 5A                      jmp  $5A5D  ; HandleAlienHit
+005A53  4C 5D 5A                      jmp  ahitchk_confirmed  ; HandleAlienHit
 
 005A56  C6 12             alienhit_next  dec  loop_idx
 005A58  10 B9                         bpl  alienhit_loop
 
-005A5A  4C 75 58                      jmp  MainGameLoop
+005A5A  4C 75 58  ahitchk_to_main  jmp  MainGameLoop
 
-005A5D  BD 54 5D                      lda  $5D54,X
+005A5D  BD 54 5D  ahitchk_confirmed  lda  $5D54,X  ; proj_state
 005A60  C9 02                         cmp  #$02
-005A62  D0 18                         bne  $5A7C
+005A62  D0 18                         bne  ahitchk_flash
 005A64  20 C4 44                      jsr  DrawHitFlash
 
 005A67  A6 12                         ldx  loop_idx
 005A69  A9 00                         lda  #$00
-005A6B  9D 54 5D                      sta  $5D54,X
+005A6B  9D 54 5D                      sta  $5D54,X  ; proj_state
 005A6E  20 7A 43                      jsr  InitGameVarsA
 
 005A71  20 4F 5B                      jsr  InputProcessA
@@ -3768,14 +3768,14 @@ temp          EQU $3C      ; Temporary work variable
 
 005A79  4C 56 5A                      jmp  alienhit_next
 
-005A7C  C9 03                         cmp  #$03
-005A7E  D0 1A                         bne  $5A9A
-005A80  8E D6 57                      stx  $57D6
+005A7C  C9 03  ahitchk_flash  cmp  #$03
+005A7E  D0 1A                         bne  ahitchk_evolve
+005A80  8E D6 57                      stx  $57D6  ; cur_proj_slot
 005A83  20 C4 44                      jsr  DrawHitFlash
 
-005A86  AE D6 57                      ldx  $57D6
+005A86  AE D6 57                      ldx  $57D6  ; cur_proj_slot
 005A89  A9 00                         lda  #$00
-005A8B  9D 54 5D                      sta  $5D54,X
+005A8B  9D 54 5D                      sta  $5D54,X  ; proj_state
 005A8E  20 7A 43                      jsr  InitGameVarsA
 
 005A91  20 4F 5B                      jsr  InputProcessA
@@ -3783,21 +3783,21 @@ temp          EQU $3C      ; Temporary work variable
 
 005A97  4C 56 5A                      jmp  alienhit_next
 
-005A9A  A2 03                         ldx  #$03
+005A9A  A2 03  ahitchk_evolve  ldx  #$03
 005A9C  86 12                         stx  loop_idx
 
-005A9E  A6 12                         ldx  loop_idx
-005AA0  BD 54 5D                      lda  $5D54,X
+005A9E  A6 12  ahitchk_erase_loop  ldx  loop_idx
+005AA0  BD 54 5D                      lda  $5D54,X  ; proj_state
 005AA3  F0 03                         beq  alienhit_dec
 005AA5  20 C4 44                      jsr  DrawHitFlash
 
 005AA8  C6 12             alienhit_dec  dec  loop_idx
-005AAA  10 F2                         bpl  $5A9E
+005AAA  10 F2                         bpl  ahitchk_erase_loop
 
 005AAC  A6 11                         ldx  direction
-005AAE  BD 34 5D                      lda  $5D34,X
+005AAE  BD 34 5D                      lda  $5D34,X  ; proj_score_lo
 005AB1  85 02                         sta  col_ctr
-005AB3  BD 38 5D                      lda  $5D38,X
+005AB3  BD 38 5D                      lda  $5D38,X  ; proj_score_hi
 005AB6  85 04                         sta  sprite_calc
 005AB8  8A                            txa
 005AB9  18                            clc
@@ -3815,7 +3815,7 @@ temp          EQU $3C      ; Temporary work variable
 005ACE  86 12                         stx  loop_idx
 
 005AD0  A6 12             aliendraw_loop  ldx  loop_idx
-005AD2  BD 58 5D                      lda  $5D58,X
+005AD2  BD 58 5D                      lda  $5D58,X  ; proj_type
 005AD5  F0 03                         beq  aliendraw_next
 005AD7  20 41 44                      jsr  ClearSpriteArea
 
@@ -3841,7 +3841,7 @@ temp          EQU $3C      ; Temporary work variable
 005AFA  20 1C 5C                      jsr  UpdateStarTwinkle
 005AFD  A0 80                         ldy  #$80
 005AFF  A9 F2                         lda  #$F2
-005B01  8D 67 5B                      sta  $5B67
+005B01  8D 67 5B                      sta  $5B67  ; snd_trigger
 005B04  20 62 5B                      jsr  InputProcessB
 005B07  C6 2C                         dec  timer_lo
 005B09  10 DD                         bpl  snd_tone_hi
@@ -3853,7 +3853,7 @@ temp          EQU $3C      ; Temporary work variable
 005B11  10 CF                         bpl  snd_tone_lo
 
 005B13  A5 10                         lda  lives
-005B15  D0 1D                         bne  $5B34
+005B15  D0 1D                         bne  snd_effect
 005B17  A9 56                         lda  #$56
 005B19  85 04                         sta  sprite_calc
 005B1B  A9 17                         lda  #$17
@@ -3869,7 +3869,7 @@ temp          EQU $3C      ; Temporary work variable
 005B2E  20 16 04                      jsr  $0416  ; DrawSprite
 005B31  4C 39 58                      jmp  CheckLifeLost
 
-005B34  A9 00                         lda  #$00
+005B34  A9 00   snd_effect  lda  #$00
 005B36  85 2C                         sta  timer_lo
 005B38  A9 19                         lda  #$19
 005B3A  85 2D                         sta  timer_hi
@@ -3887,9 +3887,9 @@ temp          EQU $3C      ; Temporary work variable
 
 
 005B4F  A6 11                         ldx  direction
-005B51  BD 34 5D                      lda  $5D34,X
+005B51  BD 34 5D                      lda  $5D34,X  ; proj_score_lo
 005B54  85 02                         sta  col_ctr
-005B56  BD 38 5D                      lda  $5D38,X
+005B56  BD 38 5D                      lda  $5D38,X  ; proj_score_hi
 005B59  85 04                         sta  sprite_calc
 005B5B  8A                            txa
 005B5C  18                            clc
@@ -3915,7 +3915,7 @@ temp          EQU $3C      ; Temporary work variable
 005B6F  AA                            tax
 
 005B70  CA                            dex
-005B71  D0 FD                         bne  $5B70
+005B71  D0 FD                         bne  input_poll_loop
 
 005B73  2C 30 C0                      bit  SPKR            ; Toggle speaker (click)
 005B76  60                            rts
@@ -3930,37 +3930,37 @@ temp          EQU $3C      ; Temporary work variable
 
 005B77  A2 1F                         ldx  #$1F
 
-005B79  20 03 04                      jsr  $0403  ; RandomByte
+005B79  20 03 04  input_key_done  jsr  $0403  ; RandomByte
 005B7C  29 1F                         and  #$1F
 005B7E  18                            clc
 005B7F  69 01                         adc  #$01
 005B81  29 1F                         and  #$1F
-005B83  F0 F4                         beq  $5B79
+005B83  F0 F4                         beq  input_key_done
 
 005B85  18                            clc
 005B86  69 08                         adc  #$08
-005B88  9D B4 5B                      sta  $5BB4,X
+005B88  9D B4 5B                      sta  $5BB4,X  ; star_x_pos
 
 005B8B  20 03 04          rand_retry  jsr  $0403  ; RandomByte
 005B8E  C9 C0                         cmp  #$C0
 005B90  B0 F9                         bcs  rand_retry
 
-005B92  9D D4 5B                      sta  $5BD4,X
+005B92  9D D4 5B                      sta  $5BD4,X  ; star_y_pos
 005B95  C9 50                         cmp  #$50
 005B97  90 0F                         bcc  rand_apply
 005B99  C9 71                         cmp  #$71
 005B9B  B0 0B                         bcs  rand_apply
-005B9D  BD B4 5B                      lda  $5BB4,X
+005B9D  BD B4 5B                      lda  $5BB4,X  ; star_x_pos
 005BA0  C9 1B                         cmp  #$1B
 005BA2  B0 04                         bcs  rand_apply
 005BA4  C9 16                         cmp  #$16
-005BA6  B0 D1                         bcs  $5B79
+005BA6  B0 D1                         bcs  input_key_done
 
 005BA8  20 03 04          rand_apply  jsr  $0403  ; RandomByte
 005BAB  29 07                         and  #$07
-005BAD  9D F4 5B                      sta  $5BF4,X
+005BAD  9D F4 5B                      sta  $5BF4,X  ; star_bright
 005BB0  CA                            dex
-005BB1  10 C6                         bpl  $5B79
+005BB1  10 C6                         bpl  input_key_done
 
 005BB3  60                            rts
 
@@ -3995,29 +3995,29 @@ temp          EQU $3C      ; Temporary work variable
 005C31  90 02                         bcc  star_save_idx
 005C33  A2 00                         ldx  #$00
 005C35  86 33             star_save_idx  stx  star_idx
-005C37  BD D4 5B                      lda  $5BD4,X
+005C37  BD D4 5B                      lda  $5BD4,X  ; star_y_pos
 005C3A  A8                            tay
-005C3B  B9 6C 41                      lda  $416C,Y
+005C3B  B9 6C 41                      lda  $416C,Y  ; hgr_addr_lo
 005C3E  85 06                         sta  hgr_lo
-005C40  B9 2C 42                      lda  $422C,Y
+005C40  B9 2C 42                      lda  $422C,Y  ; hgr_addr_hi
 005C43  85 07                         sta  hgr_hi
-005C45  BD F4 5B                      lda  $5BF4,X
+005C45  BD F4 5B                      lda  $5BF4,X  ; star_bright
 005C48  A8                            tay
 005C49  18                            clc
 005C4A  69 01                         adc  #$01
 005C4C  29 07                         and  #$07
-005C4E  9D F4 5B                      sta  $5BF4,X
-005C51  B9 14 5C                      lda  $5C14,Y
+005C4E  9D F4 5B                      sta  $5BF4,X  ; star_bright
+005C51  B9 14 5C                      lda  $5C14,Y  ; score_spr_tbl
 005C54  48                            pha
-005C55  BD B4 5B                      lda  $5BB4,X
+005C55  BD B4 5B                      lda  $5BB4,X  ; star_x_pos
 005C58  A8                            tay
 005C59  68                            pla
 005C5A  49 FF                         eor  #$FF
 005C5C  31 06                         and  (hgr_lo),Y
 005C5E  91 06                         sta  (hgr_lo),Y
-005C60  BD F4 5B                      lda  $5BF4,X
+005C60  BD F4 5B                      lda  $5BF4,X  ; star_bright
 005C63  AA                            tax
-005C64  BD 14 5C                      lda  $5C14,X
+005C64  BD 14 5C                      lda  $5C14,X  ; score_spr_tbl
 005C67  11 06                         ora  (hgr_lo),Y
 005C69  91 06                         sta  (hgr_lo),Y
 005C6B  60                            rts
@@ -4046,7 +4046,7 @@ temp          EQU $3C      ; Temporary work variable
 
 005C78  A2 0F                         ldx  #$0F
 
-005C7A  BD B8 53          alive_loop  lda  $53B8,X
+005C7A  BD B8 53          alive_loop  lda  $53B8,X  ; alien_type_up
 005C7D  C9 04                         cmp  #$04
 005C7F  F0 01                         beq  alive_next
 005C81  60                            rts
@@ -4056,24 +4056,24 @@ temp          EQU $3C      ; Temporary work variable
 005C85  20 27 5D                      jsr  $5D27  ; DrawBaseCenter
 005C88  20 14 5D                      jsr  InitProjectileTables
 005C8B  A9 03                         lda  #$03
-005C8D  8D 13 5D                      sta  $5D13
+005C8D  8D 13 5D                      sta  $5D13  ; disp_loop_ctr
 
-005C90  AE 13 5D          scoredisp_loop  ldx  $5D13
-005C93  BD 54 5D                      lda  $5D54,X
+005C90  AE 13 5D          scoredisp_loop  ldx  $5D13  ; disp_loop_ctr
+005C93  BD 54 5D                      lda  $5D54,X  ; proj_state
 005C96  F0 0B                         beq  scoredisp_load
 005C98  20 C4 44                      jsr  DrawHitFlash
 
-005C9B  AE 13 5D                      ldx  $5D13
+005C9B  AE 13 5D                      ldx  $5D13  ; disp_loop_ctr
 005C9E  A9 00                         lda  #$00
-005CA0  9D 54 5D                      sta  $5D54,X
-005CA3  BD 12 52          scoredisp_load  lda  $5212,X
+005CA0  9D 54 5D                      sta  $5D54,X  ; proj_state
+005CA3  BD 12 52          scoredisp_load  lda  $5212,X  ; sat_hp
 005CA6  F0 0B                         beq  scoredisp_next
 005CA8  20 C9 52                      jsr  $52C9  ; EraseSatellite
 
-005CAB  AE 13 5D                      ldx  $5D13
+005CAB  AE 13 5D                      ldx  $5D13  ; disp_loop_ctr
 005CAE  A9 00                         lda  #$00
-005CB0  9D 12 52                      sta  $5212,X
-005CB3  CE 13 5D          scoredisp_next  dec  $5D13
+005CB0  9D 12 52                      sta  $5212,X  ; sat_hp
+005CB3  CE 13 5D          scoredisp_next  dec  $5D13  ; disp_loop_ctr
 005CB6  10 D8                         bpl  scoredisp_loop
 ; ── LevelComplete ─────────────────────────────────────────────────
 ; HOW: Awards 50-point bonus (BCD), decrements the level counter ($3A),
@@ -4097,22 +4097,22 @@ temp          EQU $3C      ; Temporary work variable
 
 005CC5  A9 32                         lda  #$32
 005CC7  A0 FF                         ldy  #$FF
-005CC9  8D 67 5B                      sta  $5B67
+005CC9  8D 67 5B                      sta  $5B67  ; snd_trigger
 005CCC  20 62 5B                      jsr  InputProcessB
 
 005CCF  A9 03                         lda  #$03
-005CD1  8D 13 5D                      sta  $5D13
+005CD1  8D 13 5D                      sta  $5D13  ; disp_loop_ctr
 
-005CD4  AD 13 5D          scoredisp_wait  lda  $5D13
+005CD4  AD 13 5D          scoredisp_wait  lda  $5D13  ; disp_loop_ctr
 005CD7  20 3C 4C                      jsr  PlayPunishSound
 
-005CDA  CE 13 5D                      dec  $5D13
+005CDA  CE 13 5D                      dec  $5D13  ; disp_loop_ctr
 005CDD  10 F5                         bpl  scoredisp_wait
 
 005CDF  A2 0F                         ldx  #$0F
 005CE1  A9 01                         lda  #$01
 
-005CE3  9D B8 53          scoredisp_clear  sta  $53B8,X
+005CE3  9D B8 53          scoredisp_clear  sta  $53B8,X  ; alien_type_up
 005CE6  CA                            dex
 005CE7  10 FA                         bpl  scoredisp_clear
 
@@ -4126,7 +4126,7 @@ temp          EQU $3C      ; Temporary work variable
 
 005CF6  A5 3A                         lda  level
 005CF8  C9 04                         cmp  #$04
-005CFA  B0 0C                         bcs  $5D08
+005CFA  B0 0C                         bcs  scoredisp_finished
 005CFC  20 27 52                      jsr  SpawnSatellite
 
 005CFF  20 27 52                      jsr  SpawnSatellite
@@ -4151,9 +4151,9 @@ temp          EQU $3C      ; Temporary work variable
 ;      Ensures no stale projectile data from previous play.
 
 005D14  A6 11                         ldx  direction
-005D16  BD 34 5D                      lda  $5D34,X
+005D16  BD 34 5D                      lda  $5D34,X  ; proj_score_lo
 005D19  85 02                         sta  col_ctr
-005D1B  BD 38 5D                      lda  $5D38,X
+005D1B  BD 38 5D                      lda  $5D38,X  ; proj_score_hi
 005D1E  85 04                         sta  sprite_calc
 005D20  8A                            txa
 005D21  18                            clc
