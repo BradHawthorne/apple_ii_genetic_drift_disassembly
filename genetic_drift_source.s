@@ -179,7 +179,7 @@ temp          EQU $3C      ; Temporary work variable
 ;      when the binary first loads. This bootstrap copies them into place
 ;      before the main game code enables hi-res graphics.
 
-0037D7  8D 10 C0                      sta  CLRKBD          ; KBDSTRB - Clear keyboard strobe {Keyboard} <keyboard_strobe>
+0037D7  8D 10 C0                      sta  CLRKBD          ; KBDSTRB - Clear keyboard strobe
 0037DA  A9 38                         lda  #$38
 0037DC  85 01                         sta  src_hi
 0037DE  A9 00                         lda  #$00
@@ -254,7 +254,7 @@ temp          EQU $3C      ; Temporary work variable
 000103  4C8D0006                HEX     4C8D0006 A9008D01 06A9B08D 0206A9EE
 000113  60FF                    HEX     60FF
 
-000115  FF 00 00 FF                   sbc  >$FF0000,X      ; WARNING: not valid on 6502
+000115  FF 00 00 FF                   sbc  >$FF0000,X
 
 000119  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF0000FF
 000129  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF0000FF
@@ -322,7 +322,7 @@ temp          EQU $3C      ; Temporary work variable
 
 00025E  08                            php
 
-00025F  BD 8C C0                      lda  S0_score_lo,X        ; $C08C - Unknown I/O register <slot_io>
+00025F  BD 8C C0                      lda  $C08C,X
 000262  10 FB                         bpl  RWTS_WaitNibble1
 
 
@@ -330,7 +330,7 @@ temp          EQU $3C      ; Temporary work variable
 000266  D0 F7                         bne  RWTS_WaitNibble1
 
 
-000268  BD 8C C0                      lda  S0_score_lo,X        ; $C08C - Unknown I/O register <slot_io>
+000268  BD 8C C0                      lda  $C08C,X
 00026B  10 FB                         bpl  RWTS_WaitNibble2
 
 00026D  C9 AA                         cmp  #$AA
@@ -338,7 +338,7 @@ temp          EQU $3C      ; Temporary work variable
 
 000271  EA                            nop
 
-000272  BD 8C C0                      lda  S0_score_lo,X        ; $C08C - Unknown I/O register <slot_io>
+000272  BD 8C C0                      lda  $C08C,X
 000275  10 FB                         bpl  RWTS_WaitNibble3
 
 000277  C9 B5                         cmp  #$B5
@@ -353,19 +353,18 @@ temp          EQU $3C      ; Temporary work variable
 000284  A0 03                         ldy  #$03
 000286  84 2A                         sty  line_ctr_hi
 
-000288  BD 8C C0                      lda  S0_score_lo,X        ; $C08C - Unknown I/O register <slot_io>
+000288  BD 8C C0                      lda  $C08C,X
 00028B  10 FB                         bpl  RWTS_AddrNibble1
 
 00028D  2A                            rol  a
 00028E  85 3C                         sta  temp
 
-000290  BD 8C C0                      lda  S0_score_lo,X        ; $C08C - Unknown I/O register <slot_io>
+000290  BD 8C C0                      lda  $C08C,X
 000293  10 FB                         bpl  RWTS_AddrNibble2
 
 000295  25 3C                         and  temp
 000297  88                            dey
 000298  D0 EE                         bne  RWTS_AddrNibble1
-; === End of loop (counter: Y) ===
 
 00029A  28                            plp
 00029B  C5 3D                         cmp  disk_chk
@@ -377,32 +376,32 @@ temp          EQU $3C      ; Temporary work variable
 
 0002A3  84 3C                         sty  temp
 
-0002A5  BC 8C C0          loc_0002A5  ldy  S0_$0C,X        ; $C08C - Unknown I/O register <slot_io>
+0002A5  BC 8C C0          loc_0002A5  ldy  $C08C,X
 0002A8  10 FB                         bpl  loc_0002A5
 
-0002AA  59 00 08                      eor  $0800,Y         ; -> $089A
+0002AA  59 00 08                      eor  $0800,Y
 0002AD  A4 3C                         ldy  temp
 0002AF  88                            dey
-0002B0  99 00 08                      sta  $0800,Y         ; -> $0899
+0002B0  99 00 08                      sta  $0800,Y
 0002B3  D0 EE                         bne  RWTS_ReadDataLoop
 
 
 0002B5  84 3C             loc_0002B5  sty  $3C
 
-0002B7  BC 8C C0          loc_0002B7  ldy  S0_$0C,X        ; $C08C - Unknown I/O register <slot_io>
+0002B7  BC 8C C0          loc_0002B7  ldy  $C08C,X
 0002BA  10 FB                         bpl  loc_0002B7
 
-0002BC  59 00 08                      eor  $0800,Y         ; -> $0899
+0002BC  59 00 08                      eor  $0800,Y
 0002BF  A4 3C                         ldy  temp
 0002C1  91 26                         sta  (delta_y_hi),Y
 0002C3  C8                            iny
 0002C4  D0 EF                         bne  loc_0002B5
 
 
-0002C6  BC 8C C0                      ldy  S0_score_lo,X        ; $C08C - Unknown I/O register <slot_io>
+0002C6  BC 8C C0                      ldy  $C08C,X
 0002C9  10 FB                         bpl  $02C6
 
-0002CB  59 00 08                      eor  $0800,Y         ; -> $089A
+0002CB  59 00 08                      eor  $0800,Y
 0002CE  D0 8D                         bne  RWTS_ReadSector
 
 0002D0  60                            rts
@@ -584,7 +583,6 @@ temp          EQU $3C      ; Temporary work variable
 00062D  20D002A2                HEX     20D002A2 BCA000A9 A09100C8 D0FBE601
 00063D  CAD0F6A5                HEX     CAD0F6A5 028D0004 8D27048D D0078DF7
 00064D  07A00084                HEX     07A00084 00B9C002 F0178501 B9C10285
-; String: "HH"
 00065D  03C8C8AE                HEX     03C8C8AE 30C0A603 CAD0FDC6 01D0F4F0
 00066D  E44C00C6                HEX     E44C00C6 4A4A4A09 C0A00020 D002A200
 00067D  8A95009D                HEX     8A95009D 0001E8D0 F8A209BD F0029D0F
@@ -593,7 +591,7 @@ temp          EQU $3C      ; Temporary work variable
 0006AD  07A401E6                HEX     07A401E6 01B90007 2000074C A20600BD
 0006BD  88C060                  HEX     88C060
 
-0006C0  20 E0 20                      jsr  $20E0           ; Call $0020E0(A, X, Y)
+0006C0  20 E0 20                      jsr  $20E0
 0006C3  D0 20                         bne  loc_0006E5
 0006C5  C0 20                         cpy  #$20
 0006C7  B0 20                         bcs  $06E9
@@ -643,103 +641,10 @@ temp          EQU $3C      ; Temporary work variable
 ;   - Sprite bitmap data ($6000+)
 
 
-;   $4134: video_mode_read - Enable graphics mode
-
-
-; === Resolved Jump Tables ===
-; Jump Table at $005600 (2 entries, 2-byte each)
-; Dispatch code at $006667 (indirect)
-;   [ 0] $004C03
-;   [ 1] $0054C5
-
-;   Keyboard        : 7
-;   Speaker         : 7
-;   Joystick        : 1
-;   Video           : 3
-;   - Speaker toggle detected (7 accesses)
-
-
-; Functions: 70
-; Loops:
-; Pattern summary:
-;   GS/OS calls: 17
-; Call graph:
-;   $0040C0: 10 caller(s)
-;   $004120: 1 caller(s)
-;   $00413E: 2 caller(s)
-;   $00415B: 1 caller(s)
-;   $0042EC: 4 caller(s)
-;   $0042FC: 1 caller(s)
-;   $00437A: 4 caller(s)
-;   $004387: 2 caller(s)
-;   $00439E: 2 caller(s)
-;   $0043B5: 1 caller(s)
-;   $0043CD: 2 caller(s)
-;   $0043E0: 1 caller(s)
-;   $004441: 5 caller(s)
-;   $004499: 2 caller(s)
-;   $0044C4: 7 caller(s)
-;   $0044EF: 2 caller(s)
-;   $00450E: 1 caller(s)
-;   $00457F: 1 caller(s)
-;   $004641: 1 caller(s)
-;   $00464B: 1 caller(s)
-;   $004658: 1 caller(s)
-;   $004914: 2 caller(s)
-;   $004940: 1 caller(s)
-;   $0049C6: 1 caller(s)
-;   $004A2F: 1 caller(s)
-;   $004A86: 1 caller(s)
-;   $004AE0: 5 caller(s)
-;   $004B0C: 1 caller(s)
-;   $004B65: 2 caller(s)
-;   $004C3C: 2 caller(s)
-;   $004C56: 1 caller(s)
-;   $004C71: 1 caller(s)
-;   $004C99: 1 caller(s)
-;   $004D33: 1 caller(s)
-;   $004D73: 1 caller(s)
-;   $004D87: 1 caller(s)
-;   $004DC4: 4 caller(s)
-;   $004DE3: 1 caller(s)
-;   $004E38: 1 caller(s)
-;   $004E8B: 1 caller(s)
-;   $004EE0: 1 caller(s)
-;   $004F35: 2 caller(s)
-;   $004F5B: 1 caller(s)
-;   $005227: 4 caller(s)
-;   $00527F: 7 caller(s)
-;   $0052A1: 8 caller(s)
-;   $0052C3: 2 caller(s)
-;   $0052C9: 3 caller(s)
-;   $0052CF: 2 caller(s)
-;   $0052E5: 1 caller(s)
-;   $0052F3: 1 caller(s)
-;   $00533B: 1 caller(s)
-;   $005370: 1 caller(s)
-;   $005376: 3 caller(s)
-;   $005591: 1 caller(s)
-;   $0055E3: 1 caller(s)
-;   $00560E: 5 caller(s)
-;   $0056C9: 1 caller(s)
-;   $0056E4: 2 caller(s)
-;   $0056F3: 1 caller(s)
-;   $005B4F: 8 caller(s)
-;   $005B62: 4 caller(s)
-;   $005B6F: 2 caller(s)
-;   $005B77: 1 caller(s)
-;   $005C1C: 4 caller(s)
-;   $005C28: 1 caller(s)
-;   $005C6C: 3 caller(s)
-;   $005C78: 1 caller(s)
-;   $005D14: 1 caller(s)
-;   $005D27: 1 caller(s)
-
-
 004000  49                      HEX     49
 
 004001  24 12                         bit  loop_idx
-004003  49 24                         eor  #$24            ; A=A^$24
+004003  49 24                         eor  #$24
 
 004005  12                      HEX     12
 
@@ -809,21 +714,21 @@ temp          EQU $3C      ; Temporary work variable
 004100  C4 0B                         cpy  clip_right
 004102  B0 09                         bcs  DrawSprite_NextRow
 004104  AD 00 00                      lda  !src_lo
-004107  49 FF                         eor  #$FF            ; A=A^$FF X=[$0004] Y=A
-004109  31 06                         and  (hgr_lo),Y         ; A=A^$FF X=[$0004] Y=A
-00410B  91 06                         sta  (hgr_lo),Y         ; A=A^$FF X=[$0004] Y=A
-00410D  EE 05 41                      inc  $4105           ; A=A^$FF X=[$0004] Y=A
-004110  D0 03                         bne  DrawSprite_IncCol ; A=A^$FF X=[$0004] Y=A
-004112  EE 06 41                      inc  $4106           ; A=A^$FF X=[$0004] Y=A
-004115  C8                            iny                  ; A=A^$FF X=[$0004] Y=Y+$01
-004116  C4 02                         cpy  col_ctr             ; A=A^$FF X=[$0004] Y=Y+$01
-004118  90 DE                         bcc  DrawSprite_ColLoop ; A=A^$FF X=[$0004] Y=Y+$01
+004107  49 FF                         eor  #$FF
+004109  31 06                         and  (hgr_lo),Y
+00410B  91 06                         sta  (hgr_lo),Y
+00410D  EE 05 41                      inc  $4105
+004110  D0 03                         bne  DrawSprite_IncCol
+004112  EE 06 41                      inc  $4106
+004115  C8                            iny
+004116  C4 02                         cpy  col_ctr
+004118  90 DE                         bcc  DrawSprite_ColLoop
 
-00411A  E8                            inx                  ; A=A^$FF X=X+$01 Y=Y+$01
-00411B  E4 05                         cpx  sprite_h             ; A=A^$FF X=X+$01 Y=Y+$01
-00411D  90 C1                         bcc  DrawSprite_RowLoop ; A=A^$FF X=X+$01 Y=Y+$01
+00411A  E8                            inx
+00411B  E4 05                         cpx  sprite_h
+00411D  90 C1                         bcc  DrawSprite_RowLoop
 
-00411F  60                            rts                  ; A=A^$FF X=X+$01 Y=Y+$01
+00411F  60                            rts
 
 
 ; INIT HI-RES ($4120)
@@ -852,12 +757,10 @@ temp          EQU $3C      ; Temporary work variable
 00412E  EE 2A 41                      inc  $412A
 004131  CA                            dex
 004132  D0 F4                         bne  InitHiRes_ClearLoop
-; === End of loop (counter: X) ===
 
-; -- video_mode_read: Enable graphics mode --
-004134  AD 50 C0                      lda  TXTCLR          ; TXTCLR - Enable graphics mode {Video} <video_mode_read>
-004137  AD 57 C0                      lda  HIRES           ; HIRES - Hi-res graphics mode {Video} <video_mode_read>
-00413A  AD 52 C0                      lda  MIXCLR          ; MIXCLR - Full screen graphics {Video} <video_mode_read>
+004134  AD 50 C0                      lda  TXTCLR          ; TXTCLR - Enable graphics mode
+004137  AD 57 C0                      lda  HIRES           ; HIRES - Hi-res graphics mode
+00413A  AD 52 C0                      lda  MIXCLR          ; MIXCLR - Full screen graphics
 00413D  60                            rts
 
 
@@ -870,9 +773,9 @@ temp          EQU $3C      ; Temporary work variable
 
 00413E  A6 08                         ldx  clip_top
 
-004140  BD 6C 41                      lda  $416C,X         ; -> $418B
+004140  BD 6C 41                      lda  $416C,X
 004143  85 06                         sta  hgr_lo
-004145  BD 2C 42                      lda  $422C,X         ; -> $424B
+004145  BD 2C 42                      lda  $422C,X
 004148  85 07                         sta  hgr_hi
 00414A  A4 0A                         ldy  clip_left
 00414C  A9 00                         lda  #$00
@@ -907,7 +810,6 @@ temp          EQU $3C      ; Temporary work variable
 004169  85 09                         sta  clip_bot
 00416B  60                            rts
 
-; --- HGR Line Address Table (low bytes) - 192 entries ---
 
 ; ── HGR Line Address Table (Low Bytes) ───────────────────────────
 ; 192 entries: one per scanline row (0-191).
@@ -921,18 +823,14 @@ temp          EQU $3C      ; Temporary work variable
 00417C  00000000                HEX     00000000 00000000 80808080 80808080
 00418C  00000000                HEX     00000000 00000000 80808080 80808080
 00419C  00000000                HEX     00000000 00000000 80808080 80808080
-; String: "((((((((((((((((((((((((((((((((((((((("
 0041AC  28282828                HEX     28282828 28282828 A8A8A8A8 A8A8A8A8
 0041BC  28282828                HEX     28282828 28282828 A8A8A8A8 A8A8A8A8
 0041CC  28282828                HEX     28282828 28282828 A8A8A8A8 A8A8A8A8
-; String: "(((((((((((((((PPPPPPPPPPPPPPPPPPPPPPPP"
 0041DC  28282828                HEX     28282828 28282828 A8A8A8A8 A8A8A8A8
 0041EC  50505050                HEX     50505050 50505050 D0D0D0D0 D0D0D0D0
 0041FC  50505050                HEX     50505050 50505050 D0D0D0D0 D0D0D0D0
 00420C  50505050                HEX     50505050 50505050 D0D0D0D0 D0D0D0D0
 00421C  50505050                HEX     50505050 50505050 D0D0D0D0 D0D0D0D0
-; String: "$(,048< $(,048<!%)-159=!%)-159="
-; --- HGR Line Address Table (high bytes) - 192 entries ---
 
 ; ── HGR Line Address Table (High Bytes) ──────────────────────────
 ; 192 entries matching the low-byte table above.
@@ -947,7 +845,6 @@ temp          EQU $3C      ; Temporary work variable
 00428C  22262A2E                HEX     22262A2E 32363A3E 22262A2E 32363A3E
 00429C  23272B2F                HEX     23272B2F 33373B3F 23272B2F 33373B3F
 0042AC  2024282C                HEX     2024282C 3034383C 2024282C 3034383C
-; String: "%)-159=!%)-159=\x22&*.26:>\x22&*.26:>#"
 0042BC  2125292D                HEX     2125292D 3135393D 2125292D 3135393D
 0042CC  22262A2E                HEX     22262A2E 32363A3E 22262A2E 32363A3E
 0042DC  23272B2F                HEX     23272B2F 33373B3F 23272B2F 33373B3F
@@ -967,11 +864,11 @@ temp          EQU $3C      ; Temporary work variable
 0042EE  4A                            lsr  a
 0042EF  4A                            lsr  a
 0042F0  4A                            lsr  a
-0042F1  29 0F                         and  #$0F            ; A=A&$0F X=$0020 Y=$0002
-0042F3  20 16 04                      jsr  $0416           ; A=A&$0F X=$0020 Y=$0002
+0042F1  29 0F                         and  #$0F
+0042F3  20 16 04                      jsr  $0416
 0042F6  68                            pla
-0042F7  29 0F                         and  #$0F            ; A=A&$0F X=$0020 Y=$0002
-0042F9  4C 16 04                      jmp  $0416           ; A=A&$0F X=$0020 Y=$0002
+0042F7  29 0F                         and  #$0F
+0042F9  4C 16 04                      jmp  $0416
 
 
 
@@ -987,55 +884,55 @@ temp          EQU $3C      ; Temporary work variable
 004300  A9 08                         lda  #$08
 004302  85 04                         sta  sprite_calc
 004304  A9 0F                         lda  #$0F
-004306  20 16 04                      jsr  $0416           ; Call $000416(A)
+004306  20 16 04                      jsr  $0416
 004309  A9 01                         lda  #$01
 00430B  85 02                         sta  col_ctr
 00430D  A9 10                         lda  #$10
 00430F  85 04                         sta  sprite_calc
 004311  A9 10                         lda  #$10
-004313  20 16 04                      jsr  $0416           ; Call $000416(A)
+004313  20 16 04                      jsr  $0416
 004316  A9 01                         lda  #$01
 004318  85 02                         sta  col_ctr
 00431A  A9 A7                         lda  #$A7
 00431C  85 04                         sta  sprite_calc
 00431E  A9 15                         lda  #$15
-004320  20 16 04                      jsr  $0416           ; Call $000416(A)
+004320  20 16 04                      jsr  $0416
 004323  A9 01                         lda  #$01
 004325  85 02                         sta  col_ctr
 004327  A9 AF                         lda  #$AF
 004329  85 04                         sta  sprite_calc
 00432B  A9 12                         lda  #$12
-00432D  20 16 04                      jsr  $0416           ; Call $000416(A)
+00432D  20 16 04                      jsr  $0416
 004330  A9 01                         lda  #$01
 004332  85 02                         sta  col_ctr
 004334  A9 B7                         lda  #$B7
 004336  85 04                         sta  sprite_calc
 004338  A9 13                         lda  #$13
-00433A  20 16 04                      jsr  $0416           ; Call $000416(A)
+00433A  20 16 04                      jsr  $0416
 00433D  A9 01                         lda  #$01
 00433F  85 02                         sta  col_ctr
 004341  A9 4C                         lda  #$4C
 004343  85 04                         sta  sprite_calc
 004345  A9 0A                         lda  #$0A
-004347  20 16 04                      jsr  $0416           ; Call $000416(A)
+004347  20 16 04                      jsr  $0416
 00434A  A9 02                         lda  #$02
 00434C  85 02                         sta  col_ctr
 00434E  A9 64                         lda  #$64
 004350  85 04                         sta  sprite_calc
 004352  A9 14                         lda  #$14
-004354  20 16 04                      jsr  $0416           ; Call $000416(A)
+004354  20 16 04                      jsr  $0416
 004357  A9 01                         lda  #$01
 004359  85 02                         sta  col_ctr
 00435B  A9 6C                         lda  #$6C
 00435D  85 04                         sta  sprite_calc
 00435F  A9 0A                         lda  #$0A
-004361  20 16 04                      jsr  $0416           ; Call $000416(A)
+004361  20 16 04                      jsr  $0416
 004364  A9 01                         lda  #$01
 004366  85 02                         sta  col_ctr
 004368  A9 84                         lda  #$84
 00436A  85 04                         sta  sprite_calc
 00436C  A9 19                         lda  #$19
-00436E  20 16 04                      jsr  $0416           ; Call $000416(A)
+00436E  20 16 04                      jsr  $0416
 004371  20 87 43                      jsr  InitGameVarsB
 004374  20 9E 43                      jsr  InitGameVarsC
 004377  4C CD 43                      jmp  PerFrameUpdate
@@ -1070,10 +967,10 @@ temp          EQU $3C      ; Temporary work variable
 00438B  A9 54                         lda  #$54
 00438D  85 04                         sta  sprite_calc
 00438F  A5 0D                         lda  score_hi
-004391  20 EC 42                      jsr  PrintHexByte    ; Call $0042EC(A)
+004391  20 EC 42                      jsr  PrintHexByte
 
 004394  A5 0C                         lda  score_lo
-004396  20 EC 42                      jsr  PrintHexByte    ; Call $0042EC(A)
+004396  20 EC 42                      jsr  PrintHexByte
 
 004399  A9 00                         lda  #$00
 00439B  4C 16 04                      jmp  $0416
@@ -1152,9 +1049,9 @@ temp          EQU $3C      ; Temporary work variable
 ;      "super shot" which fires all four directions at once but has
 ;      limited uses (starts at 3, gains 1 per difficulty increase).
 
-0043E0  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off {Keyboard} <keyboard_read>
+0043E0  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off
 0043E3  10 12                         bpl  $43F7
-0043E5  8D 10 C0                      sta  CLRKBD          ; KBDSTRB - Clear keyboard strobe {Keyboard} <keyboard_strobe>
+0043E5  8D 10 C0                      sta  CLRKBD          ; KBDSTRB - Clear keyboard strobe
 0043E8  C9 9B                         cmp  #$9B
 0043EA  D0 03                         bne  $43EF
 0043EC  85 36                         sta  fire_req
@@ -1232,9 +1129,9 @@ temp          EQU $3C      ; Temporary work variable
 
 00447A  85 05             loc_00447A  sta  $05
 00447C  A2 60                         ldx  #$60
-00447E  BD 6C 41                      lda  $416C,X         ; -> $41CC
+00447E  BD 6C 41                      lda  $416C,X
 004481  85 06                         sta  hgr_lo
-004483  BD 2C 42                      lda  $422C,X         ; -> $428C
+004483  BD 2C 42                      lda  $422C,X
 004486  85 07                         sta  hgr_hi
 004488  A9 00                         lda  #$00
 
@@ -1260,9 +1157,9 @@ temp          EQU $3C      ; Temporary work variable
 00449C  A6 19                         ldx  draw_y
 00449E  A5 1A                         lda  draw_y_hi
 0044A0  D0 0F                         bne  $44B1
-0044A2  BD AA 47                      lda  $47AA,X         ; -> $480A
+0044A2  BD AA 47                      lda  $47AA,X
 0044A5  85 02                         sta  col_ctr
-0044A7  BD 92 46                      lda  $4692,X         ; -> $46F2
+0044A7  BD 92 46                      lda  $4692,X
 0044AA  AA                            tax
 0044AB  BD D3 48                      lda  $48D3,X
 0044AE  4C BD 44                      jmp  loc_0044BD
@@ -1331,7 +1228,7 @@ temp          EQU $3C      ; Temporary work variable
 004510  86 12                         stx  loop_idx
 
 004512  A6 12             loc_004512  ldx  $12
-004514  BD 54 5D                      lda  $5D54,X         ; -> $5D57
+004514  BD 54 5D                      lda  $5D54,X
 004517  F0 61                         beq  loc_00457A
 004519  20 C4 44                      jsr  DrawHitFlash
 
@@ -1342,45 +1239,45 @@ temp          EQU $3C      ; Temporary work variable
 004524  F0 14                         beq  $453A
 004526  E0 01                         cpx  #$01
 004528  F0 30                         beq  $455A
-00452A  BD 50 5D                      lda  $5D50,X         ; -> $5D53
+00452A  BD 50 5D                      lda  $5D50,X
 00452D  18                            clc
-00452E  69 01                         adc  #$01            ; A=A+$01 X=$0003 Y=$001A
-004530  C9 60                         cmp  #$60            ; A=A+$01 X=$0003 Y=$001A
-004532  B0 46                         bcs  loc_00457A      ; A=A+$01 X=$0003 Y=$001A
-004534  9D 50 5D                      sta  $5D50,X         ; -> $5D53 ; A=A+$01 X=$0003 Y=$001A
-004537  4C 77 45                      jmp  loc_004577      ; A=A+$01 X=$0003 Y=$001A
-00453A  BD 50 5D                      lda  $5D50,X         ; -> $5D53 ; A=A+$01 X=$0003 Y=$001A
-00453D  38                            sec                  ; A=A+$01 X=$0003 Y=$001A
-00453E  E9 01                         sbc  #$01            ; A=A-$01 X=$0003 Y=$001A
-004540  C9 60                         cmp  #$60            ; A=A-$01 X=$0003 Y=$001A
-004542  90 36                         bcc  loc_00457A      ; A=A-$01 X=$0003 Y=$001A
-004544  9D 50 5D                      sta  $5D50,X         ; -> $5D53 ; A=A-$01 X=$0003 Y=$001A
-004547  4C 77 45                      jmp  loc_004577      ; A=A-$01 X=$0003 Y=$001A
-00454A  BD 48 5D                      lda  $5D48,X         ; -> $5D4B ; A=A-$01 X=$0003 Y=$001A
-00454D  18                            clc                  ; A=A-$01 X=$0003 Y=$001A
-00454E  69 01                         adc  #$01            ; A=A+$01 X=$0003 Y=$001A
-004550  C9 AB                         cmp  #$AB            ; A=A+$01 X=$0003 Y=$001A
-004552  B0 26                         bcs  loc_00457A      ; A=A+$01 X=$0003 Y=$001A
-004554  9D 48 5D                      sta  $5D48,X         ; -> $5D4B ; A=A+$01 X=$0003 Y=$001A
-004557  4C 77 45                      jmp  loc_004577      ; A=A+$01 X=$0003 Y=$001A
-00455A  BD 4C 5D                      lda  $5D4C,X         ; -> $5D4F ; A=A+$01 X=$0003 Y=$001A
-00455D  D0 07                         bne  $4566           ; A=A+$01 X=$0003 Y=$001A
-00455F  BD 48 5D                      lda  $5D48,X         ; -> $5D4B ; A=A+$01 X=$0003 Y=$001A
-004562  C9 AB                         cmp  #$AB            ; A=A+$01 X=$0003 Y=$001A
-004564  90 14                         bcc  loc_00457A      ; A=A+$01 X=$0003 Y=$001A
-004566  BD 48 5D                      lda  $5D48,X         ; -> $5D4B ; A=A+$01 X=$0003 Y=$001A
-004569  38                            sec                  ; A=A+$01 X=$0003 Y=$001A
-00456A  E9 01                         sbc  #$01            ; A=A-$01 X=$0003 Y=$001A
-00456C  9D 48 5D                      sta  $5D48,X         ; -> $5D4B ; A=A-$01 X=$0003 Y=$001A
-00456F  BD 4C 5D                      lda  $5D4C,X         ; -> $5D4F ; A=A-$01 X=$0003 Y=$001A
-004572  E9 00                         sbc  #$00            ; A=A X=$0003 Y=$001A
-004574  9D 4C 5D                      sta  $5D4C,X         ; -> $5D4F ; A=A X=$0003 Y=$001A
-004577  20 99 44          loc_004577  jsr  DrawProjectile  ; A=A X=$0003 Y=$001A
+00452E  69 01                         adc  #$01
+004530  C9 60                         cmp  #$60
+004532  B0 46                         bcs  loc_00457A
+004534  9D 50 5D                      sta  $5D50,X
+004537  4C 77 45                      jmp  loc_004577
+00453A  BD 50 5D                      lda  $5D50,X
+00453D  38                            sec
+00453E  E9 01                         sbc  #$01
+004540  C9 60                         cmp  #$60
+004542  90 36                         bcc  loc_00457A
+004544  9D 50 5D                      sta  $5D50,X
+004547  4C 77 45                      jmp  loc_004577
+00454A  BD 48 5D                      lda  $5D48,X
+00454D  18                            clc
+00454E  69 01                         adc  #$01
+004550  C9 AB                         cmp  #$AB
+004552  B0 26                         bcs  loc_00457A
+004554  9D 48 5D                      sta  $5D48,X
+004557  4C 77 45                      jmp  loc_004577
+00455A  BD 4C 5D                      lda  $5D4C,X
+00455D  D0 07                         bne  $4566
+00455F  BD 48 5D                      lda  $5D48,X
+004562  C9 AB                         cmp  #$AB
+004564  90 14                         bcc  loc_00457A
+004566  BD 48 5D                      lda  $5D48,X
+004569  38                            sec
+00456A  E9 01                         sbc  #$01
+00456C  9D 48 5D                      sta  $5D48,X
+00456F  BD 4C 5D                      lda  $5D4C,X
+004572  E9 00                         sbc  #$00
+004574  9D 4C 5D                      sta  $5D4C,X
+004577  20 99 44          loc_004577  jsr  DrawProjectile
 
-00457A  C6 12             loc_00457A  dec  $12             ; A=A X=$0003 Y=$001A
-00457C  10 94                         bpl  loc_004512      ; A=A X=$0003 Y=$001A
+00457A  C6 12             loc_00457A  dec  $12
+00457C  10 94                         bpl  loc_004512
 
-00457E  60                            rts                  ; A=A X=$0003 Y=$001A
+00457E  60                            rts
 
 
 ; MOVE ALL LASERS ($457F)
@@ -1400,102 +1297,102 @@ temp          EQU $3C      ; Temporary work variable
 ;      (~0.6 seconds), slow enough to track visually. One projectile
 ;      per direction keeps the logic simple and the screen readable.
 
-00457F  A2 03                         ldx  #$03            ; A=A X=$0003 Y=$001A
-004581  86 12                         stx  loop_idx             ; A=A X=$0003 Y=$001A
+00457F  A2 03                         ldx  #$03
+004581  86 12                         stx  loop_idx
 
-004583  A6 12             loc_004583  ldx  $12             ; A=A X=$0003 Y=$001A
-004585  BD 58 5D                      lda  $5D58,X         ; -> $5D5B ; A=A X=$0003 Y=$001A
-004588  F0 6F                         beq  loc_0045F9      ; A=A X=$0003 Y=$001A
-00458A  E0 03                         cpx  #$03            ; A=A X=$0003 Y=$001A
-00458C  F0 41                         beq  $45CF           ; A=A X=$0003 Y=$001A
-00458E  E0 02                         cpx  #$02            ; A=A X=$0003 Y=$001A
-004590  F0 28                         beq  $45BA           ; A=A X=$0003 Y=$001A
-004592  E0 01                         cpx  #$01            ; A=A X=$0003 Y=$001A
-004594  F0 68                         beq  $45FE           ; A=A X=$0003 Y=$001A
-004596  BD 64 5D                      lda  $5D64,X         ; -> $5D67 ; A=A X=$0003 Y=$001A
-004599  F0 5E                         beq  loc_0045F9      ; A=A X=$0003 Y=$001A
-00459B  85 04                         sta  sprite_calc             ; A=A X=$0003 Y=$001A
-00459D  38                            sec                  ; A=A X=$0003 Y=$001A
-00459E  E9 03                         sbc  #$03            ; A=A-$03 X=$0003 Y=$001A
-0045A0  B0 02                         bcs  irq_0045A4      ; A=A-$03 X=$0003 Y=$001A
+004583  A6 12             loc_004583  ldx  $12
+004585  BD 58 5D                      lda  $5D58,X
+004588  F0 6F                         beq  loc_0045F9
+00458A  E0 03                         cpx  #$03
+00458C  F0 41                         beq  $45CF
+00458E  E0 02                         cpx  #$02
+004590  F0 28                         beq  $45BA
+004592  E0 01                         cpx  #$01
+004594  F0 68                         beq  $45FE
+004596  BD 64 5D                      lda  $5D64,X
+004599  F0 5E                         beq  loc_0045F9
+00459B  85 04                         sta  sprite_calc
+00459D  38                            sec
+00459E  E9 03                         sbc  #$03
+0045A0  B0 02                         bcs  irq_0045A4
 0045A2  A9 00                         lda  #$00
 
 0045A4  85 1E             irq_0045A4  sta  $1E
-0045A6  9D 64 5D                      sta  $5D64,X         ; -> $5D67
-0045A9  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F
+0045A6  9D 64 5D                      sta  $5D64,X
+0045A9  BD 5C 5D                      lda  $5D5C,X
 0045AC  85 19                         sta  draw_y
 0045AE  85 1C                         sta  target_x
-0045B0  BD 60 5D                      lda  $5D60,X         ; -> $5D63
+0045B0  BD 60 5D                      lda  $5D60,X
 0045B3  85 1A                         sta  draw_y_hi
 0045B5  85 1D                         sta  target_x_hi
 0045B7  4C F3 45                      jmp  loc_0045F3
-0045BA  BD 64 5D                      lda  $5D64,X         ; -> $5D67
+0045BA  BD 64 5D                      lda  $5D64,X
 0045BD  C9 BF                         cmp  #$BF
 0045BF  F0 38                         beq  loc_0045F9
 0045C1  85 04                         sta  sprite_calc
 0045C3  18                            clc
-0045C4  69 03                         adc  #$03            ; A=A+$03 X=$0003 Y=$001A
-0045C6  C9 BF                         cmp  #$BF            ; A=A+$03 X=$0003 Y=$001A
-0045C8  90 DA                         bcc  irq_0045A4      ; A=A+$03 X=$0003 Y=$001A
+0045C4  69 03                         adc  #$03
+0045C6  C9 BF                         cmp  #$BF
+0045C8  90 DA                         bcc  irq_0045A4
 
 0045CA  A9 BF                         lda  #$BF
 0045CC  4C A4 45                      jmp  irq_0045A4
 
-0045CF  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F
+0045CF  BD 5C 5D                      lda  $5D5C,X
 0045D2  C9 3E                         cmp  #$3E
 0045D4  90 23                         bcc  loc_0045F9
 0045D6  85 1C                         sta  target_x
 0045D8  38                            sec
-0045D9  E9 03                         sbc  #$03            ; A=A-$03 X=$0003 Y=$001A
-0045DB  C9 3E                         cmp  #$3E            ; A=A-$03 X=$0003 Y=$001A
-0045DD  B0 02                         bcs  $45E1           ; A=A-$03 X=$0003 Y=$001A
+0045D9  E9 03                         sbc  #$03
+0045DB  C9 3E                         cmp  #$3E
+0045DD  B0 02                         bcs  $45E1
 0045DF  A9 3E                         lda  #$3E
 0045E1  85 19                         sta  draw_y
-0045E3  9D 5C 5D                      sta  $5D5C,X         ; -> $5D5F
+0045E3  9D 5C 5D                      sta  $5D5C,X
 0045E6  A9 00                         lda  #$00
 0045E8  85 1D                         sta  target_x_hi
 0045EA  85 1A                         sta  draw_y_hi
 
-0045EC  BD 64 5D          loc_0045EC  lda  $5D64,X         ; -> $5D67
+0045EC  BD 64 5D          loc_0045EC  lda  $5D64,X
 0045EF  85 1E                         sta  target_y
 0045F1  85 04                         sta  sprite_calc
 0045F3  20 40 49          loc_0045F3  jsr  UpdateAlienAnim
-0045F6  8D 30 C0                      sta  SPKR            ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
+0045F6  8D 30 C0                      sta  SPKR            ; SPKR - Speaker toggle
 
 0045F9  C6 12             loc_0045F9  dec  $12
 0045FB  10 86                         bpl  loc_004583
 
 0045FD  60                            rts
-0045FE  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F
+0045FE  BD 5C 5D                      lda  $5D5C,X
 004601  C9 17                         cmp  #$17
-004603  BD 60 5D                      lda  $5D60,X         ; -> $5D63
-004606  E9 01                         sbc  #$01            ; A=A-$01 X=$0003 Y=$001A
-004608  B0 EF                         bcs  loc_0045F9      ; A=A-$01 X=$0003 Y=$001A
+004603  BD 60 5D                      lda  $5D60,X
+004606  E9 01                         sbc  #$01
+004608  B0 EF                         bcs  loc_0045F9
 
-00460A  BD 60 5D                      lda  $5D60,X         ; -> $5D63 ; A=A-$01 X=$0003 Y=$001A
-00460D  85 1A                         sta  draw_y_hi             ; A=A-$01 X=$0003 Y=$001A
-00460F  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F ; A=A-$01 X=$0003 Y=$001A
-004612  85 19                         sta  draw_y             ; A=A-$01 X=$0003 Y=$001A
-004614  18                            clc                  ; A=A-$01 X=$0003 Y=$001A
-004615  69 03                         adc  #$03            ; A=A+$03 X=$0003 Y=$001A
-004617  9D 5C 5D                      sta  $5D5C,X         ; -> $5D5F ; A=A+$03 X=$0003 Y=$001A
-00461A  85 1C                         sta  target_x             ; A=A+$03 X=$0003 Y=$001A
-00461C  BD 60 5D                      lda  $5D60,X         ; -> $5D63 ; A=A+$03 X=$0003 Y=$001A
-00461F  69 00                         adc  #$00            ; A=A X=$0003 Y=$001A
-004621  9D 60 5D                      sta  $5D60,X         ; -> $5D63 ; A=A X=$0003 Y=$001A
-004624  85 1D                         sta  target_x_hi             ; A=A X=$0003 Y=$001A
+00460A  BD 60 5D                      lda  $5D60,X
+00460D  85 1A                         sta  draw_y_hi
+00460F  BD 5C 5D                      lda  $5D5C,X
+004612  85 19                         sta  draw_y
+004614  18                            clc
+004615  69 03                         adc  #$03
+004617  9D 5C 5D                      sta  $5D5C,X
+00461A  85 1C                         sta  target_x
+00461C  BD 60 5D                      lda  $5D60,X
+00461F  69 00                         adc  #$00
+004621  9D 60 5D                      sta  $5D60,X
+004624  85 1D                         sta  target_x_hi
 004626  A5 1C                         lda  target_x
 004628  C9 17                         cmp  #$17
 00462A  A5 1D                         lda  target_x_hi
-00462C  E9 01                         sbc  #$01            ; A=A-$01 X=$0003 Y=$001A
-00462E  90 BC                         bcc  loc_0045EC      ; A=A-$01 X=$0003 Y=$001A
+00462C  E9 01                         sbc  #$01
+00462E  90 BC                         bcc  loc_0045EC
 
 004630  A9 17                         lda  #$17
-004632  9D 5C 5D                      sta  $5D5C,X         ; -> $5D5F
+004632  9D 5C 5D                      sta  $5D5C,X
 004635  85 1C                         sta  target_x
 004637  A9 01                         lda  #$01
 004639  85 1D                         sta  target_x_hi
-00463B  9D 60 5D                      sta  $5D60,X         ; -> $5D63
+00463B  9D 60 5D                      sta  $5D60,X
 00463E  4C EC 45                      jmp  loc_0045EC
 
 
@@ -1530,24 +1427,24 @@ temp          EQU $3C      ; Temporary work variable
 00465A  86 14                         stx  $14
 00465C  84 15                         sty  $15
 00465E  A6 04                         ldx  sprite_calc
-004660  BD 6C 41                      lda  $416C,X         ; -> $416F
+004660  BD 6C 41                      lda  $416C,X
 004663  85 06                         sta  hgr_lo
-004665  BD 2C 42                      lda  $422C,X         ; -> $422F
+004665  BD 2C 42                      lda  $422C,X
 004668  85 07                         sta  hgr_hi
 00466A  A6 19                         ldx  draw_y
 00466C  A5 1A                         lda  draw_y_hi
 00466E  D0 11                         bne  loc_004681
-004670  BD 92 46                      lda  $4692,X         ; -> $4695
+004670  BD 92 46                      lda  $4692,X
 004673  85 16                         sta  draw_mask
-004675  BD AA 47                      lda  $47AA,X         ; -> $47AD
+004675  BD AA 47                      lda  $47AA,X
 004678  85 17                         sta  draw_col
 00467A  A5 13                         lda  sprite_idx
 00467C  A6 14                         ldx  $14
 00467E  A4 15                         ldy  $15
 004680  60                            rts
-004681  BD 8B 47          loc_004681  lda  $478B,X         ; -> $478E
+004681  BD 8B 47          loc_004681  lda  $478B,X
 004684  85 16                         sta  draw_mask
-004686  BD AD 48                      lda  $48AD,X         ; -> $48B0
+004686  BD AD 48                      lda  $48AD,X
 004689  85 17                         sta  draw_col
 00468B  A5 13                         lda  sprite_idx
 00468D  A6 14                         ldx  $14
@@ -1613,11 +1510,11 @@ temp          EQU $3C      ; Temporary work variable
 004915  98                            tya
 004916  48                            pha
 004917  A5 19                         lda  draw_y
-004919  29 01                         and  #$01            ; A=A&$01 X=$0003 Y=$001A
-00491B  F0 0B                         beq  $4928           ; A=A&$01 X=$0003 Y=$001A
-00491D  20 58 46                      jsr  MoveLaserDownRight ; Call $004658(2 stack)
+004919  29 01                         and  #$01
+00491B  F0 0B                         beq  $4928
+00491D  20 58 46                      jsr  MoveLaserDownRight
 
-004920  A4 17                         ldy  draw_col             ; A=A&$01 X=$0003 Y=$001A
+004920  A4 17                         ldy  draw_col
 004922  A5 16                         lda  draw_mask
 004924  11 06                         ora  (hgr_lo),Y
 004926  91 06                         sta  (hgr_lo),Y
@@ -1642,7 +1539,7 @@ temp          EQU $3C      ; Temporary work variable
 ;      precision without floating point. The Bresenham approach guarantees
 ;      every pixel position along the path is visited exactly once.
 
-004940  20 41 46                      jsr  MoveLaserUp     ; Call $004641(A, Y, 1 stack)
+004940  20 41 46                      jsr  MoveLaserUp
 
 004943  A9 00                         lda  #$00
 004945  85 1B                         sta  anim_dir
@@ -1662,8 +1559,8 @@ temp          EQU $3C      ; Temporary work variable
 004961  E5 04                         sbc  sprite_calc
 004963  85 25                         sta  delta_y
 004965  A9 00                         lda  #$00
-004967  E9 00                         sbc  #$00            ; A=A X=$0003 Y=[stk]
-004969  85 26                         sta  delta_y_hi             ; A=A X=$0003 Y=[stk]
+004967  E9 00                         sbc  #$00
+004969  85 26                         sta  delta_y_hi
 00496B  A5 24                         lda  delta_x_hi
 00496D  10 16                         bpl  loc_004985
 00496F  A9 FF                         lda  #$FF
@@ -1807,7 +1704,7 @@ temp          EQU $3C      ; Temporary work variable
 004A6E  A5 04                         lda  sprite_calc
 004A70  65 21                         adc  step_y
 004A72  85 04                         sta  sprite_calc
-004A74  20 14 49                      jsr  DrawAlienRow    ; Call $004914(A)
+004A74  20 14 49                      jsr  DrawAlienRow
 
 004A77  A5 29                         lda  line_ctr_lo
 004A79  D0 02                         bne  $4A7D
@@ -1842,7 +1739,7 @@ temp          EQU $3C      ; Temporary work variable
 004A96  85 0E                         sta  hiscore_lo
 004A98  A5 0D                         lda  score_hi
 004A9A  85 0F                         sta  hiscore_hi
-004A9C  20 9E 43                      jsr  InitGameVarsC   ; Call $00439E(A)
+004A9C  20 9E 43                      jsr  InitGameVarsC
 
 004A9F  A9 00             loc_004A9F  lda  #$00
 004AA1  85 12                         sta  loop_idx
@@ -1855,8 +1752,8 @@ temp          EQU $3C      ; Temporary work variable
 004AAD  A9 00                         lda  #$00
 004AAF  85 12                         sta  loop_idx
 004AB1  A5 11                         lda  direction
-004AB3  49 FF                         eor  #$FF            ; A=A^$FF X=$0003 Y=[stk]
-004AB5  85 11                         sta  direction             ; A=A^$FF X=$0003 Y=[stk]
+004AB3  49 FF                         eor  #$FF
+004AB5  85 11                         sta  direction
 004AB7  A9 14             loc_004AB7  lda  #$14
 004AB9  85 02                         sta  col_ctr
 004ABB  A9 42                         lda  #$42
@@ -1872,7 +1769,7 @@ temp          EQU $3C      ; Temporary work variable
 004AD0  20 28 5C                      jsr  UpdateStarTwinkleB
 004AD3  A9 40                         lda  #$40
 004AD5  20 6C 5C                      jsr  StarTwinkleC
-004AD8  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off {Keyboard} <keyboard_read>
+004AD8  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off
 004ADB  C9 8D                         cmp  #$8D
 004ADD  D0 C6                         bne  loc_004AA5
 
@@ -1896,15 +1793,15 @@ temp          EQU $3C      ; Temporary work variable
 004AE2  65 0C                         adc  score_lo
 004AE4  85 0C                         sta  score_lo
 004AE6  A5 0D                         lda  score_hi
-004AE8  69 00                         adc  #$00            ; A=A X=$0003 Y=[stk]
-004AEA  85 0D                         sta  score_hi             ; A=A X=$0003 Y=[stk]
-004AEC  D8                            cld                  ; A=A X=$0003 Y=[stk]
-004AED  C5 35                         cmp  sat_counter             ; A=A X=$0003 Y=[stk]
-004AEF  D0 18                         bne  $4B09           ; A=A X=$0003 Y=[stk]
-004AF1  E6 10                         inc  lives             ; A=A X=$0003 Y=[stk]
-004AF3  20 CD 43                      jsr  PerFrameUpdate  ; A=A X=$0003 Y=[stk]
+004AE8  69 00                         adc  #$00
+004AEA  85 0D                         sta  score_hi
+004AEC  D8                            cld
+004AED  C5 35                         cmp  sat_counter
+004AEF  D0 18                         bne  $4B09
+004AF1  E6 10                         inc  lives
+004AF3  20 CD 43                      jsr  PerFrameUpdate
 
-004AF6  F8                            sed                  ; A=A X=$0003 Y=[stk]
+004AF6  F8                            sed
 004AF7  A9 10                         lda  #$10
 004AF9  18                            clc
 004AFA  65 35                         adc  sat_counter
@@ -1935,20 +1832,20 @@ temp          EQU $3C      ; Temporary work variable
 004B10  0A                            asl  a
 004B11  0A                            asl  a
 004B12  18                            clc
-004B13  69 03                         adc  #$03            ; A=A+$03 X=$0003 Y=$0000
-004B15  AA                            tax                  ; A=A+$03 X=A Y=$0000
-004B16  A0 03                         ldy  #$03            ; A=A+$03 X=A Y=$0003
+004B13  69 03                         adc  #$03
+004B15  AA                            tax
+004B16  A0 03                         ldy  #$03
 
-004B18  BD B8 53                      lda  $53B8,X         ; A=A+$03 X=A Y=$0003
-004B1B  C9 04                         cmp  #$04            ; A=A+$03 X=A Y=$0003
-004B1D  D0 15                         bne  loc_004B34      ; A=A+$03 X=A Y=$0003
-004B1F  CA                            dex                  ; A=A+$03 X=X-$01 Y=$0003
-004B20  88                            dey                  ; A=A+$03 X=X-$01 Y=$0002
-004B21  10 F5                         bpl  $4B18           ; A=A+$03 X=X-$01 Y=$0002
+004B18  BD B8 53                      lda  $53B8,X
+004B1B  C9 04                         cmp  #$04
+004B1D  D0 15                         bne  loc_004B34
+004B1F  CA                            dex
+004B20  88                            dey
+004B21  10 F5                         bpl  $4B18
 
-004B23  20 03 04                      jsr  $0403           ; A=A+$03 X=X-$01 Y=$0002
-004B26  C9 10                         cmp  #$10            ; A=A+$03 X=X-$01 Y=$0002
-004B28  B0 05                         bcs  loc_004B2F      ; A=A+$03 X=X-$01 Y=$0002
+004B23  20 03 04                      jsr  $0403
+004B26  C9 10                         cmp  #$10
+004B28  B0 05                         bcs  loc_004B2F
 004B2A  A9 03                         lda  #$03
 004B2C  4C 36 4B                      jmp  loc_004B36
 004B2F  A9 02             loc_004B2F  lda  #$02
@@ -1988,14 +1885,14 @@ temp          EQU $3C      ; Temporary work variable
 ;      mistake. It rewards careful play over spray-and-pray.
 
 004B65  AD D6 57                      lda  $57D6
-004B68  20 3C 4C                      jsr  PlayPunishSound ; Call $004C3C(A)
+004B68  20 3C 4C                      jsr  PlayPunishSound
 004B6B  AD D6 57                      lda  $57D6
 004B6E  0A                            asl  a
 004B6F  0A                            asl  a
 004B70  18                            clc
-004B71  69 03                         adc  #$03            ; A=A+$03 X=X-$01 Y=$0010
-004B73  AA                            tax                  ; A=A+$03 X=A Y=$0010
-004B74  A0 03                         ldy  #$03            ; A=A+$03 X=A Y=$0003
+004B71  69 03                         adc  #$03
+004B73  AA                            tax
+004B74  A0 03                         ldy  #$03
 004B76  A9 05                         lda  #$05
 
 004B78  9D B8 53          loc_004B78  sta  $53B8,X
@@ -2030,7 +1927,7 @@ temp          EQU $3C      ; Temporary work variable
 004BB3  68                            pla
 004BB4  AA                            tax
 004BB5  BD D6 53                      lda  $53D6,X
-004BB8  20 C0 40                      jsr  DrawSpriteXY    ; Call $0040C0(A)
+004BB8  20 C0 40                      jsr  DrawSpriteXY
 
 004BBB  CE F8 53                      dec  $53F8
 004BBE  10 DD                         bpl  $4B9D
@@ -2149,7 +2046,7 @@ temp          EQU $3C      ; Temporary work variable
 004C64  A9 9A                         lda  #$9A
 004C66  4C 6B 4C                      jmp  loc_004C6B
 004C69  A9 90             loc_004C69  lda  #$90
-004C6B  2C 30 C0          loc_004C6B  bit  SPKR            ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
+004C6B  2C 30 C0          loc_004C6B  bit  SPKR            ; SPKR - Speaker toggle
 004C6E  4C 7F 52                      jmp  DrawSatellite
 
 
@@ -2162,7 +2059,7 @@ temp          EQU $3C      ; Temporary work variable
 004C7F  A9 9A                         lda  #$9A
 004C81  4C 86 4C                      jmp  $4C86
 004C84  A9 90             loc_004C84  lda  #$90
-004C86  2C 30 C0                      bit  SPKR            ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
+004C86  2C 30 C0                      bit  SPKR            ; SPKR - Speaker toggle
 004C89  4C A1 52                      jmp  DrawSatelliteB
 
 004C8C  000060C0                HEX     000060C0 C0000051 01A5A501 00
@@ -2205,29 +2102,29 @@ temp          EQU $3C      ; Temporary work variable
 004CC0  F0 11                         beq  $4CD3
 004CC2  B0 09                         bcs  $4CCD
 004CC4  18                            clc
-004CC5  69 04                         adc  #$04            ; A=A+$04 X=[stk] Y=$0002
-004CC7  8D 54 4C                      sta  $4C54           ; A=A+$04 X=[stk] Y=$0002
-004CCA  4C D3 4C                      jmp  $4CD3           ; A=A+$04 X=[stk] Y=$0002
-004CCD  38                            sec                  ; A=A+$04 X=[stk] Y=$0002
-004CCE  E9 04                         sbc  #$04            ; A=A-$04 X=[stk] Y=$0002
-004CD0  8D 54 4C                      sta  $4C54           ; A=A-$04 X=[stk] Y=$0002
+004CC5  69 04                         adc  #$04
+004CC7  8D 54 4C                      sta  $4C54
+004CCA  4C D3 4C                      jmp  $4CD3
+004CCD  38                            sec
+004CCE  E9 04                         sbc  #$04
+004CD0  8D 54 4C                      sta  $4C54
 004CD3  AD 55 4C                      lda  $4C55
 004CD6  CD 8D 4C                      cmp  $4C8D
 004CD9  F0 11                         beq  $4CEC
 004CDB  B0 09                         bcs  $4CE6
 004CDD  18                            clc
-004CDE  69 04                         adc  #$04            ; A=A+$04 X=[stk] Y=$0002
-004CE0  8D 55 4C                      sta  $4C55           ; A=A+$04 X=[stk] Y=$0002
-004CE3  4C EC 4C                      jmp  $4CEC           ; A=A+$04 X=[stk] Y=$0002
-004CE6  38                            sec                  ; A=A+$04 X=[stk] Y=$0002
-004CE7  E9 04                         sbc  #$04            ; A=A-$04 X=[stk] Y=$0002
-004CE9  8D 55 4C                      sta  $4C55           ; A=A-$04 X=[stk] Y=$0002
-004CEC  20 56 4C                      jsr  PlayTone        ; A=A-$04 X=[stk] Y=$0002
+004CDE  69 04                         adc  #$04
+004CE0  8D 55 4C                      sta  $4C55
+004CE3  4C EC 4C                      jmp  $4CEC
+004CE6  38                            sec
+004CE7  E9 04                         sbc  #$04
+004CE9  8D 55 4C                      sta  $4C55
+004CEC  20 56 4C                      jsr  PlayTone
 
-004CEF  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off {Keyboard} <keyboard_read>  ; <<< CHEAT CODE CHECK: Read keyboard during level animation
+004CEF  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off
 004CF2  C9 9E                         cmp  #$9E
 004CF4  D0 0E                         bne  loc_004D04
-004CF6  AD 10 C0                      lda  KBDSTRB         ; KBDSTRB - Clear keyboard strobe {Keyboard} <keyboard_strobe>
+004CF6  AD 10 C0                      lda  KBDSTRB         ; KBDSTRB - Clear keyboard strobe
 004CF9  A9 0B                         lda  #$0B
 004CFB  85 30                         sta  difficulty
 004CFD  A9 03                         lda  #$03
@@ -2238,7 +2135,7 @@ temp          EQU $3C      ; Temporary work variable
 004D06  8D 32 4D                      sta  $4D32
 
 004D09  20 1C 5C          loc_004D09  jsr  UpdateStarTwinkle
-004D0C  2C 30 C0                      bit  SPKR            ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
+004D0C  2C 30 C0                      bit  SPKR            ; SPKR - Speaker toggle
 004D0F  CE 32 4D                      dec  $4D32
 004D12  10 F5                         bpl  loc_004D09
 
@@ -2316,10 +2213,10 @@ temp          EQU $3C      ; Temporary work variable
 004D73  A2 03                         ldx  #$03
 004D75  A9 00                         lda  #$00
 
-004D77  9D B8 53                      sta  $53B8,X         ; -> $53BB
-004D7A  9D C0 53                      sta  $53C0,X         ; -> $53C3
-004D7D  9D BC 53                      sta  $53BC,X         ; -> $53BF
-004D80  9D C4 53                      sta  $53C4,X         ; -> $53C7
+004D77  9D B8 53                      sta  $53B8,X
+004D7A  9D C0 53                      sta  $53C0,X
+004D7D  9D BC 53                      sta  $53BC,X
+004D80  9D C4 53                      sta  $53C4,X
 004D83  CA                            dex
 004D84  10 F1                         bpl  $4D77
 
@@ -2342,7 +2239,7 @@ temp          EQU $3C      ; Temporary work variable
 004D89  8E BB 4D                      stx  $4DBB
 
 004D8C  AE BB 4D                      ldx  $4DBB
-004D8F  BD 58 5D                      lda  $5D58,X         ; -> $5D5B
+004D8F  BD 58 5D                      lda  $5D58,X
 004D92  F0 21                         beq  $4DB5
 004D94  E0 03                         cpx  #$03
 004D96  F0 1A                         beq  $4DB2
@@ -2350,7 +2247,7 @@ temp          EQU $3C      ; Temporary work variable
 004D9A  F0 0A                         beq  $4DA6
 004D9C  E0 01                         cpx  #$01
 004D9E  F0 0C                         beq  $4DAC
-004DA0  20 E3 4D                      jsr  AlienEvolve     ; Call $004DE3(A)
+004DA0  20 E3 4D                      jsr  AlienEvolve
 004DA3  4C B5 4D                      jmp  $4DB5
 004DA6  20 8B 4E                      jsr  AlienHitHandlerB
 004DA9  4C B5 4D                      jmp  $4DB5
@@ -2367,7 +2264,7 @@ temp          EQU $3C      ; Temporary work variable
 
 004DC4  AA                            tax
 004DC5  BD BD 4D                      lda  $4DBD,X
-004DC8  20 E0 4A                      jsr  AddScore        ; Call $004AE0(A)
+004DC8  20 E0 4A                      jsr  AddScore
 
 004DCB  A9 14                         lda  #$14
 004DCD  A0 0A                         ldy  #$0A
@@ -2424,23 +2321,23 @@ temp          EQU $3C      ; Temporary work variable
 004E06  85 04                         sta  sprite_calc
 004E08  BD B8 53                      lda  $53B8,X
 004E0B  AA                            tax
-004E0C  BD C8 53                      lda  $53C8,X         ; -> $53C9
+004E0C  BD C8 53                      lda  $53C8,X
 004E0F  20 A1 52                      jsr  DrawSatelliteB
 004E12  AE BC 4D                      ldx  $4DBC
-004E15  FE B8 53                      inc  $53B8,X         ; -> $53B9
-004E18  BD B8 53                      lda  $53B8,X         ; -> $53B9
+004E15  FE B8 53                      inc  $53B8,X
+004E18  BD B8 53                      lda  $53B8,X
 004E1B  C9 07                         cmp  #$07
 004E1D  90 05                         bcc  $4E24
 004E1F  A9 01                         lda  #$01
-004E21  9D B8 53                      sta  $53B8,X         ; -> $53B9
+004E21  9D B8 53                      sta  $53B8,X
 004E24  AD FC 53                      lda  $53FC
 004E27  85 19                         sta  draw_y
 004E29  A9 01                         lda  #$01
 004E2B  85 04                         sta  sprite_calc
-004E2D  BD B8 53                      lda  $53B8,X         ; -> $53B9
+004E2D  BD B8 53                      lda  $53B8,X
 004E30  AA                            tax
-004E31  BD C8 53                      lda  $53C8,X         ; -> $53C9
-004E34  20 7F 52                      jsr  DrawSatellite   ; Call $00527F(A)
+004E31  BD C8 53                      lda  $53C8,X
+004E34  20 7F 52                      jsr  DrawSatellite
 004E37  60                            rts
 
 
@@ -2470,36 +2367,36 @@ temp          EQU $3C      ; Temporary work variable
 004E48  AE BC 4D                      ldx  $4DBC
 004E4B  AD F1 53                      lda  $53F1
 004E4E  18                            clc
-004E4F  7D E4 53                      adc  $53E4,X         ; -> $53E5
+004E4F  7D E4 53                      adc  $53E4,X
 004E52  8D FA 53                      sta  $53FA
 004E55  85 04                         sta  sprite_calc
 004E57  A9 C4                         lda  #$C4
 004E59  85 19                         sta  draw_y
-004E5B  BD BC 53                      lda  $53BC,X         ; -> $53BD
+004E5B  BD BC 53                      lda  $53BC,X
 004E5E  AA                            tax
-004E5F  BD DD 53                      lda  $53DD,X         ; -> $54A1
-004E62  20 A1 52                      jsr  DrawSatelliteB      ; Call $0052A1(A, X)
+004E5F  BD DD 53                      lda  $53DD,X
+004E62  20 A1 52                      jsr  DrawSatelliteB
 004E65  AE BC 4D                      ldx  $4DBC
-004E68  FE BC 53                      inc  $53BC,X         ; -> $5480
-004E6B  BD BC 53                      lda  $53BC,X         ; -> $5480
+004E68  FE BC 53                      inc  $53BC,X
+004E6B  BD BC 53                      lda  $53BC,X
 004E6E  C9 07                         cmp  #$07
 004E70  90 05                         bcc  $4E77
 004E72  A9 01                         lda  #$01
-004E74  9D BC 53                      sta  $53BC,X         ; -> $5480
+004E74  9D BC 53                      sta  $53BC,X
 004E77  AD FA 53                      lda  $53FA
 004E7A  85 04                         sta  sprite_calc
 004E7C  A9 C4                         lda  #$C4
 004E7E  85 19                         sta  draw_y
-004E80  BD BC 53                      lda  $53BC,X         ; -> $5480
+004E80  BD BC 53                      lda  $53BC,X
 004E83  AA                            tax
-004E84  BD DD 53                      lda  $53DD,X         ; -> $54A1
-004E87  20 7F 52                      jsr  DrawSatellite   ; Call $00527F(A, X)
+004E84  BD DD 53                      lda  $53DD,X
+004E87  20 7F 52                      jsr  DrawSatellite
 004E8A  60                            rts
 
 004E8B  AD 66 5D                      lda  $5D66
 004E8E  C9 B4                         cmp  #$B4
 004E90  90 4D                         bcc  $4EDF
-004E92  20 0E 56                      jsr  $560E           ; Call $00560E(A)
+004E92  20 0E 56                      jsr  $560E
 004E95  F0 48                         beq  $4EDF
 004E97  8E BC 4D                      stx  $4DBC
 004E9A  20 C4 4D                      jsr  UpdateAlienPosB
@@ -2507,36 +2404,36 @@ temp          EQU $3C      ; Temporary work variable
 004E9D  AE BC 4D                      ldx  $4DBC
 004EA0  AD EE 53                      lda  $53EE
 004EA3  18                            clc
-004EA4  7D E4 53                      adc  $53E4,X         ; -> $54A8
+004EA4  7D E4 53                      adc  $53E4,X
 004EA7  8D FC 53                      sta  $53FC
 004EAA  85 19                         sta  draw_y
 004EAC  A9 B4                         lda  #$B4
 004EAE  85 04                         sta  sprite_calc
-004EB0  BD C0 53                      lda  $53C0,X         ; -> $5484
+004EB0  BD C0 53                      lda  $53C0,X
 004EB3  AA                            tax
-004EB4  BD CF 53                      lda  $53CF,X         ; -> $5483
-004EB7  20 A1 52                      jsr  DrawSatelliteB      ; Call $0052A1(A, X)
+004EB4  BD CF 53                      lda  $53CF,X
+004EB7  20 A1 52                      jsr  DrawSatelliteB
 004EBA  AE BC 4D                      ldx  $4DBC
-004EBD  FE C0 53                      inc  $53C0,X         ; -> $5474
-004EC0  BD C0 53                      lda  $53C0,X         ; -> $5474
+004EBD  FE C0 53                      inc  $53C0,X
+004EC0  BD C0 53                      lda  $53C0,X
 004EC3  C9 07                         cmp  #$07
 004EC5  90 05                         bcc  $4ECC
 004EC7  A9 01                         lda  #$01
-004EC9  9D C0 53                      sta  $53C0,X         ; -> $5474
+004EC9  9D C0 53                      sta  $53C0,X
 004ECC  AD FC 53                      lda  $53FC
 004ECF  85 19                         sta  draw_y
 004ED1  A9 B4                         lda  #$B4
 004ED3  85 04                         sta  sprite_calc
-004ED5  BD C0 53                      lda  $53C0,X         ; -> $5474
+004ED5  BD C0 53                      lda  $53C0,X
 004ED8  AA                            tax
-004ED9  BD CF 53                      lda  $53CF,X         ; -> $5483
-004EDC  20 7F 52                      jsr  DrawSatellite   ; Call $00527F(A, X)
+004ED9  BD CF 53                      lda  $53CF,X
+004EDC  20 7F 52                      jsr  DrawSatellite
 004EDF  60                            rts
 
 004EE0  AD 5F 5D                      lda  $5D5F
 004EE3  C9 46                         cmp  #$46
 004EE5  B0 4D                         bcs  $4F34
-004EE7  20 0E 56                      jsr  $560E           ; Call $00560E(A)
+004EE7  20 0E 56                      jsr  $560E
 004EEA  F0 48                         beq  $4F34
 004EEC  8E BC 4D                      stx  $4DBC
 004EEF  20 C4 4D                      jsr  UpdateAlienPosB
@@ -2544,15 +2441,15 @@ temp          EQU $3C      ; Temporary work variable
 004EF2  AE BC 4D                      ldx  $4DBC
 004EF5  AD F3 53                      lda  $53F3
 004EF8  18                            clc
-004EF9  7D E4 53                      adc  $53E4,X         ; -> $5498
+004EF9  7D E4 53                      adc  $53E4,X
 004EFC  8D FA 53                      sta  $53FA
 004EFF  85 04                         sta  sprite_calc
 004F01  A9 00                         lda  #$00
 004F03  85 19                         sta  draw_y
-004F05  BD C4 53                      lda  $53C4,X         ; -> $5478
+004F05  BD C4 53                      lda  $53C4,X
 004F08  AA                            tax
 004F09  BD D6 53                      lda  $53D6,X
-004F0C  20 A1 52                      jsr  DrawSatelliteB      ; Call $0052A1(A, X)
+004F0C  20 A1 52                      jsr  DrawSatelliteB
 004F0F  AE BC 4D                      ldx  $4DBC
 004F12  FE C4 53                      inc  $53C4,X
 004F15  BD C4 53                      lda  $53C4,X
@@ -2567,7 +2464,7 @@ temp          EQU $3C      ; Temporary work variable
 004F2A  BD C4 53                      lda  $53C4,X
 004F2D  AA                            tax
 004F2E  BD D6 53                      lda  $53D6,X
-004F31  20 7F 52                      jsr  DrawSatellite   ; Call $00527F(A, X)
+004F31  20 7F 52                      jsr  DrawSatellite
 004F34  60                            rts
 
 
@@ -2588,12 +2485,10 @@ temp          EQU $3C      ; Temporary work variable
 004F3F  EA                            nop
 004F40  88                            dey
 004F41  D0 FA                         bne  $4F3D
-; === End of loop (counter: Y) ===
 
-004F43  8D 30 C0                      sta  SPKR            ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
+004F43  8D 30 C0                      sta  SPKR            ; SPKR - Speaker toggle
 004F46  CA                            dex
 004F47  D0 F2                         bne  $4F3B
-; === End of loop (counter: X) ===
 
 004F49  A2 30                         ldx  #$30
 
@@ -2604,13 +2499,11 @@ temp          EQU $3C      ; Temporary work variable
 004F4F  EA                            nop
 004F50  88                            dey
 004F51  D0 FA                         bne  $4F4D
-; === End of loop (counter: Y) ===
 
-004F53  8D 30 C0                      sta  SPKR            ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
+004F53  8D 30 C0                      sta  SPKR            ; SPKR - Speaker toggle
 004F56  EA                            nop
 004F57  CA                            dex
 004F58  D0 F1                         bne  $4F4B
-; === End of loop (counter: X) ===
 
 004F5A  60                            rts
 
@@ -2638,7 +2531,7 @@ temp          EQU $3C      ; Temporary work variable
 004F5D  86 12                         stx  loop_idx
 
 004F5F  A6 12                         ldx  loop_idx
-004F61  BD 58 5D                      lda  $5D58,X         ; -> $5D5B
+004F61  BD 58 5D                      lda  $5D58,X
 004F64  D0 03                         bne  loc_004F69
 004F66  4C F5 4F                      jmp  loc_004FF5
 004F69  E0 03             loc_004F69  cpx  #$03
@@ -2647,58 +2540,58 @@ temp          EQU $3C      ; Temporary work variable
 004F6F  F0 18                         beq  $4F89
 004F71  E0 01                         cpx  #$01
 004F73  F0 0A                         beq  $4F7F
-004F75  BD 64 5D                      lda  $5D64,X         ; -> $5D67
+004F75  BD 64 5D                      lda  $5D64,X
 004F78  C9 26                         cmp  #$26
 004F7A  90 1E                         bcc  $4F9A
 004F7C  4C F5 4F                      jmp  loc_004FF5
-004F7F  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F
+004F7F  BD 5C 5D                      lda  $5D5C,X
 004F82  C9 E3                         cmp  #$E3
 004F84  B0 14                         bcs  $4F9A
 004F86  4C F5 4F                      jmp  loc_004FF5
-004F89  BD 64 5D                      lda  $5D64,X         ; -> $5D67
+004F89  BD 64 5D                      lda  $5D64,X
 004F8C  C9 98                         cmp  #$98
 004F8E  B0 0A                         bcs  $4F9A
 004F90  4C F5 4F                      jmp  loc_004FF5
-004F93  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F
+004F93  BD 5C 5D                      lda  $5D5C,X
 004F96  C9 71                         cmp  #$71
 004F98  B0 5B                         bcs  loc_004FF5
 004F9A  A0 03                         ldy  #$03
 004F9C  8C 01 50                      sty  $5001
 
 004F9F  AC 01 50          loc_004F9F  ldy  $5001
-004FA2  B9 12 52                      lda  $5212,Y         ; -> $5215
+004FA2  B9 12 52                      lda  $5212,Y
 004FA5  F0 49                         beq  loc_004FF0
-004FA7  B9 0E 52                      lda  $520E,Y         ; -> $5211
+004FA7  B9 0E 52                      lda  $520E,Y
 004FAA  38                            sec
 004FAB  A6 12                         ldx  loop_idx
-004FAD  FD FD 4F                      sbc  $4FFD,X         ; -> $5000
+004FAD  FD FD 4F                      sbc  $4FFD,X
 004FB0  C9 05                         cmp  #$05
 004FB2  B0 3C                         bcs  loc_004FF0
 004FB4  A9 08                         lda  #$08
 004FB6  A0 10                         ldy  #$10
-004FB8  20 35 4F                      jsr  PlaySound       ; Call $004F35(A, X, Y)
+004FB8  20 35 4F                      jsr  PlaySound
 
 004FBB  AE 01 50                      ldx  $5001
-004FBE  BD 12 52                      lda  $5212,X         ; -> $5215
-004FC1  20 E0 4A                      jsr  AddScore        ; Call $004AE0(A, X)
+004FBE  BD 12 52                      lda  $5212,X
+004FC1  20 E0 4A                      jsr  AddScore
 
 004FC4  20 E4 56                      jsr  IncreaseDifficulty
 004FC7  A6 12                         ldx  loop_idx
 004FC9  A9 00                         lda  #$00
-004FCB  9D 58 5D                      sta  $5D58,X         ; -> $5D5B
-004FCE  20 41 44                      jsr  ClearSpriteArea ; Call $004441(A, X)
+004FCB  9D 58 5D                      sta  $5D58,X
+004FCE  20 41 44                      jsr  ClearSpriteArea
 
 004FD1  20 4F 5B                      jsr  InputProcessA
 004FD4  AE 01 50                      ldx  $5001
-004FD7  DE 21 52                      dec  $5221,X         ; -> $5224
+004FD7  DE 21 52                      dec  $5221,X
 004FDA  D0 14                         bne  loc_004FF0
-004FDC  20 C9 52                      jsr  $52C9           ; Call $0052C9(X)
+004FDC  20 C9 52                      jsr  $52C9
 004FDF  AE 01 50                      ldx  $5001
-004FE2  DE 12 52                      dec  $5212,X         ; -> $5215
-004FE5  BD 12 52                      lda  $5212,X         ; -> $5215
-004FE8  9D 21 52                      sta  $5221,X         ; -> $5224
+004FE2  DE 12 52                      dec  $5212,X
+004FE5  BD 12 52                      lda  $5212,X
+004FE8  9D 21 52                      sta  $5221,X
 004FEB  F0 03                         beq  loc_004FF0
-004FED  20 C3 52                      jsr  $52C3           ; Call $0052C3(A, X)
+004FED  20 C3 52                      jsr  $52C3
 004FF0  CE 01 50          loc_004FF0  dec  $5001
 004FF3  10 AA                         bpl  loc_004F9F
 
@@ -2795,7 +2688,7 @@ temp          EQU $3C      ; Temporary work variable
 
 005227  A2 03                         ldx  #$03
 
-005229  BD 12 52          loc_005229  lda  $5212,X         ; -> $5215
+005229  BD 12 52          loc_005229  lda  $5212,X
 00522C  F0 04                         beq  loc_005232
 00522E  CA                            dex
 00522F  10 F8                         bpl  loc_005229
@@ -2812,21 +2705,21 @@ temp          EQU $3C      ; Temporary work variable
 005244  A9 02                         lda  #$02
 005246  4C 4B 52                      jmp  $524B
 005249  A9 06                         lda  #$06
-00524B  9D 12 52                      sta  $5212,X         ; -> $5214
-00524E  9D 21 52                      sta  $5221,X         ; -> $5223
+00524B  9D 12 52                      sta  $5212,X
+00524E  9D 21 52                      sta  $5221,X
 
-005251  20 03 04          loc_005251  jsr  $0403           ; Call $000403(A)
+005251  20 03 04          loc_005251  jsr  $0403
 005254  C9 F0                         cmp  #$F0
 005256  B0 F9                         bcs  loc_005251
 
 005258  8D 26 52                      sta  $5226
 00525B  A0 03                         ldy  #$03
 
-00525D  B9 12 52          loc_00525D  lda  $5212,Y         ; -> $5215
+00525D  B9 12 52          loc_00525D  lda  $5212,Y
 005260  F0 0F                         beq  loc_005271
 005262  AD 26 52                      lda  $5226
 005265  38                            sec
-005266  F9 0E 52                      sbc  $520E,Y         ; -> $5211
+005266  F9 0E 52                      sbc  $520E,Y
 005269  C9 0A                         cmp  #$0A
 00526B  90 E4                         bcc  loc_005251
 
@@ -2838,7 +2731,7 @@ temp          EQU $3C      ; Temporary work variable
 
 005274  AD 26 52                      lda  $5226
 005277  AE 25 52                      ldx  $5225
-00527A  9D 0E 52                      sta  $520E,X         ; -> $5210
+00527A  9D 0E 52                      sta  $520E,X
 00527D  60                            rts
 
 00527E  00                      HEX     00
@@ -2846,12 +2739,12 @@ temp          EQU $3C      ; Temporary work variable
 
 00527F  8D 7E 52                      sta  $527E
 005282  A5 19                         lda  draw_y
-005284  29 FE                         and  #$FE            ; A=A&$FE X=$0002 Y=$0002
-005286  AA                            tax                  ; A=A&$FE X=A Y=$0002
-005287  BD AA 47                      lda  $47AA,X         ; A=A&$FE X=A Y=$0002
-00528A  18                            clc                  ; A=A&$FE X=A Y=$0002
-00528B  69 09                         adc  #$09            ; A=A+$09 X=A Y=$0002
-00528D  85 02                         sta  col_ctr             ; A=A+$09 X=A Y=$0002
+005284  29 FE                         and  #$FE
+005286  AA                            tax
+005287  BD AA 47                      lda  $47AA,X
+00528A  18                            clc
+00528B  69 09                         adc  #$09
+00528D  85 02                         sta  col_ctr
 00528F  A5 19                         lda  draw_y
 005291  4A                            lsr  a
 005292  AA                            tax
@@ -2865,12 +2758,12 @@ temp          EQU $3C      ; Temporary work variable
 
 0052A1  8D 7E 52          DrawSatelliteB  sta  $527E
 0052A4  A5 19                         lda  draw_y
-0052A6  29 FE                         and  #$FE            ; A=A&$FE X=[$0019] Y=$0002
-0052A8  AA                            tax                  ; A=A&$FE X=A Y=$0002
-0052A9  BD AA 47                      lda  $47AA,X         ; A=A&$FE X=A Y=$0002
-0052AC  18                            clc                  ; A=A&$FE X=A Y=$0002
-0052AD  69 09                         adc  #$09            ; A=A+$09 X=A Y=$0002
-0052AF  85 02                         sta  col_ctr             ; A=A+$09 X=A Y=$0002
+0052A6  29 FE                         and  #$FE
+0052A8  AA                            tax
+0052A9  BD AA 47                      lda  $47AA,X
+0052AC  18                            clc
+0052AD  69 09                         adc  #$09
+0052AF  85 02                         sta  col_ctr
 0052B1  A5 19                         lda  draw_y
 0052B3  4A                            lsr  a
 0052B4  AA                            tax
@@ -2925,7 +2818,7 @@ temp          EQU $3C      ; Temporary work variable
 0052E5  A2 03                         ldx  #$03
 0052E7  A9 00                         lda  #$00
 
-0052E9  9D 12 52          loc_0052E9  sta  $5212,X         ; -> $5215
+0052E9  9D 12 52          loc_0052E9  sta  $5212,X
 0052EC  CA                            dex
 0052ED  10 FA                         bpl  loc_0052E9
 
@@ -2956,25 +2849,25 @@ temp          EQU $3C      ; Temporary work variable
 005304  A9 03                         lda  #$03
 005306  8D F0 52                      sta  $52F0
 005309  AE F0 52                      ldx  $52F0
-00530C  BD 12 52                      lda  $5212,X         ; -> $5214
+00530C  BD 12 52                      lda  $5212,X
 00530F  F0 25                         beq  $5336
-005311  BD 0E 52                      lda  $520E,X         ; -> $5210
+005311  BD 0E 52                      lda  $520E,X
 005314  A2 03                         ldx  #$03
 
-005316  DD 37 53                      cmp  $5337,X         ; -> $533A
+005316  DD 37 53                      cmp  $5337,X
 005319  D0 09                         bne  $5324
-00531B  20 3B 53                      jsr  $533B           ; Call $00533B(A, X)
+00531B  20 3B 53                      jsr  $533B
 00531E  AE F0 52                      ldx  $52F0
 005321  4C 2A 53                      jmp  $532A
 005324  CA                            dex
 005325  10 EF                         bpl  $5316
 
 005327  AE F0 52                      ldx  $52F0
-00532A  20 C9 52                      jsr  $52C9           ; Call $0052C9(X)
+00532A  20 C9 52                      jsr  $52C9
 
 00532D  AE F0 52                      ldx  $52F0
-005330  DE 0E 52                      dec  $520E,X         ; -> $5210
-005333  20 C3 52                      jsr  $52C3           ; Call $0052C3(X)
+005330  DE 0E 52                      dec  $520E,X
+005333  20 C3 52                      jsr  $52C3
 
 005336  60                            rts
 
@@ -2988,16 +2881,16 @@ temp          EQU $3C      ; Temporary work variable
 005337  96D61656                HEX     96D61656
 
 
-00533B  BD 54 5D                      lda  $5D54,X         ; -> $5D56
+00533B  BD 54 5D                      lda  $5D54,X
 00533E  D0 21                         bne  $5361
 005340  A9 01                         lda  #$01
-005342  9D 54 5D                      sta  $5D54,X         ; -> $5D56
-005345  BD 62 53                      lda  $5362,X         ; -> $5364
-005348  9D 48 5D                      sta  $5D48,X         ; -> $5D4A
-00534B  BD 66 53                      lda  $5366,X         ; -> $5368
-00534E  9D 4C 5D                      sta  $5D4C,X         ; -> $5D4E
-005351  BD 6A 53                      lda  $536A,X         ; -> $536C
-005354  9D 50 5D                      sta  $5D50,X         ; -> $5D52
+005342  9D 54 5D                      sta  $5D54,X
+005345  BD 62 53                      lda  $5362,X
+005348  9D 48 5D                      sta  $5D48,X
+00534B  BD 66 53                      lda  $5366,X
+00534E  9D 4C 5D                      sta  $5D4C,X
+005351  BD 6A 53                      lda  $536A,X
+005354  9D 50 5D                      sta  $5D50,X
 005357  A0 10                         ldy  #$10
 005359  A9 45                         lda  #$45
 00535B  8D 67 5B                      sta  $5B67
@@ -3037,16 +2930,16 @@ temp          EQU $3C      ; Temporary work variable
 00538B  8E 6E 53                      stx  $536E
 
 00538E  AE 6E 53                      ldx  $536E
-005391  BD 58 5D                      lda  $5D58,X         ; -> $5D5B
+005391  BD 58 5D                      lda  $5D58,X
 005394  D0 17                         bne  $53AD
 005396  A9 01                         lda  #$01
-005398  9D 58 5D                      sta  $5D58,X         ; -> $5D5B
-00539B  BD 68 5D                      lda  $5D68,X         ; -> $5D6B
-00539E  9D 5C 5D                      sta  $5D5C,X         ; -> $5D5F
-0053A1  BD 6C 5D                      lda  $5D6C,X         ; -> $5D6F
-0053A4  9D 60 5D                      sta  $5D60,X         ; -> $5D63
-0053A7  BD 70 5D                      lda  $5D70,X         ; -> $5D73
-0053AA  9D 64 5D                      sta  $5D64,X         ; -> $5D67
+005398  9D 58 5D                      sta  $5D58,X
+00539B  BD 68 5D                      lda  $5D68,X
+00539E  9D 5C 5D                      sta  $5D5C,X
+0053A1  BD 6C 5D                      lda  $5D6C,X
+0053A4  9D 60 5D                      sta  $5D60,X
+0053A7  BD 70 5D                      lda  $5D70,X
+0053AA  9D 64 5D                      sta  $5D64,X
 0053AD  CE 6E 53                      dec  $536E
 0053B0  10 DC                         bpl  $538E
 
@@ -3102,19 +2995,19 @@ temp          EQU $3C      ; Temporary work variable
 005420  8D F8 53                      sta  $53F8
 
 005423  AE F8 53                      ldx  $53F8
-005426  BD C4 53                      lda  $53C4,X         ; -> $53C7
+005426  BD C4 53                      lda  $53C4,X
 005429  F0 30                         beq  loc_00545B
 00542B  48                            pha
 00542C  AD F9 53                      lda  $53F9
 00542F  18                            clc
-005430  7D E8 53                      adc  $53E8,X         ; -> $53EB
+005430  7D E8 53                      adc  $53E8,X
 005433  85 04                         sta  sprite_calc
 005435  A9 09                         lda  #$09
 005437  85 02                         sta  col_ctr
 005439  68                            pla
 00543A  AA                            tax
 00543B  BD D6 53                      lda  $53D6,X
-00543E  20 C0 40                      jsr  DrawSpriteXY    ; Call $0040C0(A, X, Y, 2 stack)
+00543E  20 C0 40                      jsr  DrawSpriteXY
 
 005441  AE F8 53                      ldx  $53F8
 005444  AD FA 53                      lda  $53FA
@@ -3125,8 +3018,8 @@ temp          EQU $3C      ; Temporary work variable
 00544F  85 02                         sta  col_ctr
 005451  BD C4 53                      lda  $53C4,X
 005454  AA                            tax
-005455  BD D6 53                      lda  $53D6,X         ; -> $53DF
-005458  20 16 04                      jsr  $0416           ; Call $000416(A, X)
+005455  BD D6 53                      lda  $53D6,X
+005458  20 16 04                      jsr  $0416
 00545B  CE F8 53          loc_00545B  dec  $53F8
 00545E  10 C3                         bpl  $5423
 
@@ -3150,19 +3043,19 @@ temp          EQU $3C      ; Temporary work variable
 005484  8D F8 53                      sta  $53F8
 
 005487  AE F8 53                      ldx  $53F8
-00548A  BD BC 53                      lda  $53BC,X         ; -> $53C5
+00548A  BD BC 53                      lda  $53BC,X
 00548D  F0 30                         beq  loc_0054BF
 00548F  48                            pha
 005490  AD F9 53                      lda  $53F9
 005493  18                            clc
-005494  7D E8 53                      adc  $53E8,X         ; -> $53F1
+005494  7D E8 53                      adc  $53E8,X
 005497  85 04                         sta  sprite_calc
 005499  A9 25                         lda  #$25
 00549B  85 02                         sta  col_ctr
 00549D  68                            pla
 00549E  AA                            tax
 00549F  BD DD 53                      lda  $53DD,X
-0054A2  20 C0 40                      jsr  DrawSpriteXY    ; Call $0040C0(A, X, 1 stack)
+0054A2  20 C0 40                      jsr  DrawSpriteXY
 
 0054A5  AE F8 53                      ldx  $53F8
 0054A8  AD FA 53                      lda  $53FA
@@ -3173,8 +3066,8 @@ temp          EQU $3C      ; Temporary work variable
 0054B3  85 02                         sta  col_ctr
 0054B5  BD BC 53                      lda  $53BC,X
 0054B8  AA                            tax
-0054B9  BD DD 53                      lda  $53DD,X         ; -> $5402
-0054BC  20 16 04                      jsr  $0416           ; Call $000416(A, X)
+0054B9  BD DD 53                      lda  $53DD,X
+0054BC  20 16 04                      jsr  $0416
 0054BF  CE F8 53          loc_0054BF  dec  $53F8
 0054C2  10 C3                         bpl  $5487
 
@@ -3199,19 +3092,19 @@ temp          EQU $3C      ; Temporary work variable
 0054E8  8D F8 53                      sta  $53F8
 
 0054EB  AE F8 53                      ldx  $53F8
-0054EE  BD B8 53                      lda  $53B8,X         ; -> $53DD
+0054EE  BD B8 53                      lda  $53B8,X
 0054F1  F0 30                         beq  $5523
 0054F3  48                            pha
 0054F4  AD FB 53                      lda  $53FB
 0054F7  18                            clc
-0054F8  7D E4 53                      adc  $53E4,X         ; -> $5409
+0054F8  7D E4 53                      adc  $53E4,X
 0054FB  85 19                         sta  draw_y
 0054FD  A9 01                         lda  #$01
 0054FF  85 04                         sta  sprite_calc
 005501  68                            pla
 005502  AA                            tax
 005503  BD C8 53                      lda  $53C8,X
-005506  20 A1 52                      jsr  DrawSatelliteB      ; Call $0052A1(A, X, 1 stack)
+005506  20 A1 52                      jsr  DrawSatelliteB
 
 005509  AE F8 53                      ldx  $53F8
 00550C  AD FC 53                      lda  $53FC
@@ -3222,8 +3115,8 @@ temp          EQU $3C      ; Temporary work variable
 005517  85 04                         sta  sprite_calc
 005519  BD B8 53                      lda  $53B8,X
 00551C  AA                            tax
-00551D  BD C8 53                      lda  $53C8,X         ; -> $53C9
-005520  20 7F 52                      jsr  DrawSatellite   ; Call $00527F(A, X)
+00551D  BD C8 53                      lda  $53C8,X
+005520  20 7F 52                      jsr  DrawSatellite
 
 005523  CE F8 53                      dec  $53F8
 005526  10 C3                         bpl  $54EB
@@ -3248,19 +3141,19 @@ temp          EQU $3C      ; Temporary work variable
 00554C  8D F8 53                      sta  $53F8
 
 00554F  AE F8 53                      ldx  $53F8
-005552  BD C0 53                      lda  $53C0,X         ; -> $53C1
+005552  BD C0 53                      lda  $53C0,X
 005555  F0 30                         beq  $5587
 005557  48                            pha
 005558  AD FB 53                      lda  $53FB
 00555B  18                            clc
-00555C  7D E4 53                      adc  $53E4,X         ; -> $53E5
+00555C  7D E4 53                      adc  $53E4,X
 00555F  85 19                         sta  draw_y
 005561  A9 B4                         lda  #$B4
 005563  85 04                         sta  sprite_calc
 005565  68                            pla
 005566  AA                            tax
 005567  BD CF 53                      lda  $53CF,X
-00556A  20 A1 52                      jsr  DrawSatelliteB      ; Call $0052A1(A, X, 1 stack)
+00556A  20 A1 52                      jsr  DrawSatelliteB
 
 00556D  AE F8 53                      ldx  $53F8
 005570  AD FC 53                      lda  $53FC
@@ -3271,8 +3164,8 @@ temp          EQU $3C      ; Temporary work variable
 00557B  85 04                         sta  sprite_calc
 00557D  BD C0 53                      lda  $53C0,X
 005580  AA                            tax
-005581  BD CF 53                      lda  $53CF,X         ; -> $5483
-005584  20 7F 52                      jsr  DrawSatellite   ; Call $00527F(A, X)
+005581  BD CF 53                      lda  $53CF,X
+005584  20 7F 52                      jsr  DrawSatellite
 
 005587  CE F8 53                      dec  $53F8
 00558A  10 C3                         bpl  $554F
@@ -3294,47 +3187,47 @@ temp          EQU $3C      ; Temporary work variable
 005599  8D 8D 55                      sta  $558D
 00559C  EE 8F 55                      inc  $558F
 00559F  AD 8F 55                      lda  $558F
-0055A2  29 03                         and  #$03            ; A=A&$03 X=$00B4 Y=$0010
-0055A4  8D 8F 55                      sta  $558F           ; A=A&$03 X=$00B4 Y=$0010
-0055A7  AA                            tax                  ; A=A&$03 X=A Y=$0010
-0055A8  BD 54 5D                      lda  $5D54,X         ; A=A&$03 X=A Y=$0010
-0055AB  D0 32                         bne  $55DF           ; A=A&$03 X=A Y=$0010
-0055AD  20 0E 56                      jsr  $560E           ; Call $00560E(A)
-0055B0  F0 2D                         beq  $55DF           ; A=A&$03 X=A Y=$0010
-0055B2  E6 2C                         inc  timer_lo             ; A=A&$03 X=A Y=$0010
-0055B4  D0 29                         bne  $55DF           ; A=A&$03 X=A Y=$0010
+0055A2  29 03                         and  #$03
+0055A4  8D 8F 55                      sta  $558F
+0055A7  AA                            tax
+0055A8  BD 54 5D                      lda  $5D54,X
+0055AB  D0 32                         bne  $55DF
+0055AD  20 0E 56                      jsr  $560E
+0055B0  F0 2D                         beq  $55DF
+0055B2  E6 2C                         inc  timer_lo
+0055B4  D0 29                         bne  $55DF
 0055B6  A5 32                         lda  fire_rate
 0055B8  85 2C                         sta  timer_lo
 0055BA  AD 8F 55                      lda  $558F
 0055BD  0A                            asl  a
 0055BE  0A                            asl  a
 0055BF  18                            clc
-0055C0  69 03                         adc  #$03            ; A=A+$03 X=A Y=$0010
-0055C2  AA                            tax                  ; A=A+$03 X=A Y=$0010
-0055C3  BD B8 53                      lda  $53B8,X         ; A=A+$03 X=A Y=$0010
-0055C6  CA                            dex                  ; A=A+$03 X=X-$01 Y=$0010
-0055C7  A0 02                         ldy  #$02            ; A=A+$03 X=X-$01 Y=$0002
+0055C0  69 03                         adc  #$03
+0055C2  AA                            tax
+0055C3  BD B8 53                      lda  $53B8,X
+0055C6  CA                            dex
+0055C7  A0 02                         ldy  #$02
 
-0055C9  DD B8 53                      cmp  $53B8,X         ; A=A+$03 X=X-$01 Y=$0002
-0055CC  D0 0B                         bne  loc_0055D9      ; A=A+$03 X=X-$01 Y=$0002
-0055CE  CA                            dex                  ; A=A+$03 X=X-$01 Y=$0002
-0055CF  88                            dey                  ; A=A+$03 X=X-$01 Y=$0001
-0055D0  10 F7                         bpl  $55C9           ; A=A+$03 X=X-$01 Y=$0001
+0055C9  DD B8 53                      cmp  $53B8,X
+0055CC  D0 0B                         bne  loc_0055D9
+0055CE  CA                            dex
+0055CF  88                            dey
+0055D0  10 F7                         bpl  $55C9
 
-0055D2  20 03 04                      jsr  $0403           ; Call $000403(A, Y)
-0055D5  C9 80                         cmp  #$80            ; A=A+$03 X=X-$01 Y=$0001
-0055D7  B0 06                         bcs  $55DF           ; A=A+$03 X=X-$01 Y=$0001
-0055D9  AE 8F 55          loc_0055D9  ldx  $558F           ; A=A+$03 X=X-$01 Y=$0001
-0055DC  20 0C 4B                      jsr  SelectProjectileType ; Call $004B0C(X)
+0055D2  20 03 04                      jsr  $0403
+0055D5  C9 80                         cmp  #$80
+0055D7  B0 06                         bcs  $55DF
+0055D9  AE 8F 55          loc_0055D9  ldx  $558F
+0055DC  20 0C 4B                      jsr  SelectProjectileType
 
-0055DF  60                            rts                  ; A=A+$03 X=X-$01 Y=$0001
+0055DF  60                            rts
 
 0055E0  E0E000                  HEX     E0E000
 
 
-0055E3  EE E1 55          DrawAlienRowDirB  inc  $55E1           ; A=A+$03 X=X-$01 Y=$0001
-0055E6  F0 01                         beq  loc_0055E9      ; A=A+$03 X=X-$01 Y=$0001
-0055E8  60                            rts                  ; A=A+$03 X=X-$01 Y=$0001
+0055E3  EE E1 55          DrawAlienRowDirB  inc  $55E1
+0055E6  F0 01                         beq  loc_0055E9
+0055E8  60                            rts
 0055E9  AD E0 55          loc_0055E9  lda  $55E0
 0055EC  8D E1 55                      sta  $55E1
 0055EF  CE E2 55                      dec  $55E2
@@ -3448,14 +3341,14 @@ temp          EQU $3C      ; Temporary work variable
 
 
 0056C9  20 03 04          DrawAlienRowDirD  jsr  $0403
-0056CC  29 03                         and  #$03            ; A=A&$03 X=X-$01 Y=$0001
-0056CE  AA                            tax                  ; A=A&$03 X=A Y=$0001
-0056CF  BD 54 5D                      lda  $5D54,X         ; A=A&$03 X=A Y=$0001
-0056D2  F0 0E                         beq  $56E2           ; A=A&$03 X=A Y=$0001
-0056D4  8E C7 56                      stx  $56C7           ; A=A&$03 X=A Y=$0001
-0056D7  20 C4 44                      jsr  DrawHitFlash    ; Call $0044C4(A)
+0056CC  29 03                         and  #$03
+0056CE  AA                            tax
+0056CF  BD 54 5D                      lda  $5D54,X
+0056D2  F0 0E                         beq  $56E2
+0056D4  8E C7 56                      stx  $56C7
+0056D7  20 C4 44                      jsr  DrawHitFlash
 
-0056DA  AE C7 56                      ldx  $56C7           ; A=A&$03 X=A Y=$0001
+0056DA  AE C7 56                      ldx  $56C7
 0056DD  A9 00                         lda  #$00
 0056DF  9D 54 5D                      sta  $5D54,X
 0056E2  60                            rts
@@ -3535,7 +3428,7 @@ temp          EQU $3C      ; Temporary work variable
 00571A  8D D2 57                      sta  $57D2
 00571D  BD C0 57                      lda  $57C0,X
 005720  85 31                         sta  diff_steps
-005722  20 76 53                      jsr  $5376           ; Call $005376(A)
+005722  20 76 53                      jsr  $5376
 
 005725  20 76 53                      jsr  $5376
 
@@ -3550,22 +3443,22 @@ temp          EQU $3C      ; Temporary work variable
 005737  8D F2 56                      sta  $56F2
 00573A  A2 03                         ldx  #$03
 
-00573C  BD B8 53                      lda  $53B8,X         ; -> $53BB
+00573C  BD B8 53                      lda  $53B8,X
 00573F  D0 06                         bne  $5747
 005741  AD F2 56                      lda  $56F2
-005744  9D B8 53                      sta  $53B8,X         ; -> $53BB
-005747  BD C0 53                      lda  $53C0,X         ; -> $53C3
+005744  9D B8 53                      sta  $53B8,X
+005747  BD C0 53                      lda  $53C0,X
 00574A  D0 06                         bne  $5752
 00574C  AD F2 56                      lda  $56F2
-00574F  9D C0 53                      sta  $53C0,X         ; -> $53C3
-005752  BD BC 53                      lda  $53BC,X         ; -> $53BF
+00574F  9D C0 53                      sta  $53C0,X
+005752  BD BC 53                      lda  $53BC,X
 005755  D0 06                         bne  $575D
 005757  AD F2 56                      lda  $56F2
-00575A  9D BC 53                      sta  $53BC,X         ; -> $53BF
-00575D  BD C4 53                      lda  $53C4,X         ; -> $53C7
+00575A  9D BC 53                      sta  $53BC,X
+00575D  BD C4 53                      lda  $53C4,X
 005760  D0 06                         bne  loc_005768
 005762  AD F2 56                      lda  $56F2
-005765  9D C4 53                      sta  $53C4,X         ; -> $53C7
+005765  9D C4 53                      sta  $53C4,X
 005768  CA                loc_005768  dex
 005769  10 D1                         bpl  $573C
 
@@ -3654,7 +3547,7 @@ temp          EQU $3C      ; Temporary work variable
 ;      calls, so it must be explicitly cleared.)
 
 0057D7  D8                            cld
-0057D8  20 5B 41                      jsr  SetClipBounds   ; Call $00415B(2 stack)
+0057D8  20 5B 41                      jsr  SetClipBounds
 
 0057DB  20 20 41                      jsr  InitHiRes
 
@@ -3673,13 +3566,13 @@ temp          EQU $3C      ; Temporary work variable
 0057F5  A9 03                         lda  #$03
 0057F7  85 10                         sta  lives
 0057F9  85 00                         sta  src_lo
-0057FB  20 FC 42                      jsr  DrawTitleScreen ; Call $0042FC(A)
+0057FB  20 FC 42                      jsr  DrawTitleScreen
 
 
 ; Wait for RETURN key to start game
 0057FE  E6 00                         inc  src_lo
 005800  C6 01                         dec  src_hi
-005802  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off {Keyboard} <keyboard_read>
+005802  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off
 005805  C9 8D                         cmp  #$8D
 005807  D0 F5                         bne  WaitForReturn
 
@@ -3707,7 +3600,7 @@ temp          EQU $3C      ; Temporary work variable
 00580B  85 10                         sta  lives
 00580D  A9 05                         lda  #$05
 00580F  85 3A                         sta  level
-005811  20 73 4D                      jsr  LevelSetup      ; Call $004D73(A)
+005811  20 73 4D                      jsr  LevelSetup
 
 005814  A9 00                         lda  #$00
 005816  85 0C                         sta  score_lo
@@ -3715,44 +3608,44 @@ temp          EQU $3C      ; Temporary work variable
 00581A  85 11                         sta  direction
 00581C  85 34                         sta  game_flag
 00581E  85 36                         sta  fire_req
-005820  20 87 43                      jsr  InitGameVarsB   ; Call $004387(A)
+005820  20 87 43                      jsr  InitGameVarsB
 
 005823  A9 0B                         lda  #$0B
 005825  85 2B                         sta  slot_x16
 005827  85 30                         sta  difficulty
-005829  20 F3 56                      jsr  LoadDifficultyTables ; Call $0056F3(A)
+005829  20 F3 56                      jsr  LoadDifficultyTables
 
 00582C  20 70 53                      jsr  Set4DirAmmo
 
 00582F  20 77 5B                      jsr  $5B77
 005832  A9 05                         lda  #$05
 005834  85 35                         sta  sat_counter
-005836  20 E5 52                      jsr  DrawBase        ; Call $0052E5(A)
+005836  20 E5 52                      jsr  DrawBase
 
 
 ; Check if player lost a life - decrement lives, if <0 game over
 005839  A5 10                         lda  lives
 00583B  38                            sec
-00583C  E9 01                         sbc  #$01            ; A=A-$01 X=$0002 Y=$0001
-00583E  10 06                         bpl  ContinueAfterDeath      ; A=A-$01 X=$0002 Y=$0001
-005840  20 86 4A                      jsr  GameOver        ; Call $004A86(A)
+00583C  E9 01                         sbc  #$01
+00583E  10 06                         bpl  ContinueAfterDeath
+005840  20 86 4A                      jsr  GameOver
 
-005843  4C 09 58                      jmp  StartNewGame    ; A=A-$01 X=$0002 Y=$0001
+005843  4C 09 58                      jmp  StartNewGame
 
-005846  85 10             ContinueAfterDeath  sta  lives             ; A=A-$01 X=$0002 Y=$0001
-005848  20 CD 43                      jsr  PerFrameUpdate  ; A=A-$01 X=$0002 Y=$0001
+005846  85 10             ContinueAfterDeath  sta  lives
+005848  20 CD 43                      jsr  PerFrameUpdate
 
-00584B  20 3E 41                      jsr  ClearPlayfield  ; A=A-$01 X=$0002 Y=$0001
+00584B  20 3E 41                      jsr  ClearPlayfield
 
-00584E  A2 03                         ldx  #$03            ; A=A-$01 X=$0003 Y=$0001
+00584E  A2 03                         ldx  #$03
 005850  A9 00                         lda  #$00
 
-005852  9D 58 5D                      sta  $5D58,X         ; -> $5D5B
-005855  9D 54 5D                      sta  $5D54,X         ; -> $5D57
+005852  9D 58 5D                      sta  $5D58,X
+005855  9D 54 5D                      sta  $5D54,X
 005858  CA                            dex
 005859  10 F7                         bpl  $5852
 
-00585B  20 7A 43                      jsr  InitGameVarsA   ; Call $00437A(A, X)
+00585B  20 7A 43                      jsr  InitGameVarsA
 
 00585E  20 4F 5B                      jsr  InputProcessA
 005861  AD D3 57                      lda  $57D3
@@ -3762,7 +3655,7 @@ temp          EQU $3C      ; Temporary work variable
 00586C  85 2C                         sta  timer_lo
 00586E  85 2D                         sta  timer_hi
 005870  85 2E                         sta  frame_ctr
-005872  8D 10 C0                      sta  CLRKBD          ; KBDSTRB - Clear keyboard strobe {Keyboard} <keyboard_strobe>
+005872  8D 10 C0                      sta  CLRKBD          ; KBDSTRB - Clear keyboard strobe
 
 ; MAIN GAME LOOP ($5875)
 ; Each tick:
@@ -3800,7 +3693,7 @@ temp          EQU $3C      ; Temporary work variable
 ;      very next frame. The frame timer at the end throttles everything
 ;      to the difficulty-appropriate speed.
 
-005875  20 7F 45                      jsr  MoveAllLasers   ; Call $00457F(A)
+005875  20 7F 45                      jsr  MoveAllLasers
 
 005878  20 F3 52                      jsr  RedrawScreen
 
@@ -3814,7 +3707,7 @@ temp          EQU $3C      ; Temporary work variable
 00588A  A9 00                         lda  #$00
 00588C  85 36                         sta  fire_req
 00588E  4C A5 58                      jmp  FireProjectile
-005891  AD 61 C0                      lda  BUTN0           ; BUTN0 - Button 0 / Open Apple {Joystick} <joystick_read>
+005891  AD 61 C0                      lda  BUTN0           ; BUTN0 - Button 0 / Open Apple
 005894  30 05                         bmi  $589B
 005896  85 2B                         sta  slot_x16
 005898  4C C3 58                      jmp  AfterFire
@@ -3824,17 +3717,17 @@ temp          EQU $3C      ; Temporary work variable
 0058A1  A9 80                         lda  #$80
 0058A3  85 2B                         sta  slot_x16
 0058A5  A6 11                         ldx  direction
-0058A7  BD 58 5D                      lda  $5D58,X         ; -> $5D5A
+0058A7  BD 58 5D                      lda  $5D58,X
 0058AA  D0 17                         bne  AfterFire
 0058AC  A9 01                         lda  #$01
-0058AE  9D 58 5D                      sta  $5D58,X         ; -> $5D5A
-0058B1  BD 68 5D                      lda  $5D68,X         ; -> $5D6A
-0058B4  9D 5C 5D                      sta  $5D5C,X         ; -> $5D5E
-0058B7  BD 6C 5D                      lda  $5D6C,X         ; -> $5D6E
-0058BA  9D 60 5D                      sta  $5D60,X         ; -> $5D62
-0058BD  BD 70 5D                      lda  $5D70,X         ; -> $5D72
-0058C0  9D 64 5D                      sta  $5D64,X         ; -> $5D66
-0058C3  20 87 4D          AfterFire  jsr  UpdateAlienPositions ; Call $004D87(A, X)
+0058AE  9D 58 5D                      sta  $5D58,X
+0058B1  BD 68 5D                      lda  $5D68,X
+0058B4  9D 5C 5D                      sta  $5D5C,X
+0058B7  BD 6C 5D                      lda  $5D6C,X
+0058BA  9D 60 5D                      sta  $5D60,X
+0058BD  BD 70 5D                      lda  $5D70,X
+0058C0  9D 64 5D                      sta  $5D64,X
+0058C3  20 87 4D          AfterFire  jsr  UpdateAlienPositions
 
 0058C6  A2 03                         ldx  #$03
 0058C8  8E D6 57                      stx  $57D6
@@ -3843,9 +3736,9 @@ temp          EQU $3C      ; Temporary work variable
 ; Direction-specific coordinate comparisons determine hits.
 ; On hit: alien evolves, play sound, add 1 point.
 0058CB  AE D6 57                      ldx  $57D6
-0058CE  BD 58 5D                      lda  $5D58,X         ; -> $5D5B
+0058CE  BD 58 5D                      lda  $5D58,X
 0058D1  F0 08                         beq  $58DB
-0058D3  BD 54 5D                      lda  $5D54,X         ; -> $5D57
+0058D3  BD 54 5D                      lda  $5D54,X
 0058D6  F0 03                         beq  $58DB
 0058D8  4C DE 58                      jmp  $58DE
 0058DB  4C 6E 59                      jmp  $596E
@@ -3855,35 +3748,35 @@ temp          EQU $3C      ; Temporary work variable
 0058E4  F0 22                         beq  $5908
 0058E6  E0 01                         cpx  #$01
 0058E8  F0 0B                         beq  $58F5
-0058EA  BD 64 5D                      lda  $5D64,X         ; -> $5D67
-0058ED  DD 50 5D                      cmp  $5D50,X         ; -> $5D53
+0058EA  BD 64 5D                      lda  $5D64,X
+0058ED  DD 50 5D                      cmp  $5D50,X
 0058F0  90 2C                         bcc  $591E
 0058F2  4C 6E 59                      jmp  $596E
-0058F5  BD 60 5D                      lda  $5D60,X         ; -> $5D63
-0058F8  DD 4C 5D                      cmp  $5D4C,X         ; -> $5D4F
+0058F5  BD 60 5D                      lda  $5D60,X
+0058F8  DD 4C 5D                      cmp  $5D4C,X
 0058FB  90 71                         bcc  $596E
-0058FD  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F
-005900  DD 48 5D                      cmp  $5D48,X         ; -> $5D4B
+0058FD  BD 5C 5D                      lda  $5D5C,X
+005900  DD 48 5D                      cmp  $5D48,X
 005903  90 69                         bcc  $596E
 005905  4C 1E 59                      jmp  $591E
-005908  BD 64 5D                      lda  $5D64,X         ; -> $5D67
-00590B  DD 50 5D                      cmp  $5D50,X         ; -> $5D53
+005908  BD 64 5D                      lda  $5D64,X
+00590B  DD 50 5D                      cmp  $5D50,X
 00590E  B0 0E                         bcs  $591E
 005910  4C 6E 59                      jmp  $596E
-005913  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F
-005916  DD 48 5D                      cmp  $5D48,X         ; -> $5D4B
+005913  BD 5C 5D                      lda  $5D5C,X
+005916  DD 48 5D                      cmp  $5D48,X
 005919  90 03                         bcc  $591E
 00591B  4C 6E 59                      jmp  $596E
 00591E  20 C4 44                      jsr  DrawHitFlash
 
 005921  AE D6 57                      ldx  $57D6
-005924  20 41 44                      jsr  ClearSpriteArea ; Call $004441(X)
+005924  20 41 44                      jsr  ClearSpriteArea
 
 005927  AE D6 57                      ldx  $57D6
-00592A  BD 54 5D                      lda  $5D54,X         ; -> $5D57
+00592A  BD 54 5D                      lda  $5D54,X
 00592D  C9 02                         cmp  #$02
 00592F  D0 09                         bne  $593A
-005931  20 65 4B                      jsr  PunishmentRoutine ; Call $004B65(A, X)
+005931  20 65 4B                      jsr  PunishmentRoutine
 
 005934  AE D6 57                      ldx  $57D6
 005937  4C 54 59                      jmp  $5954
@@ -3891,23 +3784,23 @@ temp          EQU $3C      ; Temporary work variable
 00593C  D0 16                         bne  $5954
 00593E  AE D6 57                      ldx  $57D6
 005941  A9 02                         lda  #$02
-005943  9D 54 5D                      sta  $5D54,X         ; -> $5D57
-005946  20 99 44                      jsr  DrawProjectile  ; Call $004499(A, X)
+005943  9D 54 5D                      sta  $5D54,X
+005946  20 99 44                      jsr  DrawProjectile
 
 005949  A9 00                         lda  #$00
 00594B  AE D6 57                      ldx  $57D6
-00594E  9D 58 5D                      sta  $5D58,X         ; -> $5D5B
+00594E  9D 58 5D                      sta  $5D58,X
 005951  4C 5C 59                      jmp  loc_00595C
 005954  A9 00                         lda  #$00
-005956  9D 54 5D                      sta  $5D54,X         ; -> $5D57
-005959  9D 58 5D                      sta  $5D58,X         ; -> $5D5B
+005956  9D 54 5D                      sta  $5D54,X
+005959  9D 58 5D                      sta  $5D58,X
 00595C  A9 01             loc_00595C  lda  #$01
-00595E  20 E0 4A                      jsr  AddScore        ; Call $004AE0(A)
+00595E  20 E0 4A                      jsr  AddScore
 
 005961  A0 14                         ldy  #$14
 005963  A9 C4                         lda  #$C4
 005965  8D 67 5B                      sta  $5B67
-005968  20 62 5B                      jsr  InputProcessB      ; Call $005B62(A, Y)
+005968  20 62 5B                      jsr  InputProcessB
 00596B  20 4F 5B                      jsr  InputProcessA
 00596E  CE D6 57                      dec  $57D6
 005971  30 03                         bmi  loc_005976
@@ -3917,7 +3810,7 @@ temp          EQU $3C      ; Temporary work variable
 005978  86 12                         stx  loop_idx
 
 00597A  A6 12             loc_00597A  ldx  $12
-00597C  BD 58 5D                      lda  $5D58,X         ; -> $5D5B
+00597C  BD 58 5D                      lda  $5D58,X
 00597F  F0 41                         beq  $59C2
 005981  E0 03                         cpx  #$03
 005983  F0 29                         beq  $59AE
@@ -3925,72 +3818,72 @@ temp          EQU $3C      ; Temporary work variable
 005987  F0 1B                         beq  $59A4
 005989  E0 01                         cpx  #$01
 00598B  F0 08                         beq  $5995
-00598D  BD 64 5D                      lda  $5D64,X         ; -> $5D67
+00598D  BD 64 5D                      lda  $5D64,X
 005990  F0 23                         beq  $59B5
 005992  4C C2 59                      jmp  $59C2
-005995  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F
+005995  BD 5C 5D                      lda  $5D5C,X
 005998  C9 16                         cmp  #$16
-00599A  BD 60 5D                      lda  $5D60,X         ; -> $5D63
-00599D  E9 01                         sbc  #$01            ; A=A-$01 X=$0003 Y=$0014
-00599F  B0 14                         bcs  $59B5           ; A=A-$01 X=$0003 Y=$0014
-0059A1  4C C2 59                      jmp  $59C2           ; A=A-$01 X=$0003 Y=$0014
-0059A4  BD 64 5D                      lda  $5D64,X         ; -> $5D67 ; A=A-$01 X=$0003 Y=$0014
-0059A7  C9 BF                         cmp  #$BF            ; A=A-$01 X=$0003 Y=$0014
-0059A9  F0 0A                         beq  $59B5           ; A=A-$01 X=$0003 Y=$0014
-0059AB  4C C2 59                      jmp  $59C2           ; A=A-$01 X=$0003 Y=$0014
-0059AE  BD 5C 5D                      lda  $5D5C,X         ; -> $5D5F ; A=A-$01 X=$0003 Y=$0014
-0059B1  C9 3E                         cmp  #$3E            ; A=A-$01 X=$0003 Y=$0014
-0059B3  D0 0D                         bne  $59C2           ; A=A-$01 X=$0003 Y=$0014
-0059B5  20 41 44                      jsr  ClearSpriteArea ; Call $004441(A)
+00599A  BD 60 5D                      lda  $5D60,X
+00599D  E9 01                         sbc  #$01
+00599F  B0 14                         bcs  $59B5
+0059A1  4C C2 59                      jmp  $59C2
+0059A4  BD 64 5D                      lda  $5D64,X
+0059A7  C9 BF                         cmp  #$BF
+0059A9  F0 0A                         beq  $59B5
+0059AB  4C C2 59                      jmp  $59C2
+0059AE  BD 5C 5D                      lda  $5D5C,X
+0059B1  C9 3E                         cmp  #$3E
+0059B3  D0 0D                         bne  $59C2
+0059B5  20 41 44                      jsr  ClearSpriteArea
 
-0059B8  20 4F 5B                      jsr  InputProcessA   ; A=A-$01 X=$0003 Y=$0014
-0059BB  A6 12                         ldx  loop_idx             ; A=A-$01 X=$0003 Y=$0014
+0059B8  20 4F 5B                      jsr  InputProcessA
+0059BB  A6 12                         ldx  loop_idx
 0059BD  A9 00                         lda  #$00
-0059BF  9D 58 5D                      sta  $5D58,X         ; -> $5D5B
+0059BF  9D 58 5D                      sta  $5D58,X
 0059C2  C6 12                         dec  loop_idx
 0059C4  10 B4                         bpl  loc_00597A
 
 0059C6  A6 11                         ldx  direction
-0059C8  20 E0 43                      jsr  KeyboardHandler ; Call $0043E0(A, X)
+0059C8  20 E0 43                      jsr  KeyboardHandler
 
 0059CB  E4 11                         cpx  direction
 0059CD  D0 03                         bne  $59D2
 0059CF  4C E8 59                      jmp  $59E8
-0059D2  BD 34 5D                      lda  $5D34,X         ; -> $5D37
+0059D2  BD 34 5D                      lda  $5D34,X
 0059D5  85 02                         sta  col_ctr
-0059D7  BD 38 5D                      lda  $5D38,X         ; -> $5D3B
+0059D7  BD 38 5D                      lda  $5D38,X
 0059DA  85 04                         sta  sprite_calc
 0059DC  8A                            txa
 0059DD  18                            clc
-0059DE  69 0B                         adc  #$0B            ; A=A+$0B X=$0003 Y=$0014
-0059E0  20 C0 40                      jsr  DrawSpriteXY    ; Call $0040C0(A)
+0059DE  69 0B                         adc  #$0B
+0059E0  20 C0 40                      jsr  DrawSpriteXY
 
-0059E3  20 4F 5B                      jsr  InputProcessA   ; A=A+$0B X=$0003 Y=$0014
-0059E6  E6 01                         inc  src_hi             ; A=A+$0B X=$0003 Y=$0014
-0059E8  20 91 55                      jsr  DrawAlienRowDir ; A=A+$0B X=$0003 Y=$0014
+0059E3  20 4F 5B                      jsr  InputProcessA
+0059E6  E6 01                         inc  src_hi
+0059E8  20 91 55                      jsr  DrawAlienRowDir
 
-0059EB  20 E3 55                      jsr  DrawAlienRowDirB      ; A=A+$0B X=$0003 Y=$0014
+0059EB  20 E3 55                      jsr  DrawAlienRowDirB
 
-0059EE  EE CD 57                      inc  $57CD           ; A=A+$0B X=$0003 Y=$0014
-0059F1  D0 11                         bne  FrameTimingLoop ; A=A+$0B X=$0003 Y=$0014
-0059F3  EE CE 57                      inc  $57CE           ; A=A+$0B X=$0003 Y=$0014
-0059F6  D0 0C                         bne  FrameTimingLoop ; A=A+$0B X=$0003 Y=$0014
+0059EE  EE CD 57                      inc  $57CD
+0059F1  D0 11                         bne  FrameTimingLoop
+0059F3  EE CE 57                      inc  $57CE
+0059F6  D0 0C                         bne  FrameTimingLoop
 0059F8  AD CC 57                      lda  $57CC
 0059FB  8D CD 57                      sta  $57CD
 0059FE  8D CE 57                      sta  $57CE
-005A01  20 C9 56                      jsr  DrawAlienRowDirD      ; Call $0056C9(A)
+005A01  20 C9 56                      jsr  DrawAlienRowDirD
 
 005A04  E6 2E                         inc  frame_ctr
 005A06  D0 52                         bne  $5A5A
 005A08  A5 2F                         lda  frame_reload
 005A0A  85 2E                         sta  frame_ctr
-005A0C  20 0E 45                      jsr  PeriodicGameLogic ; Call $00450E(A)
+005A0C  20 0E 45                      jsr  PeriodicGameLogic
 
 005A0F  A2 03                         ldx  #$03
 005A11  86 12                         stx  loop_idx
 
 005A13  A6 12             loc_005A13  ldx  $12
-005A15  BD 54 5D                      lda  $5D54,X         ; -> $5D57
+005A15  BD 54 5D                      lda  $5D54,X
 005A18  F0 3C                         beq  loc_005A56
 005A1A  E0 03                         cpx  #$03
 005A1C  F0 1C                         beq  $5A3A
@@ -3998,23 +3891,23 @@ temp          EQU $3C      ; Temporary work variable
 005A20  F0 0E                         beq  $5A30
 005A22  E0 01                         cpx  #$01
 005A24  F0 1E                         beq  $5A44
-005A26  BD 50 5D                      lda  $5D50,X         ; -> $5D53
+005A26  BD 50 5D                      lda  $5D50,X
 005A29  C9 52                         cmp  #$52
 005A2B  B0 30                         bcs  $5A5D
 005A2D  4C 56 5A                      jmp  loc_005A56
-005A30  BD 50 5D                      lda  $5D50,X         ; -> $5D53
+005A30  BD 50 5D                      lda  $5D50,X
 005A33  C9 6B                         cmp  #$6B
 005A35  90 26                         bcc  $5A5D
 005A37  4C 56 5A                      jmp  loc_005A56
-005A3A  BD 48 5D                      lda  $5D48,X         ; -> $5D4B
+005A3A  BD 48 5D                      lda  $5D48,X
 005A3D  C9 9B                         cmp  #$9B
 005A3F  90 15                         bcc  loc_005A56
 005A41  4C 5D 5A                      jmp  $5A5D
-005A44  BD 48 5D                      lda  $5D48,X         ; -> $5D4B
+005A44  BD 48 5D                      lda  $5D48,X
 005A47  C9 B6                         cmp  #$B6
 005A49  90 03                         bcc  $5A4E
 005A4B  4C 56 5A                      jmp  loc_005A56
-005A4E  BD 4C 5D                      lda  $5D4C,X         ; -> $5D4F
+005A4E  BD 4C 5D                      lda  $5D4C,X
 005A51  D0 03                         bne  loc_005A56
 005A53  4C 5D 5A                      jmp  $5A5D
 
@@ -4023,19 +3916,19 @@ temp          EQU $3C      ; Temporary work variable
 
 005A5A  4C 75 58                      jmp  MainGameLoop
 
-005A5D  BD 54 5D                      lda  $5D54,X         ; -> $5D57
+005A5D  BD 54 5D                      lda  $5D54,X
 005A60  C9 02                         cmp  #$02
 005A62  D0 18                         bne  $5A7C
-005A64  20 C4 44                      jsr  DrawHitFlash    ; Call $0044C4(A)
+005A64  20 C4 44                      jsr  DrawHitFlash
 
 005A67  A6 12                         ldx  loop_idx
 005A69  A9 00                         lda  #$00
-005A6B  9D 54 5D                      sta  $5D54,X         ; -> $5D57
-005A6E  20 7A 43                      jsr  InitGameVarsA   ; Call $00437A(A, X)
+005A6B  9D 54 5D                      sta  $5D54,X
+005A6E  20 7A 43                      jsr  InitGameVarsA
 
 005A71  20 4F 5B                      jsr  InputProcessA
 005A74  A9 05                         lda  #$05
-005A76  20 E0 4A                      jsr  AddScore        ; Call $004AE0(A)
+005A76  20 E0 4A                      jsr  AddScore
 
 005A79  4C 56 5A                      jmp  loc_005A56
 
@@ -4046,8 +3939,8 @@ temp          EQU $3C      ; Temporary work variable
 
 005A86  AE D6 57                      ldx  $57D6
 005A89  A9 00                         lda  #$00
-005A8B  9D 54 5D                      sta  $5D54,X         ; -> $5D57
-005A8E  20 7A 43                      jsr  InitGameVarsA   ; Call $00437A(A, X)
+005A8B  9D 54 5D                      sta  $5D54,X
+005A8E  20 7A 43                      jsr  InitGameVarsA
 
 005A91  20 4F 5B                      jsr  InputProcessA
 005A94  20 65 4B                      jsr  PunishmentRoutine
@@ -4058,37 +3951,37 @@ temp          EQU $3C      ; Temporary work variable
 005A9C  86 12                         stx  loop_idx
 
 005A9E  A6 12                         ldx  loop_idx
-005AA0  BD 54 5D                      lda  $5D54,X         ; -> $5D57
+005AA0  BD 54 5D                      lda  $5D54,X
 005AA3  F0 03                         beq  loc_005AA8
-005AA5  20 C4 44                      jsr  DrawHitFlash    ; Call $0044C4(A, X)
+005AA5  20 C4 44                      jsr  DrawHitFlash
 
 005AA8  C6 12             loc_005AA8  dec  $12
 005AAA  10 F2                         bpl  $5A9E
 
 005AAC  A6 11                         ldx  direction
-005AAE  BD 34 5D                      lda  $5D34,X         ; -> $5D37
+005AAE  BD 34 5D                      lda  $5D34,X
 005AB1  85 02                         sta  col_ctr
-005AB3  BD 38 5D                      lda  $5D38,X         ; -> $5D3B
+005AB3  BD 38 5D                      lda  $5D38,X
 005AB6  85 04                         sta  sprite_calc
 005AB8  8A                            txa
 005AB9  18                            clc
-005ABA  69 0B                         adc  #$0B            ; A=A+$0B X=$0003 Y=$0014
-005ABC  20 C0 40                      jsr  DrawSpriteXY    ; Call $0040C0(A, X)
+005ABA  69 0B                         adc  #$0B
+005ABC  20 C0 40                      jsr  DrawSpriteXY
 
 005ABF  A9 56                         lda  #$56
 005AC1  85 04                         sta  sprite_calc
 005AC3  A9 17                         lda  #$17
 005AC5  85 02                         sta  col_ctr
 005AC7  A9 18                         lda  #$18
-005AC9  20 C0 40                      jsr  DrawSpriteXY    ; Call $0040C0(A)
+005AC9  20 C0 40                      jsr  DrawSpriteXY
 
 005ACC  A2 03                         ldx  #$03
 005ACE  86 12                         stx  loop_idx
 
 005AD0  A6 12             loc_005AD0  ldx  $12
-005AD2  BD 58 5D                      lda  $5D58,X         ; -> $5D5B
+005AD2  BD 58 5D                      lda  $5D58,X
 005AD5  F0 03                         beq  loc_005ADA
-005AD7  20 41 44                      jsr  ClearSpriteArea ; Call $004441(A, X)
+005AD7  20 41 44                      jsr  ClearSpriteArea
 
 005ADA  C6 12             loc_005ADA  dec  $12
 005ADC  10 F2                         bpl  loc_005AD0
@@ -4105,15 +3998,15 @@ temp          EQU $3C      ; Temporary work variable
 005AEC  A9 17                         lda  #$17
 005AEE  85 02                         sta  col_ctr
 005AF0  A5 12                         lda  loop_idx
-005AF2  29 03                         and  #$03            ; A=A&$03 X=$0003 Y=$0014
-005AF4  18                            clc                  ; A=A&$03 X=$0003 Y=$0014
-005AF5  69 26                         adc  #$26            ; A=A+$26 X=$0003 Y=$0014
-005AF7  20 16 04                      jsr  $0416           ; Call $000416(A, X)
-005AFA  20 1C 5C                      jsr  UpdateStarTwinkle ; A=A+$26 X=$0003 Y=$0014
-005AFD  A0 80                         ldy  #$80            ; A=A+$26 X=$0003 Y=$0080
+005AF2  29 03                         and  #$03
+005AF4  18                            clc
+005AF5  69 26                         adc  #$26
+005AF7  20 16 04                      jsr  $0416
+005AFA  20 1C 5C                      jsr  UpdateStarTwinkle
+005AFD  A0 80                         ldy  #$80
 005AFF  A9 F2                         lda  #$F2
 005B01  8D 67 5B                      sta  $5B67
-005B04  20 62 5B                      jsr  InputProcessB      ; Call $005B62(A, Y)
+005B04  20 62 5B                      jsr  InputProcessB
 005B07  C6 2C                         dec  timer_lo
 005B09  10 DD                         bpl  loc_005AE8
 
@@ -4130,14 +4023,14 @@ temp          EQU $3C      ; Temporary work variable
 005B1B  A9 17                         lda  #$17
 005B1D  85 02                         sta  col_ctr
 005B1F  A9 26                         lda  #$26
-005B21  20 C0 40                      jsr  DrawSpriteXY    ; Call $0040C0(A)
+005B21  20 C0 40                      jsr  DrawSpriteXY
 
 005B24  A9 56                         lda  #$56
 005B26  85 04                         sta  sprite_calc
 005B28  A9 17                         lda  #$17
 005B2A  85 02                         sta  col_ctr
 005B2C  A9 90                         lda  #$90
-005B2E  20 16 04                      jsr  $0416           ; Call $000416(A)
+005B2E  20 16 04                      jsr  $0416
 005B31  4C 39 58                      jmp  CheckLifeLost
 
 005B34  A9 00                         lda  #$00
@@ -4146,7 +4039,7 @@ temp          EQU $3C      ; Temporary work variable
 005B3A  85 2D                         sta  timer_hi
 
 005B3C  A9 0A             loc_005B3C  lda  #$0A
-005B3E  20 6C 5C                      jsr  StarTwinkleC      ; Call $005C6C(A)
+005B3E  20 6C 5C                      jsr  StarTwinkleC
 005B41  20 1C 5C                      jsr  UpdateStarTwinkle
 005B44  C6 2C                         dec  timer_lo
 005B46  D0 F4                         bne  loc_005B3C
@@ -4158,70 +4051,68 @@ temp          EQU $3C      ; Temporary work variable
 
 
 005B4F  A6 11                         ldx  direction
-005B51  BD 34 5D                      lda  $5D34,X         ; -> $5D37
+005B51  BD 34 5D                      lda  $5D34,X
 005B54  85 02                         sta  col_ctr
-005B56  BD 38 5D                      lda  $5D38,X         ; -> $5D3B
+005B56  BD 38 5D                      lda  $5D38,X
 005B59  85 04                         sta  sprite_calc
 005B5B  8A                            txa
 005B5C  18                            clc
-005B5D  69 0B                         adc  #$0B            ; A=A+$0B X=$0003 Y=$0080
-005B5F  4C 62 04                      jmp  $0462           ; A=A+$0B X=$0003 Y=$0080
+005B5D  69 0B                         adc  #$0B
+005B5F  4C 62 04                      jmp  $0462
 
 
 005B62  98                InputProcessB  tya
 005B63  20 6F 5B                      jsr  $5B6F
-005B66  49 FF                         eor  #$FF            ; A=A^$FF X=$0003 Y=$0080
-005B68  20 6F 5B                      jsr  $5B6F           ; A=A^$FF X=$0003 Y=$0080
-005B6B  88                            dey                  ; A=A^$FF X=$0003 Y=$007F
-005B6C  D0 F4                         bne  InputProcessB      ; A=A^$FF X=$0003 Y=$007F
-; === End of loop (counter: Y) ===
+005B66  49 FF                         eor  #$FF
+005B68  20 6F 5B                      jsr  $5B6F
+005B6B  88                            dey
+005B6C  D0 F4                         bne  InputProcessB
 
-005B6E  60                            rts                  ; A=A^$FF X=$0003 Y=$007F
+005B6E  60                            rts
 
-005B6F  AA                            tax                  ; A=A^$FF X=A Y=$007F
+005B6F  AA                            tax
 
-005B70  CA                            dex                  ; A=A^$FF X=X-$01 Y=$007F
-005B71  D0 FD                         bne  $5B70           ; A=A^$FF X=X-$01 Y=$007F
-; === End of loop (counter: X) ===
+005B70  CA                            dex
+005B71  D0 FD                         bne  $5B70
 
-005B73  2C 30 C0                      bit  SPKR            ; SPKR - Speaker toggle {Speaker} <speaker_toggle>
-005B76  60                            rts                  ; A=A^$FF X=X-$01 Y=$007F
+005B73  2C 30 C0                      bit  SPKR            ; SPKR - Speaker toggle
+005B76  60                            rts
 
-005B77  A2 1F                         ldx  #$1F            ; A=A^$FF X=$001F Y=$007F
+005B77  A2 1F                         ldx  #$1F
 
-005B79  20 03 04                      jsr  $0403           ; Call $000403(X)
-005B7C  29 1F                         and  #$1F            ; A=A&$1F X=$001F Y=$007F
-005B7E  18                            clc                  ; A=A&$1F X=$001F Y=$007F
-005B7F  69 01                         adc  #$01            ; A=A+$01 X=$001F Y=$007F
-005B81  29 1F                         and  #$1F            ; A=A&$1F X=$001F Y=$007F
-005B83  F0 F4                         beq  $5B79           ; A=A&$1F X=$001F Y=$007F
+005B79  20 03 04                      jsr  $0403
+005B7C  29 1F                         and  #$1F
+005B7E  18                            clc
+005B7F  69 01                         adc  #$01
+005B81  29 1F                         and  #$1F
+005B83  F0 F4                         beq  $5B79
 
-005B85  18                            clc                  ; A=A&$1F X=$001F Y=$007F
-005B86  69 08                         adc  #$08            ; A=A+$08 X=$001F Y=$007F
-005B88  9D B4 5B                      sta  $5BB4,X         ; -> $5BD3 ; A=A+$08 X=$001F Y=$007F
+005B85  18                            clc
+005B86  69 08                         adc  #$08
+005B88  9D B4 5B                      sta  $5BB4,X
 
-005B8B  20 03 04          loc_005B8B  jsr  $0403           ; A=A+$08 X=$001F Y=$007F
-005B8E  C9 C0                         cmp  #$C0            ; A=A+$08 X=$001F Y=$007F
-005B90  B0 F9                         bcs  loc_005B8B      ; A=A+$08 X=$001F Y=$007F
+005B8B  20 03 04          loc_005B8B  jsr  $0403
+005B8E  C9 C0                         cmp  #$C0
+005B90  B0 F9                         bcs  loc_005B8B
 
-005B92  9D D4 5B                      sta  $5BD4,X         ; -> $5BF3 ; A=A+$08 X=$001F Y=$007F
-005B95  C9 50                         cmp  #$50            ; A=A+$08 X=$001F Y=$007F
-005B97  90 0F                         bcc  loc_005BA8      ; A=A+$08 X=$001F Y=$007F
-005B99  C9 71                         cmp  #$71            ; A=A+$08 X=$001F Y=$007F
-005B9B  B0 0B                         bcs  loc_005BA8      ; A=A+$08 X=$001F Y=$007F
-005B9D  BD B4 5B                      lda  $5BB4,X         ; -> $5BD3 ; A=A+$08 X=$001F Y=$007F
-005BA0  C9 1B                         cmp  #$1B            ; A=A+$08 X=$001F Y=$007F
-005BA2  B0 04                         bcs  loc_005BA8      ; A=A+$08 X=$001F Y=$007F
-005BA4  C9 16                         cmp  #$16            ; A=A+$08 X=$001F Y=$007F
-005BA6  B0 D1                         bcs  $5B79           ; A=A+$08 X=$001F Y=$007F
+005B92  9D D4 5B                      sta  $5BD4,X
+005B95  C9 50                         cmp  #$50
+005B97  90 0F                         bcc  loc_005BA8
+005B99  C9 71                         cmp  #$71
+005B9B  B0 0B                         bcs  loc_005BA8
+005B9D  BD B4 5B                      lda  $5BB4,X
+005BA0  C9 1B                         cmp  #$1B
+005BA2  B0 04                         bcs  loc_005BA8
+005BA4  C9 16                         cmp  #$16
+005BA6  B0 D1                         bcs  $5B79
 
-005BA8  20 03 04          loc_005BA8  jsr  $0403           ; Call $000403(A)
-005BAB  29 07                         and  #$07            ; A=A&$07 X=$001F Y=$007F
-005BAD  9D F4 5B                      sta  $5BF4,X         ; -> $5C13 ; A=A&$07 X=$001F Y=$007F
-005BB0  CA                            dex                  ; A=A&$07 X=$001E Y=$007F
-005BB1  10 C6                         bpl  $5B79           ; A=A&$07 X=$001E Y=$007F
+005BA8  20 03 04          loc_005BA8  jsr  $0403
+005BAB  29 07                         and  #$07
+005BAD  9D F4 5B                      sta  $5BF4,X
+005BB0  CA                            dex
+005BB1  10 C6                         bpl  $5B79
 
-005BB3  60                            rts                  ; A=A&$07 X=$001E Y=$007F
+005BB3  60                            rts
 
 005BB4  AEB8A092                HEX     AEB8A092 A0C5C3A0 CAA4A5C4 B1FFA092
 005BC4  A0FBCD90                HEX     A0FBCD90 A0A0E0A0 BDC9E0D3 A085A0A4
@@ -4243,11 +4134,11 @@ temp          EQU $3C      ; Temporary work variable
 
 005C1C  A5 34                         lda  game_flag
 005C1E  18                            clc
-005C1F  69 01                         adc  #$01            ; A=A+$01 X=$001E Y=$007F
-005C21  85 34                         sta  game_flag             ; A=A+$01 X=$001E Y=$007F
-005C23  C9 28                         cmp  #$28            ; A=A+$01 X=$001E Y=$007F
-005C25  B0 01                         bcs  UpdateStarTwinkleB      ; A=A+$01 X=$001E Y=$007F
-005C27  60                            rts                  ; A=A+$01 X=$001E Y=$007F
+005C1F  69 01                         adc  #$01
+005C21  85 34                         sta  game_flag
+005C23  C9 28                         cmp  #$28
+005C25  B0 01                         bcs  UpdateStarTwinkleB
+005C27  60                            rts
 
 005C28  A9 00             UpdateStarTwinkleB  lda  #$00
 005C2A  85 34                         sta  game_flag
@@ -4266,36 +4157,36 @@ temp          EQU $3C      ; Temporary work variable
 005C45  BD F4 5B                      lda  $5BF4,X
 005C48  A8                            tay
 005C49  18                            clc
-005C4A  69 01                         adc  #$01            ; A=A+$01 X=$0000 Y=$0000
-005C4C  29 07                         and  #$07            ; A=A&$07 X=$0000 Y=$0000
-005C4E  9D F4 5B                      sta  $5BF4,X         ; A=A&$07 X=$0000 Y=$0000
-005C51  B9 14 5C                      lda  $5C14,Y         ; A=A&$07 X=$0000 Y=$0000
-005C54  48                            pha                  ; A=A&$07 X=$0000 Y=$0000
-005C55  BD B4 5B                      lda  $5BB4,X         ; A=A&$07 X=$0000 Y=$0000
-005C58  A8                            tay                  ; A=A&$07 X=$0000 Y=A
+005C4A  69 01                         adc  #$01
+005C4C  29 07                         and  #$07
+005C4E  9D F4 5B                      sta  $5BF4,X
+005C51  B9 14 5C                      lda  $5C14,Y
+005C54  48                            pha
+005C55  BD B4 5B                      lda  $5BB4,X
+005C58  A8                            tay
 005C59  68                            pla
-005C5A  49 FF                         eor  #$FF            ; A=A^$FF X=$0000 Y=A
-005C5C  31 06                         and  (hgr_lo),Y         ; A=A^$FF X=$0000 Y=A
-005C5E  91 06                         sta  (hgr_lo),Y         ; A=A^$FF X=$0000 Y=A
-005C60  BD F4 5B                      lda  $5BF4,X         ; A=A^$FF X=$0000 Y=A
-005C63  AA                            tax                  ; A=A^$FF X=A Y=A
-005C64  BD 14 5C                      lda  $5C14,X         ; A=A^$FF X=A Y=A
-005C67  11 06                         ora  (hgr_lo),Y         ; A=A^$FF X=A Y=A
-005C69  91 06                         sta  (hgr_lo),Y         ; A=A^$FF X=A Y=A
-005C6B  60                            rts                  ; A=A^$FF X=A Y=A
+005C5A  49 FF                         eor  #$FF
+005C5C  31 06                         and  (hgr_lo),Y
+005C5E  91 06                         sta  (hgr_lo),Y
+005C60  BD F4 5B                      lda  $5BF4,X
+005C63  AA                            tax
+005C64  BD 14 5C                      lda  $5C14,X
+005C67  11 06                         ora  (hgr_lo),Y
+005C69  91 06                         sta  (hgr_lo),Y
+005C6B  60                            rts
 
-005C6C  38                StarTwinkleC  sec                  ; A=A^$FF X=A Y=A
+005C6C  38                StarTwinkleC  sec
 
-005C6D  48                loc_005C6D  pha                  ; A=A^$FF X=A Y=A
+005C6D  48                loc_005C6D  pha
 
-005C6E  E9 01             loc_005C6E  sbc  #$01            ; A=A-$01 X=A Y=A
-005C70  D0 FC                         bne  loc_005C6E      ; A=A-$01 X=A Y=A
+005C6E  E9 01             loc_005C6E  sbc  #$01
+005C70  D0 FC                         bne  loc_005C6E
 
 005C72  68                            pla
-005C73  E9 01                         sbc  #$01            ; A=A-$01 X=A Y=A
-005C75  D0 F6                         bne  loc_005C6D      ; A=A-$01 X=A Y=A
+005C73  E9 01                         sbc  #$01
+005C75  D0 F6                         bne  loc_005C6D
 
-005C77  60                            rts                  ; A=A-$01 X=A Y=A
+005C77  60                            rts
 
 
 ; ── CheckAllTVs ───────────────────────────────────────────────────
@@ -4308,35 +4199,35 @@ temp          EQU $3C      ; Temporary work variable
 ;      overshooting any alien by even one hit pushes it past TV into
 ;      Diamond, requiring 5 more hits to get back.
 
-005C78  A2 0F                         ldx  #$0F            ; A=A-$01 X=$000F Y=A
+005C78  A2 0F                         ldx  #$0F
 
-005C7A  BD B8 53          loc_005C7A  lda  $53B8,X         ; -> $53C7 ; A=A-$01 X=$000F Y=A
-005C7D  C9 04                         cmp  #$04            ; A=A-$01 X=$000F Y=A
-005C7F  F0 01                         beq  loc_005C82      ; A=A-$01 X=$000F Y=A
-005C81  60                            rts                  ; A=A-$01 X=$000F Y=A
-005C82  CA                loc_005C82  dex                  ; A=A-$01 X=$000E Y=A
-005C83  10 F5                         bpl  loc_005C7A      ; A=A-$01 X=$000E Y=A
+005C7A  BD B8 53          loc_005C7A  lda  $53B8,X
+005C7D  C9 04                         cmp  #$04
+005C7F  F0 01                         beq  loc_005C82
+005C81  60                            rts
+005C82  CA                loc_005C82  dex
+005C83  10 F5                         bpl  loc_005C7A
 
-005C85  20 27 5D                      jsr  $5D27           ; A=A-$01 X=$000E Y=A
-005C88  20 14 5D                      jsr  InitProjectileTables ; A=A-$01 X=$000E Y=A
+005C85  20 27 5D                      jsr  $5D27
+005C88  20 14 5D                      jsr  InitProjectileTables
 005C8B  A9 03                         lda  #$03
 005C8D  8D 13 5D                      sta  $5D13
 
 005C90  AE 13 5D          loc_005C90  ldx  $5D13
-005C93  BD 54 5D                      lda  $5D54,X         ; -> $5D62
+005C93  BD 54 5D                      lda  $5D54,X
 005C96  F0 0B                         beq  loc_005CA3
-005C98  20 C4 44                      jsr  DrawHitFlash    ; Call $0044C4(A, X)
+005C98  20 C4 44                      jsr  DrawHitFlash
 
 005C9B  AE 13 5D                      ldx  $5D13
 005C9E  A9 00                         lda  #$00
-005CA0  9D 54 5D                      sta  $5D54,X         ; -> $5D62
-005CA3  BD 12 52          loc_005CA3  lda  $5212,X         ; -> $5220
+005CA0  9D 54 5D                      sta  $5D54,X
+005CA3  BD 12 52          loc_005CA3  lda  $5212,X
 005CA6  F0 0B                         beq  loc_005CB3
-005CA8  20 C9 52                      jsr  $52C9           ; Call $0052C9(A, X)
+005CA8  20 C9 52                      jsr  $52C9
 
 005CAB  AE 13 5D                      ldx  $5D13
 005CAE  A9 00                         lda  #$00
-005CB0  9D 12 52                      sta  $5212,X         ; -> $5220
+005CB0  9D 12 52                      sta  $5212,X
 005CB3  CE 13 5D          loc_005CB3  dec  $5D13
 005CB6  10 D8                         bpl  loc_005C90
 
@@ -4360,7 +4251,7 @@ temp          EQU $3C      ; Temporary work variable
 ;      successive level harder even though aliens reset to UFOs.
 
 005CB8  A9 50                         lda  #$50
-005CBA  20 E0 4A                      jsr  AddScore        ; Call $004AE0(A, X)
+005CBA  20 E0 4A                      jsr  AddScore
 
 005CBD  C6 3A                         dec  level
 005CBF  20 33 4D                      jsr  DisplayLevelNum
@@ -4370,13 +4261,13 @@ temp          EQU $3C      ; Temporary work variable
 005CC5  A9 32                         lda  #$32
 005CC7  A0 FF                         ldy  #$FF
 005CC9  8D 67 5B                      sta  $5B67
-005CCC  20 62 5B                      jsr  InputProcessB      ; Call $005B62(A, Y)
+005CCC  20 62 5B                      jsr  InputProcessB
 
 005CCF  A9 03                         lda  #$03
 005CD1  8D 13 5D                      sta  $5D13
 
 005CD4  AD 13 5D          loc_005CD4  lda  $5D13
-005CD7  20 3C 4C                      jsr  PlayPunishSound ; Call $004C3C(A)
+005CD7  20 3C 4C                      jsr  PlayPunishSound
 
 005CDA  CE 13 5D                      dec  $5D13
 005CDD  10 F5                         bpl  loc_005CD4
@@ -4384,13 +4275,13 @@ temp          EQU $3C      ; Temporary work variable
 005CDF  A2 0F                         ldx  #$0F
 005CE1  A9 01                         lda  #$01
 
-005CE3  9D B8 53          loc_005CE3  sta  $53B8,X         ; -> $53C7
+005CE3  9D B8 53          loc_005CE3  sta  $53B8,X
 005CE6  CA                            dex
 005CE7  10 FA                         bpl  loc_005CE3
 
 005CE9  A5 3A                         lda  level
 005CEB  F0 1C                         beq  Victory
-005CED  20 3E 41                      jsr  ClearPlayfield  ; Call $00413E(A, X)
+005CED  20 3E 41                      jsr  ClearPlayfield
 
 005CF0  20 7A 43                      jsr  InitGameVarsA
 
@@ -4399,7 +4290,7 @@ temp          EQU $3C      ; Temporary work variable
 005CF6  A5 3A                         lda  level
 005CF8  C9 04                         cmp  #$04
 005CFA  B0 0C                         bcs  $5D08
-005CFC  20 27 52                      jsr  SpawnSatellite  ; Call $005227(A)
+005CFC  20 27 52                      jsr  SpawnSatellite
 
 005CFF  20 27 52                      jsr  SpawnSatellite
 
@@ -4426,14 +4317,14 @@ temp          EQU $3C      ; Temporary work variable
 ;      Ensures no stale projectile data from previous play.
 
 005D14  A6 11                         ldx  direction
-005D16  BD 34 5D                      lda  $5D34,X         ; -> $5D42
+005D16  BD 34 5D                      lda  $5D34,X
 005D19  85 02                         sta  col_ctr
-005D1B  BD 38 5D                      lda  $5D38,X         ; -> $5D46
+005D1B  BD 38 5D                      lda  $5D38,X
 005D1E  85 04                         sta  sprite_calc
 005D20  8A                            txa
 005D21  18                            clc
-005D22  69 0B                         adc  #$0B            ; A=A+$0B X=$000E Y=$00FF
-005D24  4C C0 40                      jmp  DrawSpriteXY    ; A=A+$0B X=$000E Y=$00FF
+005D22  69 0B                         adc  #$0B
+005D24  4C C0 40                      jmp  DrawSpriteXY
 
 
 005D27  A9 56                         lda  #$56
@@ -4554,7 +4445,6 @@ temp          EQU $3C      ; Temporary work variable
 006034  180C0C0C                HEX     180C0C0C 1E3F331E 333F1E1E 3F333E30
 006044  3E1E1E1E                HEX     3E1E1E1E 1E1F3F00 3F3F3F3F 3F000333
 006054  33330300                HEX     33330300 1E03333F 1F003033 331F0300
-; String: "???;?"
 006064  3F3F3F3B                HEX     3F3F3F3B 3F001E1E 1E333F00 889CBEFF
 006074  8183878F                HEX     8183878F 878381FF BE9C88C0 E0F0F8F0
 006084  E0C01E3F                HEX     E0C01E3F 333F3F3F 1E3F3F33 3F3F3F3F
