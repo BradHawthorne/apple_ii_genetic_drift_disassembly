@@ -6,7 +6,7 @@ Genetic Drift was written by **Scott Schram** in 1981, when he was 21 years old,
 
 The game's title is a biology metaphor: aliens "mutate" through six forms when shot, cycling from UFO through Eye, TV, Diamond, and Bowtie shapes. The player's goal is to evolve all 16 aliens into TVs simultaneously --- a deceptively simple objective that requires careful timing and restraint, since overshooting a TV cycles it back to the penalty Diamond state.
 
-This disassembly was produced collaboratively by Scott Schram and Claude Code in 2025, starting from the raw disk image with no surviving source code. The original Apple II assembly was discarded decades ago.
+This disassembly was produced collaboratively by Scott Schram and Claude Code in 2025–2026, starting from the raw disk image with no surviving source code. The original Apple II assembly was discarded decades ago.
 
 ### Credits
 
@@ -533,6 +533,9 @@ The main deliverable is `genetic_drift_source.s` — a clean, annotated reconstr
 | Annotated functions | 67 |
 | Documented data tables | 28 |
 | Labeled subroutine calls | 32 |
+| Semantic label renames | 105 |
+| Branch target labels | 145 |
+| Memory address names | 108 |
 | Machine noise remaining | 0 |
 
 ## Artifacts
@@ -572,4 +575,4 @@ This creates escalating tension: the closer you are to completing a level, the m
 
 ---
 *Reverse-engineered by Scott Schram and Claude Code using the Rosetta v2 toolchain.*
-*Based on the collaborative 2025 disassembly of the original 1981 Apple II binary.*
+*Based on the collaborative 2025–2026 disassembly of the original 1981 Apple II binary.*

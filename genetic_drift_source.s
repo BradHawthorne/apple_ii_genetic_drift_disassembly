@@ -8,7 +8,7 @@
 ; ╠═══════════════════════════════════════════════════════════════════════╣
 ; ║                                                                       ║
 ; ║   Reverse-engineered from the original 14,889-byte binary in a        ║
-; ║   collaboration between the author and Claude Code, 2025.             ║
+; ║   collaboration between the author and Claude Code, 2025-2026.        ║
 ; ║   The original Apple II assembly source was lost decades ago;          ║
 ; ║   this reconstruction recovers it from the surviving binary.          ║
 ; ║                                                                       ║

@@ -60,9 +60,9 @@
 - The game's biology metaphor (aliens "evolving" through mutation) was unusual
   for its era -- most action games had purely martial themes.
 
-## Source Recovery (Iterations 1-6)
+## Source Recovery (Iterations 1-8)
 
-The recovered source file (`genetic_drift_source.s`) went through 6 quality iterations:
+The recovered source file (`genetic_drift_source.s`) went through 8 quality iterations:
 
 1. Initial transformation: strip machine noise, inject EQU block, named variables
 2. Add function annotations (67 routines with HOW/WHY comments)
@@ -70,8 +70,11 @@ The recovered source file (`genetic_drift_source.s`) went through 6 quality iter
 4. Label subroutine calls (32 named jsr/jmp targets)
 5. Fix residual noise (A=comp@, !src_lo syntax, tautological soft-switch comments)
 6. Fix data regions (encrypted disk bootstrap, crosshatch sprite data as HEX blocks)
+7. Replace all 243 auto-generated loc_/irq_ labels with 105 semantic names
+8. Add 145 branch target labels and 108 memory address inline comments; zero bare branches remaining
 
-Final stats: 59 named variables, 67 functions, 28 data tables, 32 call labels, 0 noise.
+Final stats: 59 named variables, 67 functions, 28 data tables, 32 call labels,
+105 semantic labels, 145 branch labels, 108 memory names, 0 noise, 0 bare branches.
 
 ## Future Work (Status)
 
@@ -82,7 +85,7 @@ Final stats: 59 named variables, 67 functions, 28 data tables, 32 call labels, 0
   -> 12 levels, 8 parameters each, 328 hits to max. Full table with formulas
      in `analysis/game_mechanics.md`.
 - [DONE] Recover clean annotated source code from machine disassembly.
-  -> 6 iteration passes. See `genetic_drift_source.s`.
+  -> 8 iteration passes. See `genetic_drift_source.s`.
 - [BLOCKED] Verify all 32 sprite labels against actual in-game appearance (requires emulator).
 - [BLOCKED] Compare the Broderbund RWTS to other Broderbund titles (requires those disk images).
 
