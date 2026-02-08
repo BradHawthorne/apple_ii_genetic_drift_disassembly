@@ -157,6 +157,174 @@ CALL_LABELS = {
     0x8800: "DiskIO",
 }
 
+# ── Label Renames ───────────────────────────────────────────────────────
+# Semantic names for auto-generated loc_/irq_ labels.
+# Format: "loc_00XXXX" or "irq_00XXXX" → "semantic_name"
+#
+# Tier 1: ~40 key labels get meaningful names (loop heads, dispatch targets,
+#          multi-reference branch points).
+# Tier 2: All remaining loc_/irq_ labels are shortened to L_XXXX format
+#          by the rename_labels() post-processing step.
+
+LABEL_RENAMES = {
+    # ── RWTS Disk I/O ($0200-$0400) ──
+    "loc_0002A5": "rwts_read_nib",       # Wait for nibble from disk
+    "loc_0002B5": "rwts_store_nib",      # Store decoded nibble
+    "loc_0002B7": "rwts_read_nib2",      # Wait for second nibble
+    "loc_0002D4": "rwts_decode_loop",    # Decode sector data loop
+
+    # ── Sprite Engine ($4400-$44FF) ──
+    "loc_00447A": "sprite_col_loop",     # Outer: iterate sprite columns
+    "irq_00448A": "sprite_pix_store",    # Inner: store pixel row to HGR
+    "loc_0044BD": "sprite_clip_right",   # Right-edge clipping entry
+    "loc_0044E8": "sprite_clip_left",    # Left-edge clipping entry
+
+    # ── Hit Flash / Projectile Loop ($4500-$4580) ──
+    "loc_004512": "hitflash_loop",       # Loop head: iterate 4 projectile slots
+    "loc_004577": "hitflash_draw",       # Draw projectile after position update
+    "loc_00457A": "hitflash_next",       # Decrement loop index, next slot
+
+    # ── Move All Projectiles ($4580-$4640) ──
+    "loc_004583": "moveproj_loop",       # Loop head: iterate 4 projectile slots
+    "irq_0045A4": "moveproj_store_y",   # Store updated Y position
+    "loc_0045EC": "moveproj_load_anim",  # Load animation frame data
+    "loc_0045F3": "moveproj_animate",    # Call animation update
+    "loc_0045F9": "moveproj_next",       # Decrement loop index, next slot
+
+    # ── Alien State ($4680) ──
+    "loc_004681": "alien_load_state",    # Load alien state from table
+
+    # ── Bresenham Line Drawing ($4940-$4AD0) ──
+    "loc_004951": "bres_sec",            # Set carry for subtraction
+    "loc_004985": "bres_positive",       # Positive slope branch
+    "loc_00498D": "bres_load_dy",        # Load delta-Y for step
+    "loc_0049DC": "line_step_loop",      # Main line stepping loop (positive)
+    "loc_004A06": "line_advance_y",      # Advance Y after accumulator overflow
+    "loc_004A20": "line_check_done",     # Check if line is complete
+    "loc_004A3D": "line_neg_loop",       # Line stepping loop (negative slope)
+    "loc_004A6D": "line_neg_adv_y",      # Advance Y (negative direction)
+
+    # ── Score / Hit Processing ($4A80-$4AE0) ──
+    "loc_004A94": "score_add_points",    # Add points to score
+    "loc_004A9F": "score_done",          # Score update complete
+    "loc_004AA5": "hit_loop",            # Hit processing iteration
+    "loc_004AB7": "hit_process",         # Process individual hit
+
+    # ── Projectile Direction ($4B00-$4BA0) ──
+    "loc_004B2F": "pdir_case_2",         # Direction = 2 (DOWN)
+    "loc_004B34": "pdir_case_1",         # Direction = 1 (RIGHT)
+    "loc_004B36": "pdir_resolved",       # Direction resolved, continue
+    "loc_004B78": "pdir_init_loop",      # Initialize projectile state loop
+    "loc_004B87": "pdir_check_1",        # Check if direction == 1
+    "loc_004B8E": "pdir_check_2",        # Check if direction == 2
+
+    # ── Direction Dispatch ($4BC0-$4C60) ──
+    "loc_004BC1": "dir_up_handler",      # Move UP handler
+    "loc_004BEA": "dir_right_handler",   # Move RIGHT handler
+    "loc_004C13": "dir_down_handler",    # Move DOWN handler
+    "loc_004C43": "dir_test_right",      # Test if direction == RIGHT
+    "loc_004C4A": "dir_test_left",       # Test if direction == LEFT
+    "loc_004C51": "dir_left_handler",    # Move LEFT handler
+
+    # ── Sound Effects ($4C60-$4CA0) ──
+    "loc_004C69": "snd_loud_vol",        # Loud volume setting
+    "loc_004C6B": "snd_toggle",          # Toggle speaker output
+    "loc_004C84": "snd_loud_vol2",       # Second loud volume
+
+    # ── Star Field / Title Screen ($4CA0-$4D60) ──
+    "loc_004CA8": "star_main_loop",      # Star twinkle main loop
+    "loc_004D04": "star_init_count",     # Initialize star count
+    "loc_004D09": "star_update_loop",    # Update individual stars loop
+    "loc_004D53": "title_init_delay",    # Title screen delay value
+
+    # ── Satellite Collision ($4F60-$5000) ──
+    "loc_004F69": "satcol_check_dir",    # Check satellite direction for collision
+    "loc_004F9F": "satcol_loop",         # Satellite collision test loop head
+    "loc_004FF0": "satcol_dec_count",    # Decrement satellite alive count
+    "loc_004FF5": "satcol_next",         # Next satellite / loop exit
+    "loc_004FFC": "satcol_done",         # Collision check complete, return
+
+    # ── Satellite Spawn ($5220-$5280) ──
+    "loc_005229": "spawn_find_slot",     # Find empty satellite slot
+    "loc_005232": "spawn_slot_found",    # Empty slot found
+    "loc_005251": "spawn_rand_pos",      # Randomize position (retry loop)
+    "loc_00525D": "spawn_verify_slot",   # Verify slot is still free
+    "loc_005271": "spawn_verify_next",   # Next slot in verification
+
+    # ── Satellite Init / Speed ($52E0-$5300) ──
+    "loc_0052E9": "sat_init_loop",       # Initialize satellite data loop
+    "loc_0052F9": "sat_load_speed",      # Load satellite speed from table
+
+    # ── Satellite Animation ($5380-$5560) ──
+    "loc_0053B3": "sat_anim_done",       # Animation frame complete
+    "loc_005415": "sat_up_clamp",        # Clamp upward movement
+    "loc_00541E": "sat_up_store",        # Store upward movement result
+    "loc_00545B": "sat_up_dec_hp",       # Decrement satellite HP (up)
+    "loc_005479": "sat_left_clamp",      # Clamp leftward movement
+    "loc_005482": "sat_left_store",      # Store leftward movement result
+    "loc_0054BF": "sat_left_dec_hp",     # Decrement satellite HP (left)
+    "loc_0054DD": "sat_down_clamp",      # Clamp downward movement
+    "loc_0054E6": "sat_down_store",      # Store downward movement result
+    "loc_005541": "sat_right_clamp",     # Clamp rightward movement
+    "loc_00554A": "sat_right_store",     # Store rightward movement result
+
+    # ── Alien Direction Check ($55C0-$56A0) ──
+    "loc_0055D9": "adir_dispatch",       # Direction dispatch entry
+    "loc_0055E9": "adir_load_state",     # Load direction state
+    "loc_005604": "adir_case_right",     # Case: moving right
+    "loc_00561C": "adir_case_down",      # Case: moving down
+    "loc_00564C": "adir_handle_left",    # Handle: left movement
+    "loc_005675": "adir_handle_down",    # Handle: down movement
+    "loc_00569E": "adir_handle_right",   # Handle: right movement
+
+    # ── Difficulty ($5760) ──
+    "loc_005768": "diff_dec_ctr",        # Decrement difficulty step counter
+
+    # ── Laser Processing ($5950-$59C0) ──
+    "loc_00595C": "laser_start",         # Begin laser firing sequence
+    "loc_005976": "laser_init_dir",      # Initialize laser direction
+    "loc_00597A": "laser_loop",          # Laser projectile update loop
+
+    # ── Alien Hit Processing ($5A10-$5AB0) ──
+    "loc_005A13": "alienhit_loop",       # Alien hit check loop head
+    "loc_005A56": "alienhit_next",       # Next alien / loop decrement
+    "loc_005AA8": "alienhit_dec",        # Alien hit: decrement counter
+
+    # ── Alien Drawing ($5AD0-$5B10) ──
+    "loc_005AD0": "aliendraw_loop",      # Alien drawing loop head
+    "loc_005ADA": "aliendraw_next",      # Next alien to draw
+    "loc_005AE2": "snd_tone_lo",         # Low frequency tone
+    "loc_005AE8": "snd_tone_hi",         # High frequency tone
+
+    # ── Sound / Random ($5B30-$5BB0) ──
+    "loc_005B3C": "snd_burst",           # Sound burst effect
+    "loc_005B8B": "rand_retry",          # Random byte retry loop
+    "loc_005BA8": "rand_apply",          # Apply random result
+
+    # ── Star Display ($5C30) ──
+    "loc_005C35": "star_save_idx",       # Save star index
+
+    # ── Delay Loops ($5C6D) ──
+    "loc_005C6D": "delay_outer",         # Delay: outer loop
+    "loc_005C6E": "delay_inner",         # Delay: inner loop
+
+    # ── Alive Alien Check ($5C7A-$5C90) ──
+    "loc_005C7A": "alive_loop",          # Check alive aliens loop
+    "loc_005C82": "alive_next",          # Next alien in alive check
+
+    # ── Score Display ($5C90-$5CF0) ──
+    "loc_005C90": "scoredisp_loop",      # Score display loop head
+    "loc_005CA3": "scoredisp_load",      # Load score digit data
+    "loc_005CB3": "scoredisp_next",      # Next score digit
+    "loc_005CD4": "scoredisp_wait",      # Wait for display sync
+    "loc_005CE3": "scoredisp_clear",     # Clear score display area
+
+    # ── Miscellaneous ──
+    "loc_0005FB": "low_mem_data",        # Low memory data reference
+    "loc_0006E5": "reset_handler",       # RESET vector target
+    "loc_0043B9": "tbl_lookup_loop",     # Table lookup iteration
+}
+
 # ── Function Annotations ─────────────────────────────────────────────
 # Format: address → (name, HOW comment, WHY comment)
 # Injected as block comments before the function's first instruction.
@@ -1540,6 +1708,26 @@ def generate_equates_block():
     return '\n'.join(lines)
 
 
+def rename_labels(lines):
+    """Rename auto-generated loc_/irq_ labels to meaningful names.
+
+    Tier 1: Labels in LABEL_RENAMES get semantic names.
+    Tier 2: All remaining loc_XXXXXX/irq_XXXXXX are shortened to L_XXXX.
+    """
+    result = []
+    for line in lines:
+        # Tier 1: semantic renames (exact string replacement)
+        for old_label, new_label in LABEL_RENAMES.items():
+            if old_label in line:
+                line = line.replace(old_label, new_label)
+
+        # Tier 2: shorten remaining loc_00XXXX → L_XXXX, irq_00XXXX → L_XXXX
+        line = re.sub(r'\b(loc|irq)_00([0-9A-Fa-f]{4})\b', r'L_\2', line)
+
+        result.append(line)
+    return result
+
+
 def transform(input_path, output_path):
     """Main transformation: raw disassembly → clean annotated source."""
     with open(input_path, 'r', encoding='utf-8', errors='replace') as f:
@@ -1697,6 +1885,9 @@ def transform(input_path, output_path):
         i += 1
     output = cleaned
 
+    # Rename auto-generated labels
+    output = rename_labels(output)
+
     # Write output
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(output))
@@ -1762,6 +1953,18 @@ def main():
     dt_count = sum(1 for addr in DATA_TABLES
                    if any(line in content for line in DATA_TABLES[addr].split('\n')[:1]))
     print(f"Data table annotations: {dt_count}/{len(DATA_TABLES)}")
+
+    # Count label renames
+    semantic_count = sum(1 for new_name in LABEL_RENAMES.values() if new_name in content)
+    loc_remaining = len(re.findall(r'\bloc_[0-9A-Fa-f]{6}\b', content))
+    irq_remaining = len(re.findall(r'\birq_[0-9A-Fa-f]{6}\b', content))
+    l_short = len(re.findall(r'\bL_[0-9A-Fa-f]{4}\b', content))
+    print(f"Semantic labels: {semantic_count}/{len(LABEL_RENAMES)}")
+    print(f"Shortened labels (L_XXXX): {l_short}")
+    if loc_remaining + irq_remaining > 0:
+        all_clean = False
+    print(f"Remaining loc_/irq_: {loc_remaining + irq_remaining}", end="")
+    print("  CLEAN" if loc_remaining + irq_remaining == 0 else "  ← needs attention")
 
     print()
     if all_clean:
