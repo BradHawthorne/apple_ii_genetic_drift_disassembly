@@ -36,6 +36,9 @@
 ;                   $025D   Custom RWTS (Broderbund disk reader)
 ;                   $02D1   Nibble data decoder
 ;                   $03CC+  Broderbund splash screen code
+;                   $0403   Pseudorandom number generator
+;                   $0416   DrawSprite — render sprite by index
+;                   $0462   EraseSprite — XOR-erase sprite by index
 ;                   $0700   HGR scanline address lookup tables
 ;   $0800-$1FFF   (DOS 3.3 / free memory)
 ;   $2000-$3FFF   HGR Page 1 — the visible screen
@@ -441,8 +444,27 @@ temp          EQU $3C      ; Temporary work variable
 0003CF  00000000                HEX     00000000 00000000 00000000 00000000
 0003DF  00000000                HEX     00000000 00000000 00000000 00000000
 0003EF  00030600                HEX     00030600 06A30000 00000000 00000000
+; ── RandomByte ────────────────────────────────────────────────────
+; HOW: Pseudorandom number generator using zero page ($00-$01) as
+;      state. Combines ROL, EOR, and ROR operations on the 16-bit
+;      seed, then increments and adds to produce the next value.
+;      Returns random byte in A.
+; WHY: Drives all randomized behavior — satellite spawn timing,
+;      alien fire targeting, star twinkle positions. The algorithm
+;      is compact (under 20 bytes) and fast for a 1 MHz 6502.
+
 0003FF  00A5002A                HEX     00A5002A A5002600 45006600 E6016501
 00040F  5002E601                HEX     5002E601 850060
+; ── DrawSprite ────────────────────────────────────────────────────
+; HOW: Takes sprite index in A, draws it at the current col_ctr/
+;      sprite_calc position. Looks up sprite data pointer from the
+;      tables at $5D7C (low) and $5E1D (high), width from $5EBE,
+;      and height from $5F5F. Draws row by row using ORA to merge
+;      sprite pixels with the existing screen content.
+; WHY: Central rendering primitive — called 30+ times throughout
+;      the code for all game objects. Kept in relocated low memory
+;      ($0416) because page-zero addressing makes the inner loop
+;      faster than equivalent code in the $4000+ range.
 
 000416  A8                            tay
 000417  B9 7C 5D                      lda  $5D7C,Y
@@ -484,6 +506,13 @@ temp          EQU $3C      ; Temporary work variable
 00045F  90 D5                         bcc  $0436
 
 000461  60                            rts
+; ── EraseSprite ───────────────────────────────────────────────────
+; HOW: Same structure as DrawSprite but uses XOR (EOR) instead of
+;      ORA to erase the sprite from the screen. A second XOR of the
+;      same data restores the original background pixels.
+; WHY: XOR erase is the standard technique for fast sprite removal
+;      on the Apple II HGR screen — no need to save/restore the
+;      background, and it's a single pass through the sprite data.
 
 000462  A8B97C5D                HEX     A8B97C5D 8DA704B9 1D5E8DA8 04A50285
 000472  031879BE                HEX     031879BE 5E8502A5 04AA1879 5F5F8505
@@ -1354,11 +1383,16 @@ temp          EQU $3C      ; Temporary work variable
 00468D  A6 14                         ldx  save_x
 00468F  A4 15                         ldy  save_y
 004691  60                            rts
+; ── HGR Pixel Bitmask Table ──────────────────────────────────────
+; 280 entries indexed by X pixel coordinate (0-279).
+; Each byte is the single-bit mask for that pixel's position within
+; its HGR byte: $01, $02, $04, $08, $10, $20, $40, then repeats.
+; Apple II HGR packs 7 pixels per byte (bit 7 is the color bit).
+; This table eliminates runtime shift calculations.
 
 004692  01020408                HEX     01020408 10204001 02040810 20400102
 0046A2  04081020                HEX     04081020 40010204 08102040 01020408
 0046B2  10204001                HEX     10204001 02040810 20400102 04081020
-; Interrupt return (RTI)
 0046C2  40010204                HEX     40010204 08102040 01020408 10204001
 0046D2  02040810                HEX     02040810 20400102 04081020 40010204
 0046E2  08102040                HEX     08102040 01020408 10204001 02040810
@@ -1366,7 +1400,6 @@ temp          EQU $3C      ; Temporary work variable
 004702  01020408                HEX     01020408 10204001 02040810 20400102
 004712  04081020                HEX     04081020 40010204 08102040 01020408
 004722  10204001                HEX     10204001 02040810 20400102 04081020
-; Interrupt return (RTI)
 004732  40010204                HEX     40010204 08102040 01020408 10204001
 004742  02040810                HEX     02040810 20400102 04081020 40010204
 004752  08102040                HEX     08102040 01020408 10204001 02040810
@@ -1374,7 +1407,12 @@ temp          EQU $3C      ; Temporary work variable
 004772  01020408                HEX     01020408 10204001 02040810 20400102
 004782  04081020                HEX     04081020 40010204 08102040 01020408
 004792  10204001                HEX     10204001 02040810 20400102 04081020
-; Interrupt return (RTI)
+; ── HGR Column Byte Table ────────────────────────────────────────
+; 280 entries indexed by X pixel coordinate (0-279).
+; Returns the byte offset within the HGR row for that pixel.
+; Pixel 0-6 → byte 0, pixel 7-13 → byte 1, etc. (column = X / 7).
+; Used together with the bitmask table to locate any pixel.
+
 0047A2  40010204                HEX     40010204 08102040 00000000 00000001
 0047B2  01010101                HEX     01010101 01010202 02020202 02030303
 0047C2  03030303                HEX     03030303 04040404 04040405 05050505
@@ -1504,6 +1542,20 @@ temp          EQU $3C      ; Temporary work variable
 0049C2  20 4B 46                      jsr  MoveLaserLeft
 
 0049C5  60                            rts
+; ── BresenhamLineStep ─────────────────────────────────────────────
+; HOW: Bresenham's line algorithm inner loop. Initializes the error
+;      accumulator to half the major axis distance (delta_x >> 1),
+;      then iterates line_ctr_lo/hi times. Each iteration:
+;        1. Adds delta_y to the accumulator (accum_lo/accum_hi)
+;        2. If accumulator >= delta_x, subtracts delta_x and steps
+;           along the minor axis (Y direction via step_y)
+;        3. Always steps along the major axis (X direction via step_x)
+;      The 16-bit math handles screen-spanning distances accurately.
+; WHY: Classic integer-only line drawing — fast and exact. No division
+;      or floating point needed, which matters at 1 MHz. Used to compute
+;      alien orbital paths and projectile trajectories. The algorithm
+;      dates to 1962 (Jack Bresenham, IBM) and was the standard approach
+;      for line drawing in the 8-bit era.
 
 0049C6  A5 23                         lda  delta_x
 0049C8  D0 04                         bne  $49CE
@@ -2971,9 +3023,12 @@ temp          EQU $3C      ; Temporary work variable
 
 00558D  F8F80000                HEX     F8F80000
 ; ── DrawAlienRowDir ───────────────────────────────────────────────
-; HOW: Direction-specific alien row drawing routine. Handles the
-;      coordinate transformation needed to draw aliens orbiting from
-;      different directions.
+; HOW: Draws one row of 4 aliens for direction A (UP). Uses self-modifying
+;      code to patch the sprite table offset, then calls DrawSprite for each
+;      alien whose type is non-zero (alive). Iterates X = 3..0.
+; WHY: Four variants of this routine exist — one per direction (A through D).
+;      Each applies the correct coordinate transformation for its edge of
+;      the playfield. The UP variant is the base; B/C/D mirror and rotate.
 
 005591  EE 8D 55                      inc  $558D
 005594  D0 49                         bne  $55DF
@@ -3017,7 +3072,10 @@ temp          EQU $3C      ; Temporary work variable
 0055DF  60                            rts
 
 0055E0  E0E000                  HEX     E0E000
-
+; ── DrawAlienRowDirB ──────────────────────────────────────────────
+; HOW: Direction B (RIGHT) variant of DrawAlienRowDir. Self-modifies
+;      the table offset at $55E1, then draws 4 aliens along the right
+;      edge of the playfield.
 
 0055E3  EE E1 55          DrawAlienRowDirB  inc  $55E1
 0055E6  F0 01                         beq  loc_0055E9
@@ -3132,7 +3190,10 @@ temp          EQU $3C      ; Temporary work variable
 0056C6  60                            rts
 
 0056C7  0000                    HEX     0000
-
+; ── DrawAlienRowDirD ──────────────────────────────────────────────
+; HOW: Direction D (LEFT) variant of DrawAlienRowDir. Calls RandomByte
+;      ($0403) to add slight positional variation to each alien's draw
+;      position, giving the left-edge aliens a wobble effect.
 
 0056C9  20 03 04          DrawAlienRowDirD  jsr  $0403
 0056CC  29 03                         and  #$03
@@ -4207,7 +4268,6 @@ temp          EQU $3C      ; Temporary work variable
 0062A4  81D0FF85                HEX     81D0FF85 D0FF85D4 C195D400 95E08700
 0062B4  B89D00AE                HEX     B89D00AE F500AFF4 81AEF500 B89D00E0
 0062C4  8700150E                HEX     8700150E 1B0E152A 1C361C2A 54386C38
-; Block move (MVN)
 0062D4  54280170                HEX     54280170 00580170 00280150 02600130
 0062E4  03600150                HEX     03600150 02200540 03600640 03200540
 0062F4  0A000740                HEX     0A000740 0D000740 0A1E1E63 7E001E33
@@ -4222,7 +4282,6 @@ temp          EQU $3C      ; Temporary work variable
 006384  305D0628                HEX     305D0628 5D0A2C5D 1A2A5D2A 2B5D6A2B
 006394  5D6A7F7F                HEX     5D6A7F7F 7F7F7F7F 7F7F7F2B 5D6A2B5D
 0063A4  6A2A5D2A                HEX     6A2A5D2A 2C5D1A28 5D0A305D 06205D02
-; Interrupt return (RTI)
 0063B4  407F0100                HEX     407F0100 7F0080FF 80C0FF81 A0DD82B0
 0063C4  DD86A8DD                HEX     DD86A8DD 8AACDD9A AADDAAAB DDEAABDD
 0063D4  EAFFFFFF                HEX     EAFFFFFF FFFFFFFF FFFFABDD EAABDDEA
@@ -4271,7 +4330,6 @@ temp          EQU $3C      ; Temporary work variable
 006684  1F201760                HEX     1F201760 18400F0B 1C3E7F3E 1C082000
 006694  70007801                HEX     70007801 7C037801 70002000 00014003
 0066A4  6007700F                HEX     6007700F 60074003 00010004 000E001F
-; Interrupt return (RTI)
 0066B4  403F001F                HEX     403F001F 000E0004 10003800 7C007E01
 0066C4  7C003800                HEX     7C003800 10004000 60017003 78077003
 0066D4  60014000                HEX     60014000 00020007 400F601F 400F0007
@@ -4289,7 +4347,6 @@ temp          EQU $3C      ; Temporary work variable
 006794  010085A0                HEX     010085A0 95E09DA0 95200420 15001104
 0067A4  04555555                HEX     04555555 04045000 50005402 54025402
 0067B4  50005000                HEX     50005000 40024002 500A500A 500A4002
-; Interrupt return (RTI)
 0067C4  4002000A                HEX     4002000A 000A402A 402A402A 000A0000
 0067D4  28002800                HEX     28002800 2A012A01 2A012800 28002001
 0067E4  20012805                HEX     20012805 28052805 20012001 00050005
@@ -4340,16 +4397,13 @@ temp          EQU $3C      ; Temporary work variable
 006AB4  8A95C0D2                HEX     8A95C0D2 94C0D090 22777F3E 1C084400
 006AC4  6E017E01                HEX     6E017E01 7C003800 10000801 5C037C03
 006AD4  78017000                HEX     78017000 20001002 38077807 70036001
-; Interrupt return (RTI)
 006AE4  40002004                HEX     40002004 700E700F 60074003 00014008
 006AF4  601D601F                HEX     601D601F 400F0007 00020011 403B403F
 006B04  001F000E                HEX     001F000E 0004081C 3E7F7722 10003800
 006B14  7C007E01                HEX     7C007E01 6E014400 20007000 78017C03
 006B24  5C030801                HEX     5C030801 40006001 70037807 38071002
 006B34  00014003                HEX     00014003 6007700F 700E2004 00020007
-; Interrupt return (RTI)
 006B44  400F601F                HEX     400F601F 601D4008 0004000E 001F403F
-; Interrupt return (RTI)
 006B54  403B0011                HEX     403B0011 40000400 00010200 00020100
 006B64  00440000                HEX     00440000 00280000 00100000 7F7F7F03
 006B74  7F7F7F03                HEX     7F7F7F03 03001C03 03001C03 03007C03
@@ -4372,7 +4426,6 @@ temp          EQU $3C      ; Temporary work variable
 006C84  41000000                HEX     41000000 00220000 00001400 00000008
 006C94  0000407F                HEX     0000407F 7F7F0140 7F7F7F01 4001004E
 006CA4  01400100                HEX     01400100 4E014001 007E0140 01007E01
-; Interrupt return (RTI)
 006CB4  4001004E                HEX     4001004E 01400100 4E014001 007E0140
 006CC4  01007E01                HEX     01007E01 4001007E 01400100 7E014001
 006CD4  007E0140                HEX     007E0140 01007E01 4001007E 01400100
