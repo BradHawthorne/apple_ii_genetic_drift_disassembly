@@ -211,18 +211,23 @@ temp          EQU $3C      ; Temporary work variable
 ; initialized with Broderbund's nibble-encoded disk bootstrap data
 ; that is partially encrypted — the HEX blocks below are the raw
 ; byte values as they appear in the binary.
+;
+; NOTE: Some byte patterns in this region were misinterpreted by
+; the disassembler as 6502 instructions. All data in $0000-$025C
+; should be read as raw bytes, not executable code. The actual
+; RWTS disk code begins at $025D.
 
 000000  00380000                HEX     00380000 40935029 01C00928 00000000
 000010  03006C1D                HEX     03006C1D B213D1D1 3C3BD499 9BD1
 
 
-00001E  F9 BA 00          loc_00001E  sbc  $00BA,Y
-000021  28                            plp
-000022  00 18                         brk  #$18
+00001E  F9BA00                  HEX     F9BA00
+000021  28                      HEX     28
+000022  0018                    HEX     0018
 
 000024  AE170225                HEX     AE170225 D007EF60
 
-00002C  F0 F0                         beq  loc_00001E
+00002C  F0F0                    HEX     F0F0
 
 
 00002E  F088CAD7                HEX     F088CAD7 FF90841B F0FD1BFD AD850072
@@ -240,12 +245,12 @@ temp          EQU $3C      ; Temporary work variable
 0000EE  8CC010FB                HEX     8CC010FB C9AED0B3 BD8CC010 FBC9EED0
 0000FE  AA6007                  HEX     AA6007
 
-000101  00 A9                         brk  #$A9
+000101  00A9                    HEX     00A9
 
 000103  4C8D0006                HEX     4C8D0006 A9008D01 06A9B08D 0206A9EE
 000113  60FF                    HEX     60FF
 
-000115  FF 00 00 FF                   sbc  >$FF0000,X
+000115  FF0000FF                HEX     FF0000FF
 
 000119  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF0000FF
 000129  FF0000FF                HEX     FF0000FF FF0000FF FF0000FF FF0000FF
@@ -265,28 +270,28 @@ temp          EQU $3C      ; Temporary work variable
 000209  E8D0F74C                HEX     E8D0F74C 0F02A0AB
 
 
-000211  98                            tya
-000212  85 3C                         sta  temp
-000214  4A                            lsr  a
-000215  05 3C                         ora  temp
-000217  C9 FF                         cmp  #$FF
-000219  D0 09                         bne  DiskBoot_StoreNibble
-00021B  C0 D5                         cpy  #$D5
-00021D  F0 05                         beq  DiskBoot_StoreNibble
-00021F  8A                            txa
-000220  99 00 08                      sta  $0800,Y
-000223  E8                            inx
-000224  C8                            iny
-000225  D0 EA                         bne  DiskBoot_NibbleDecode
+000211  98                      HEX     98
+000212  853C                    HEX     853C
+000214  4A                      HEX     4A
+000215  053C                    HEX     053C
+000217  C9FF                    HEX     C9FF
+000219  D009                    HEX     D009
+00021B  C0D5                    HEX     C0D5
+00021D  F005                    HEX     F005
+00021F  8A                      HEX     8A
+000220  990008                  HEX     990008
+000223  E8                      HEX     E8
+000224  C8                      HEX     C8
+000225  D0EA                    HEX     D0EA
 
-000227  84 3D                         sty  disk_chk
-000229  84 26                         sty  delta_y_hi
-00022B  A9 03                         lda  #$03
-00022D  85 27                         sta  accum_lo
-00022F  A6 2B                         ldx  slot_x16
-000231  20 5D 02                      jsr  RWTS_ReadSector
-000234  20 D1 02                      jsr  RWTS_DecodeData
-000237  4C 00 88                      jmp  $8800  ; DiskIO
+000227  843D                    HEX     843D
+000229  8426                    HEX     8426
+00022B  A903                    HEX     A903
+00022D  8527                    HEX     8527
+00022F  A62B                    HEX     A62B
+000231  205D02                  HEX     205D02
+000234  20D102                  HEX     20D102
+000237  4C0088                  HEX     4C0088
 
 00023A  00000000                HEX     00000000 00000000 00000000 00000000
 00024A  00000000                HEX     00000000 00000000 00000000 00000000
@@ -636,26 +641,19 @@ temp          EQU $3C      ; Temporary work variable
 0007DF  2F33373B                HEX     2F33373B 3F23272B 2F33373B 3F484A4A
 0007EF  4A4A290F                HEX     4A4A290F 20160468 290F4C16 04A90185
 0007FF  02                      HEX     02
-
-; SEGMENT: Main Game Code ($4000-$71FF)
-; The main game code remains at its load address. Contains:
-;   - Sprite rendering engine ($40C0-$411F)
-;   - HGR initialization and screen clear ($4120-$416B)
-;   - HGR line address tables ($416C-$42EB)
-;   - Game logic, input handling, collision detection
-;   - Alien evolution and difficulty systems
-;   - Sound generation routines
-;   - Sprite bitmap data ($6000+)
-
+; ── Crosshatch Pattern / Sprite Alignment Data ─────────────────
+; Repeating byte patterns ($49/$24/$12) that form the crosshatch
+; HGR display pattern used during screen initialization. These
+; bytes are data, not executable code.
 
 004000  49                      HEX     49
 
-004001  24 12                         bit  loop_idx
-004003  49 24                         eor  #$24
+004001  2412                    HEX     2412
+004003  4924                    HEX     4924
 
 004005  12                      HEX     12
 
-004006  49 24                         eor  #$24
+004006  4924                    HEX     4924
 
 004008  12492412                HEX     12492412 49241249 24124924 12492412
 004018  49241249                HEX     49241249 24124924 12492412 49241249
@@ -1009,7 +1007,7 @@ temp          EQU $3C      ; Temporary work variable
 ;      "super shot" which fires all four directions at once but has
 ;      limited uses (starts at 3, gains 1 per difficulty increase).
 
-0043E0  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off
+0043E0  AD 00 C0                      lda  KBD             ; Read keyboard (high bit = key pressed)
 0043E3  10 12                         bpl  $43F7
 0043E5  8D 10 C0                      sta  CLRKBD          ; Clear keyboard strobe
 0043E8  C9 9B                         cmp  #$9B
@@ -1719,7 +1717,7 @@ temp          EQU $3C      ; Temporary work variable
 004AD0  20 28 5C                      jsr  UpdateStarTwinkleB
 004AD3  A9 40                         lda  #$40
 004AD5  20 6C 5C                      jsr  StarTwinkleC
-004AD8  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off
+004AD8  AD 00 C0                      lda  KBD             ; Read keyboard (high bit = key pressed)
 004ADB  C9 8D                         cmp  #$8D
 004ADD  D0 C6                         bne  loc_004AA5
 
@@ -2043,7 +2041,7 @@ temp          EQU $3C      ; Temporary work variable
 004CE9  8D 55 4C                      sta  $4C55
 004CEC  20 56 4C                      jsr  PlayTone
 
-004CEF  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off
+004CEF  AD 00 C0                      lda  KBD             ; Read keyboard (high bit = key pressed)
 004CF2  C9 9E                         cmp  #$9E
 004CF4  D0 0E                         bne  loc_004D04
 004CF6  AD 10 C0                      lda  KBDSTRB         ; Clear keyboard strobe
@@ -3433,7 +3431,7 @@ temp          EQU $3C      ; Temporary work variable
 ; Wait for RETURN key to start game
 0057FE  E6 00                         inc  src_lo
 005800  C6 01                         dec  src_hi
-005802  AD 00 C0                      lda  KBD             ; KBD - Keyboard data / 80STORE off
+005802  AD 00 C0                      lda  KBD             ; Read keyboard (high bit = key pressed)
 005805  C9 8D                         cmp  #$8D
 005807  D0 F5                         bne  WaitForReturn
 ; ── GameStart ─────────────────────────────────────────────────────
